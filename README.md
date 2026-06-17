@@ -56,5 +56,5 @@ Workflow 使用最新版本：
 - `actions/checkout@v4`
 - `astral-sh/setup-uv@v6`
 - `actions/setup-python@v5`
-- `actions/upload-pages-artifact@v3`
-- `actions/deploy-pages@v4`
+- `peaceiris/actions-gh-pages@v4`
+
