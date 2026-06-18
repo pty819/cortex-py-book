@@ -41,6 +41,9 @@ jobs:
       - name: Install mermaid-cli
         run: npm install @mermaid-js/mermaid-cli
 
+      - name: Install CJK fonts
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+
       - name: Create mmdc wrapper with --no-sandbox
         run: |
           cat > mmdc-wrapper.sh << 'EOF'
@@ -52,10 +55,11 @@ jobs:
           EOF
           chmod +x mmdc-wrapper.sh
           cat > puppeteer-config.json << 'EOF'
-          {"args": ["--no-sandbox", "--disable-setuid-sandbox"]}
+          {"args": ["--no-sandbox", "--disable-setuid-sandbox", "--font-render-hinting=none"]}
           EOF
-          # Update conf.py to use the wrapper
+          # Update conf.py paths for CI environment
           sed -i "s|mermaid_cmd = '.*'|mermaid_cmd = '$(pwd)/mmdc-wrapper.sh'|" source/conf.py
+          sed -i "s|mermaid_params = \['--configFile', '.*'\]|mermaid_params = ['--configFile', '$(pwd)/mermaid-config.json']|" source/conf.py
 
       - name: Install Python dependencies
         run: uv sync

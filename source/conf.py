@@ -43,6 +43,7 @@ myst_enable_extensions = [
 mermaid_cmd = '/tmp/node_modules/.bin/mmdc'
 mermaid_cmd_shell = False
 mermaid_output_format = 'svg'
+mermaid_params = ['--configFile', '/tmp/cortex-book/mermaid-config.json']
 # 去掉 mermaid_version —— 构建时渲染不需要加载客户端 JS
 
 # -- Other configuration -----------------------------------------------------
