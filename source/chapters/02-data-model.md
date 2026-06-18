@@ -61,7 +61,7 @@ CREATE INDEX idx_entities_embedding ON entities
 
 ### Entity Linking: B over C 策略
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[新提及的实体] --> B{向量召回<br/>cosine similarity}
     B -->|score > 0.85| C[直接合并<br/>merged_into]
@@ -109,7 +109,7 @@ CREATE INDEX idx_aliases_alias ON entity_aliases (alias gin_trgm_ops);
 
 ### 为什么需要双时态？
 
-```mermaid
+```{mermaid}
 graph LR
     subgraph 场景1：当时以为的
         T1[2024-01: Alice 在 Acme] 
@@ -160,7 +160,7 @@ ORDER BY valid_from;
 
 ### Facts 作为图边
 
-```mermaid
+```{mermaid}
 graph LR
     A[Alice] -->|works_at| B[Acme]
     B[Acme] -->|is_a| C[Company]
@@ -224,7 +224,7 @@ SELECT DISTINCT fact_id FROM graph_walk;
 
 ### 层级 Scope
 
-```mermaid
+```{mermaid}
 graph TB
     R["/ (root)"] --> O1["org:acme"]
     R --> O2["org:other"]
@@ -257,7 +257,7 @@ def _scope_filter(scope, view):
 
 所有派生层 (Facts, Beliefs, Understanding) 都可以**从 Events 重建**：
 
-```mermaid
+```{mermaid}
 flowchart TD
     E[Events] -->|extract| F[Facts]
     E -->|segment| EP[Episodes]

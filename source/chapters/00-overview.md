@@ -13,7 +13,7 @@
 
 ## 系统架构
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph 写入路径
         A[用户输入] --> B[Experience API]
@@ -57,7 +57,7 @@ graph TB
 | **Beliefs** | `beliefs` 表 | 概率断言，带 supports 证据链 |
 | **Understanding** | `understanding` 表 | 概念合成，从 beliefs 聚合 |
 
-```mermaid
+```{mermaid}
 graph LR
     E1[Event 1] --> E2[Event 2]
     E2 --> E3[Event 3]
@@ -105,7 +105,7 @@ def append_event(*, scope, modality, content, context,
 
 ### 2. 抽取管线 (extraction/pipeline.py)
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[原始 Event] --> B[LLM 抽取]
     B --> C{抽取结果}

@@ -6,7 +6,7 @@
 
 Cortex-PY 的每条记录有**4 个时间字段**，支持双时态查询。
 
-```mermaid
+```{mermaid}
 graph LR
     subgraph "记录时间 (Transaction Time)"
         RT1["recorded_from<br/>何时记录"]
@@ -35,7 +35,7 @@ graph LR
 
 ### 查询场景
 
-```mermaid
+```{mermaid}
 flowchart TD
     Q1["问：现在 Alice 在哪工作?"]
     Q1 --> A1["SELECT * FROM facts WHERE valid_to IS NULL AND recorded_to IS NULL"]
@@ -64,7 +64,7 @@ _DEFAULTS = [
 
 ### ISO 8601 Duration
 
-```mermaid
+```{mermaid}
 graph LR
     A["-P7D..P0D"] --> B["-7天 .. 今天"]
     C["-P1M..P0D"] --> D["-1月 .. 今天"]
@@ -145,7 +145,7 @@ result = recall(scope, query, temporal="last week")
 
 ### 时间衰减
 
-```mermaid
+```{mermaid}
 graph LR
     subgraph "时间衰减曲线"
         T1["1天前: weight=0.37"]
@@ -252,7 +252,7 @@ def create_fact(..., valid_from=None, valid_to=None, ...):
 
 不修改原记录，而是插入新版本。
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant O as Old Fact
     participant N as New Fact
@@ -293,7 +293,7 @@ def supersede_fact(conn, old_fact_id, new_valid_to=None):
 
 ### 时间线可视化
 
-```mermaid
+```{mermaid}
 gantt
     title Fact 时间线
     dateFormat YYYY-MM-DD

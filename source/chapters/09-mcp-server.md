@@ -4,7 +4,7 @@
 
 MCP (Model Context Protocol) 是 Anthropic 推出的协议，用于 LLM 与外部工具交互。
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph "MCP Client"
         LLM[LLM]
@@ -35,7 +35,7 @@ graph TB
 
 ### stdio 模式
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant C as MCP Client (Claude Desktop)
     participant S as cortex-mcp (stdio)
@@ -61,7 +61,7 @@ sequenceDiagram
 
 ### streamable-http 模式
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant C1 as Client 1 (Alice)
     participant C2 as Client 2 (Bob)
@@ -166,7 +166,7 @@ def answer(scope: str, question: str, ...):
 
 ### HTTP 模式的 scope
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[请求] --> B{解析 scope}
     B --> C[scope = user:alice]

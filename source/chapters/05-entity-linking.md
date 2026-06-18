@@ -4,7 +4,7 @@
 
 实体链接是**图谱质量的命门**。Cortex-PY 采用三层策略：
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph "A 层: 别名精确匹配"
         A1[查 entity_aliases]
@@ -96,7 +96,7 @@ def vector_recall(conn, scope, name, top_k=5):
 
 ### 阈值判断
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[相似度 score] --> B{score > 0.85?}
     B -->|是| C[高置信: 直接合并]
@@ -196,7 +196,7 @@ def llm_judge_linkage(name, candidate_name, candidate_desc):
 
 ### 创建流程
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[创建新实体] --> B[生成 UUID]
     B --> C[设置基本信息]
@@ -244,7 +244,7 @@ def create_entity(conn, scope, name, entity_type=None, description=None):
 
 ### Embedding 计算时机
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant C as Client
     participant API as API
@@ -302,7 +302,7 @@ CREATE INDEX idx_aliases_alias ON entity_aliases
 
 当发现两个被合并的实体实际上是不同事物时，需要分裂。
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[发现误合并] --> B[创建新实体]
     B --> C[重新分配 facts]

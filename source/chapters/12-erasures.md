@@ -13,7 +13,7 @@
 
 ## 4 阶段流程
 
-```mermaid
+```{mermaid}
 flowchart TD
     subgraph "阶段 1: enumerate"
         A[选择 selector] --> B[收集 event_ids]
@@ -108,7 +108,7 @@ def _select_event_ids(conn, scope, selector):
 
 ### 原理
 
-```mermaid
+```{mermaid}
 graph TB
     E[Event] -->|supports| F1[Fact 1]
     E -->|supports| F2[Fact 2]
@@ -344,7 +344,7 @@ def _cleanup_orphan_blobs(conn, scope):
 
 ## 完整流程图
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant C as Client
     participant API as API

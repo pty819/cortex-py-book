@@ -6,7 +6,7 @@
 
 RRF 是一种**无参数**的排序融合算法，用于合并多个排序列表。
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph "输入"
         L1["列表1: [A, B, C]"]
@@ -121,7 +121,7 @@ def take_top_n(fused_results, n):
 
 ### 为什么需要 Rerank?
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph "RRF 后"
         R1["A: 0.0495"]
@@ -143,7 +143,7 @@ graph TB
 
 ### Prism Rerank
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant C as Client
     participant R as Rerank API
@@ -218,7 +218,7 @@ def rerank_results(conn, query, fact_ids, top_n=25):
 
 ## 完整检索流程
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant C as Client
     participant API as Recall API

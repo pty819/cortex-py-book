@@ -45,7 +45,7 @@ CREATE TABLE jobs (
 
 ### 状态机
 
-```mermaid
+```{mermaid}
 stateDiagram-v2
     [*] --> queued: 创建任务
     queued --> running: Worker 抢锁
@@ -61,7 +61,7 @@ stateDiagram-v2
 
 ### SKIP LOCKED 原理
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant W1 as Worker 1
     participant W2 as Worker 2
@@ -121,7 +121,7 @@ def claim_next_job(conn, worker_id: str) -> Optional[dict]:
 
 ### 流程图
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[Worker 启动] --> B[初始化]
     B --> C[主循环]
@@ -309,7 +309,7 @@ def fail_job(conn, job_id: str, error: str):
 
 ### 问题
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant W as Worker
     participant DB as DB
@@ -322,7 +322,7 @@ sequenceDiagram
 
 ### 解决方案
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[Reaper 定时检查] --> B{locked_at < now() - timeout?}
     B -->|是| C[重置为 queued]
@@ -363,7 +363,7 @@ class WorkerCfg(BaseModel):
 
 ## 多 Worker 协作
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph "Worker Pool"
         W1[Worker 1]

@@ -4,7 +4,7 @@
 
 抽取管线是系统的**核心处理层**，负责从原始 Event 中提取结构化知识。
 
-```mermaid
+```{mermaid}
 flowchart LR
     E[Event] --> EXT[抽取]
     EXT --> ENT[实体]
@@ -18,7 +18,7 @@ flowchart LR
 
 ### 整体架构
 
-```mermaid
+```{mermaid}
 flowchart TB
     subgraph 输入
         A[原始 Event]
@@ -239,7 +239,7 @@ def extract_event(event_id: str) -> dict:
 
 ### 三层策略
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[新实体名] --> B{查 entity_aliases}
     B -->|命中| C[直接返回 entity_id]
@@ -355,7 +355,7 @@ def link_entity(conn, scope, name, entity_type=None, description=None):
 
 ### 何时计算
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[实体创建/更新] --> B{需要 embedding?}
     B -->|是| C[异步计算]
@@ -399,7 +399,7 @@ def compute_entity_embedding(entity_id, name, description):
 
 抽取完成后，触发多个下游任务：
 
-```mermaid
+```{mermaid}
 flowchart TD
     E[Extracted] --> S[Segment]
     E --> Y[Synthesize]

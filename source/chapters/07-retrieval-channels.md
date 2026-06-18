@@ -11,7 +11,7 @@ CREATE INDEX idx_entities_embedding ON entities
     WITH (m = 16, ef_construction = 64);
 ```
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph "HNSW 索引结构"
         L0["Layer 0 (全部节点)"]
@@ -77,7 +77,7 @@ content_tsv tsvector GENERATED ALWAYS AS (
 ) STORED
 ```
 
-```mermaid
+```{mermaid}
 flowchart LR
     A["predicate: 'works_at'"] --> C[tsvector]
     B["object: 'Acme Corp'"] --> C
@@ -118,7 +118,7 @@ def _chan_bm25(conn, scope, view, query, top_k):
 
 ### 递归 CTE 解析
 
-```mermaid
+```{mermaid}
 flowchart TD
     subgraph "递归 CTE 结构"
         A["锚点成员 (Anchor)"] --> B["递归成员 (Recursive)"]
@@ -210,7 +210,7 @@ def _chan_graph(conn, scope, view, q_emb, top_k, max_hops=2):
 
 ### 防止循环
 
-```mermaid
+```{mermaid}
 graph LR
     A[Alice] -->|works_at| B[Acme]
     B -->|employs| A
@@ -238,7 +238,7 @@ CREATE INDEX idx_entities_name_trgm ON entities
     USING gin (canonical_name gin_trgm_ops);
 ```
 
-```mermaid
+```{mermaid}
 flowchart LR
     A["查询: 'Alice'"] --> B[pg_trgm]
     B --> C{相似度}
@@ -275,7 +275,7 @@ def _chan_entity_name(conn, scope, view, query, top_k):
 
 ### 别名匹配
 
-```mermaid
+```{mermaid}
 flowchart TD
     A["查询: 'Google'"] --> B[entity_aliases]
     B --> C["alias: 'Google'"]
@@ -318,7 +318,7 @@ def _chan_synonym(conn, scope, view, query, top_k):
 
 ### 时间衰减函数
 
-```mermaid
+```{mermaid}
 graph LR
     subgraph "时间衰减曲线"
         T1["1天前: weight=0.37"]

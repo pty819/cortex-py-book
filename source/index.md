@@ -40,7 +40,7 @@ chapters/14-api-reference
 
 ### 技术栈
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph 应用层
         A[FastAPI] --> B[Vue 3 前端]

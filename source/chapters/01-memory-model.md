@@ -4,7 +4,7 @@
 
 Cortex-PY 的核心是**五层记忆模型**，灵感来源于人类记忆系统：
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph 感觉记忆
         E[Events<br/>WAL, 不可变]
@@ -67,7 +67,7 @@ CREATE TABLE events (
 
 ### 幂等写入
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[写入请求] --> B{检查 idempotency_key}
     B -->|不存在| C[写入 Events]
@@ -140,7 +140,7 @@ Episodes 是有界事件序列，按时间间隔自动分段。
 
 ### 分段逻辑
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[Events 序列] --> B{时间间隔 > 30min?}
     B -->|否| C[加入当前 Episode]
@@ -185,7 +185,7 @@ Facts 是**双时态三元组**，同时承担：
 
 ### 双时态设计
 
-```mermaid
+```{mermaid}
 graph LR
     subgraph 记录时间
         RT[recorded_from<br/>何时记录]
@@ -268,7 +268,7 @@ Beliefs 是**概率断言**，从多个 facts 推理得出，带置信度和证�
 
 ### 结构
 
-```mermaid
+```{mermaid}
 graph TB
     F1[Fact 1: Alice works at Acme] --> B[Belief: Alice 是 Acme 员工]
     F2[Fact 2: Acme 是公司] --> B
@@ -316,7 +316,7 @@ Understanding 是**概念合成**，从多个 beliefs 聚合得出高级概念�
 
 ### 合成流程
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[Beliefs 关于同一实体] --> B{LLM 合成}
     B --> C[生成 concept]
@@ -360,7 +360,7 @@ def synthesize_scope(scope, topics=None):
 
 ## 层间关系
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph 写入
         E[Event] -->|1. append| WAL[WAL]

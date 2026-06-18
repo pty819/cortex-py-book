@@ -2,7 +2,7 @@
 
 ## 系统整体架构
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph "用户层"
         U1[Web 前端]
@@ -66,7 +66,7 @@ graph TB
 
 ## 写入路径
 
-```mermaid
+```{mermaid}
 flowchart LR
     subgraph "写入路径"
         A[用户输入] --> B[Experience API]
@@ -81,7 +81,7 @@ flowchart LR
 
 ## 读取路径
 
-```mermaid
+```{mermaid}
 flowchart LR
     subgraph "读取路径"
         A[用户查询] --> B[Recall API]
@@ -95,7 +95,7 @@ flowchart LR
 
 ## 6 通道检索架构
 
-```mermaid
+```{mermaid}
 graph TB
     Q[查询] --> V[向量通道]
     Q --> B[BM25 通道]
@@ -117,7 +117,7 @@ graph TB
 
 ## 五层记忆模型
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph "五层记忆"
         E[Events<br/>WAL]
@@ -136,7 +136,7 @@ graph TB
 
 ## 实体链接 B over C
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[新实体] --> B{向量召回}
     B -->|score > 0.85| C[直接合并]
@@ -152,7 +152,7 @@ flowchart TD
 
 ## Worker 系统
 
-```mermaid
+```{mermaid}
 stateDiagram-v2
     [*] --> queued
     queued --> running: claim
@@ -166,7 +166,7 @@ stateDiagram-v2
 
 ## 双时态模型
 
-```mermaid
+```{mermaid}
 graph LR
     subgraph "记录时间"
         RT1[recorded_from]
@@ -186,7 +186,7 @@ graph LR
 
 ## 数据流
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant C as Client
     participant API as API
@@ -221,7 +221,7 @@ sequenceDiagram
 
 ## 组件交互
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph "核心组件"
         CORE[core.py<br/>WAL + Queue]
@@ -252,7 +252,7 @@ graph TB
 
 ## 层级 Scope
 
-```mermaid
+```{mermaid}
 graph TB
     R["/ (root)"] --> O1["org:acme"]
     R --> O2["org:other"]
@@ -268,7 +268,7 @@ graph TB
 
 ## MCP 双传输
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph "stdio 模式"
         S1[Claude Desktop] -->|stdin/stdout| M1[cortex-mcp]
@@ -286,7 +286,7 @@ graph TB
 
 ## 性能优化点
 
-```mermaid
+```{mermaid}
 mindmap
     root((性能优化))
         索引

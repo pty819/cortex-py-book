@@ -2,7 +2,7 @@
 
 ## 写入路径概述
 
-```mermaid
+```{mermaid}
 flowchart LR
     A[用户请求] --> B[Experience API]
     B --> C[WAL Append]
@@ -24,7 +24,7 @@ flowchart LR
 
 ### 幂等机制
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant C as Client
     participant API as Experience API
@@ -167,7 +167,7 @@ CREATE TABLE jobs (
 
 ### 任务抢占
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant W1 as Worker 1
     participant W2 as Worker 2
@@ -219,7 +219,7 @@ def claim_next_job(conn, worker_id: str) -> Optional[dict]:
 
 实时通知前端任务进度。
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant F as Frontend
     participant API as API Server
@@ -284,7 +284,7 @@ def emit_lifecycle(conn, kind: str, scope: str,
 
 ### 整体流程
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[Worker 启动] --> B[主循环]
     B --> C{claim_next_job}
@@ -396,7 +396,7 @@ Worker 可能崩溃，导致任务卡在 `running` 状态。
 
 ### 解决方案
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[Worker 拿到任务] --> B[执行中...]
     B --> C{正常完成?}

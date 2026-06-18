@@ -4,7 +4,7 @@
 
 检索系统的核心目标是**从记忆中找到最相关的信息**，支持 6 通道混合检索。
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph 输入
         Q[用户查询]
@@ -116,7 +116,7 @@ def recall(scope, query, view="local", top_k=40, ...):
 
 ### 三种视图
 
-```mermaid
+```{mermaid}
 graph TB
     subgraph "local 视图"
         L1["scope = /org/dept/user"]
@@ -166,7 +166,7 @@ def _scope_filter(scope, view):
 
 ### 原理
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[查询文本] --> B[计算 embedding]
     B --> C[pgvector 近邻]
@@ -214,7 +214,7 @@ def _chan_vector(conn, scope, view, q_emb, top_k):
 
 ### 原理
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[查询文本] --> B[tsvector 匹配]
     B --> C[facts 表]
@@ -267,7 +267,7 @@ def _chan_bm25(conn, scope, view, query, top_k):
 
 ### 原理
 
-```mermaid
+```{mermaid}
 flowchart TD
     A[查询] --> B[找到种子实体]
     B --> C[递归 CTE BFS]
@@ -431,7 +431,7 @@ def _chan_temporal(conn, scope, view, top_k):
 
 ## 完整流程图
 
-```mermaid
+```{mermaid}
 sequenceDiagram
     participant C as Client
     participant API as Recall API
