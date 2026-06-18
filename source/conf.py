@@ -38,13 +38,10 @@ myst_enable_extensions = [
 ]
 
 # -- Mermaid configuration ---------------------------------------------------
-# 使用 mermaid 10.9.3 (稳定版)
+# sphinxcontrib-mermaid 2.0.2 自带 mermaid CDN 加载和渲染生命周期管理。
+# 必须 startOnLoad:false —— 扩展通过 load 事件自行调用 mermaid.run()，
+# 如果设 true 会导致 mermaid 被处理两次（自动渲染 + runMermaid），第二次解析 SVG 报错。
 mermaid_version = '10.9.3'
-# 配置 mermaid 初始化参数
-mermaid_init_config = {
-    "startOnLoad": True,
-    "theme": "default",
-}
 
 # -- Other configuration -----------------------------------------------------
 master_doc = 'index'
