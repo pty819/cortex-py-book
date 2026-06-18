@@ -38,9 +38,33 @@ myst_enable_extensions = [
 ]
 
 # -- Mermaid configuration ---------------------------------------------------
-# sphinxcontrib-mermaid 0.9.x: client-side rendering via <script> tag (no ESM).
-# Avoids the double-encoding bug in 2.0.x. Mermaid JS loaded from CDN.
+# Use CDN mermaid for client-side rendering.
 mermaid_version = '11'
+
+# -- Fix sphinxcontrib-mermaid 2.0.x double-encoding bug ---------------------
+# The extension stores mermaid source via innerHTML into data-original-code.
+# On re-render it reads it back — but HTML entities get double-encoded.
+# Fix: monkey-patch setAttribute to decode entities for data-original-code.
+_MERMAID_FIX_JS = """
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+"""
+
+def _inject_fix(app):
+    app.add_js_file(None, body=_MERMAID_FIX_JS, priority=0)
+
+def setup(app):
+    app.connect('builder-inited', _inject_fix)
+    return {'version': '0.1.0', 'parallel_read_safe': True}
 
 # -- Other configuration -----------------------------------------------------
 master_doc = 'index'
