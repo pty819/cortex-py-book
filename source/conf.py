@@ -16,9 +16,6 @@ exclude_patterns = []
 # -- Options for HTML output -------------------------------------------------
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
-html_js_files = [
-    'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js',
-]
 
 # -- MyST configuration ------------------------------------------------------
 source_suffix = {
@@ -41,8 +38,13 @@ myst_enable_extensions = [
 ]
 
 # -- Mermaid configuration ---------------------------------------------------
-mermaid_version = '11'
-mermaid_init_js = "mermaid.initialize({startOnLoad:true, theme:'default'});"
+# 使用 mermaid 10.9.3 (稳定版)
+mermaid_version = '10.9.3'
+# 配置 mermaid 初始化参数
+mermaid_init_config = {
+    "startOnLoad": True,
+    "theme": "default",
+}
 
 # -- Other configuration -----------------------------------------------------
 master_doc = 'index'
