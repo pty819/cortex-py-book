@@ -38,10 +38,12 @@ myst_enable_extensions = [
 ]
 
 # -- Mermaid configuration ---------------------------------------------------
-# sphinxcontrib-mermaid 2.0.2 自带 mermaid CDN 加载和渲染生命周期管理。
-# 必须 startOnLoad:false —— 扩展通过 load 事件自行调用 mermaid.run()，
-# 如果设 true 会导致 mermaid 被处理两次（自动渲染 + runMermaid），第二次解析 SVG 报错。
-mermaid_version = '10.9.3'
+# 构建时渲染：用 mmdc (mermaid-cli) 在构建阶段把 mermaid 代码渲染成 SVG 图片，
+# 嵌入 HTML。不依赖浏览器端 JS，彻底避免客户端渲染的双重转义和 startOnLoad 问题。
+mermaid_cmd = '/tmp/node_modules/.bin/mmdc'
+mermaid_cmd_shell = False
+mermaid_output_format = 'svg'
+# 去掉 mermaid_version —— 构建时渲染不需要加载客户端 JS
 
 # -- Other configuration -----------------------------------------------------
 master_doc = 'index'

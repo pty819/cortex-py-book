@@ -33,7 +33,19 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install dependencies
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install mermaid-cli
+        run: npm install @mermaid-js/mermaid-cli
+
+      - name: Update mermaid_cmd path in conf.py
+        run: |
+          sed -i "s|mermaid_cmd = '.*'|mermaid_cmd = '$(pwd)/node_modules/.bin/mmdc'|" source/conf.py
+
+      - name: Install Python dependencies
         run: uv sync
 
       - name: Build Sphinx HTML
