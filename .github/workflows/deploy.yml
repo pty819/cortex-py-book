@@ -33,49 +33,11 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install mermaid-cli
-        run: npm install @mermaid-js/mermaid-cli
-
-      - name: Install CJK fonts
-        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
-
-      - name: Create mmdc wrapper with --no-sandbox
-        run: |
-          cat > mmdc-wrapper.sh << 'EOF'
-          #!/bin/bash
-          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-          exec "$SCRIPT_DIR/node_modules/.bin/mmdc" \
-            --puppeteerConfigFile "$SCRIPT_DIR/puppeteer-config.json" \
-            "$@"
-          EOF
-          chmod +x mmdc-wrapper.sh
-          cat > puppeteer-config.json << 'EOF'
-          {"args": ["--no-sandbox", "--disable-setuid-sandbox", "--font-render-hinting=none"]}
-          EOF
-          # Update conf.py paths for CI environment
-          sed -i "s|mermaid_cmd = '.*'|mermaid_cmd = '$(pwd)/mmdc-wrapper.sh'|" source/conf.py
-          sed -i "s|mermaid_params = \['--configFile', '.*'\]|mermaid_params = ['--configFile', '$(pwd)/mermaid-config.json']|" source/conf.py
-
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: uv sync
 
       - name: Build Sphinx HTML
         run: uv run sphinx-build -b html source build/html
-
-      - name: Fix mermaid SVG text overflow for CJK characters
-        run: |
-          # Add overflow:visible to all foreignObject elements in mermaid SVGs
-          # This prevents CJK text from being clipped when mermaid miscalculates width
-          for svg in build/html/_images/mermaid-*.svg; do
-            [ -f "$svg" ] || continue
-            sed -i 's/<foreignObject /<foreignObject overflow="visible" /g' "$svg"
-            sed -i 's/<foreignObject>/<foreignObject overflow="visible">/g' "$svg"
-          done
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
