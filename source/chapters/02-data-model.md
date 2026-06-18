@@ -111,19 +111,19 @@ CREATE INDEX idx_aliases_alias ON entity_aliases (alias gin_trgm_ops);
 
 ```{mermaid}
 graph LR
-    subgraph 场景1：当时以为的
+    subgraph "场景1：当时以为的"
         T1[2024-01: Alice 在 Acme] 
         T2[2024-06: Alice 离开 Acme]
     end
     
-    subgraph 场景2：现在查询
+    subgraph "场景2：现在查询"
         Q1["问：2024-03 时，Alice 在哪？"]
-        A1["答：Acme (当时记录)"]
+        A1["答：Acme 当时记录"]
     end
     
-    subgraph 场景3：现在查询
+    subgraph "场景3：现在查询"
         Q2["问：现在 Alice 在哪？"]
-        A2["答：不在 Acme (已 invalid)"]
+        A2["答：不在 Acme 已 invalid"]
     end
 ```
 

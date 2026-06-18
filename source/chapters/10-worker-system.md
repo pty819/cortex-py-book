@@ -324,7 +324,7 @@ sequenceDiagram
 
 ```{mermaid}
 flowchart TD
-    A[Reaper 定时检查] --> B{locked_at < now() - timeout?}
+    A[Reaper 定时检查] --> B{"locked_at < now - timeout"}
     B -->|是| C[重置为 queued]
     B -->|否| D[跳过]
     C --> E[其他 Worker 可抢]
