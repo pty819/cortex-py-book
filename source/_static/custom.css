@@ -1,0 +1,19 @@
+/* Override mermaid object sizing - let SVGs scale naturally */
+object[type="image/svg+xml"] {
+    width: 100% !important;
+    height: auto !important;
+    max-width: 800px !important;
+    display: block !important;
+    margin: 1em auto !important;
+}
+
+/* Remove the 500px height constraint from mermaid containers */
+.mermaid-container > pre,
+pre.mermaid {
+    height: auto !important;
+}
+
+pre.mermaid > svg {
+    height: auto !important;
+    max-height: none !important;
+}

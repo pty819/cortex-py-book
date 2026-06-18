@@ -1,5 +1,7 @@
 {
   "theme": "default",
+  "maxTextSize": 90000,
+  "securityLevel": "loose",
   "themeVariables": {
     "fontSize": "14px",
     "fontFamily": "\"Noto Sans SC\", \"WenQuanYi Micro Hei\", \"Microsoft YaHei\", sans-serif",
