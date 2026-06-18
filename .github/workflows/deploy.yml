@@ -41,9 +41,21 @@ jobs:
       - name: Install mermaid-cli
         run: npm install @mermaid-js/mermaid-cli
 
-      - name: Update mermaid_cmd path in conf.py
+      - name: Create mmdc wrapper with --no-sandbox
         run: |
-          sed -i "s|mermaid_cmd = '.*'|mermaid_cmd = '$(pwd)/node_modules/.bin/mmdc'|" source/conf.py
+          cat > mmdc-wrapper.sh << 'EOF'
+          #!/bin/bash
+          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+          exec "$SCRIPT_DIR/node_modules/.bin/mmdc" \
+            --puppeteerConfigFile "$SCRIPT_DIR/puppeteer-config.json" \
+            "$@"
+          EOF
+          chmod +x mmdc-wrapper.sh
+          cat > puppeteer-config.json << 'EOF'
+          {"args": ["--no-sandbox", "--disable-setuid-sandbox"]}
+          EOF
+          # Update conf.py to use the wrapper
+          sed -i "s|mermaid_cmd = '.*'|mermaid_cmd = '$(pwd)/mmdc-wrapper.sh'|" source/conf.py
 
       - name: Install Python dependencies
         run: uv sync
