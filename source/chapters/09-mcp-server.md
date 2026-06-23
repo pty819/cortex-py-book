@@ -2,77 +2,141 @@
 
 ## MCP 概述
 
-MCP (Model Context Protocol) 是 Anthropic 推出的协议，用于 LLM 与外部工具交互。
+MCP (Model Context Protocol) 是 Anthropic 推出的协议，用于 LLM 与外部工具交互。cortex 通过 MCP 暴露全部能力，支持两种传输模式。
 
 ```{mermaid}
 graph TB
     subgraph "MCP Client"
-        LLM[LLM]
+        LLM[Agent / LLM]
     end
     
-    subgraph "MCP Server"
-        T1[experience]
-        T2[recall]
+    subgraph "cortex MCP Server (23 工具)"
+        T1[memory_store]
+        T2[memory_search]
         T3[answer]
-        T4[forget]
-        T5[...]
+        T4[memory_list/get]
+        T5[entity_list/entity_edges]
+        T6[facts_timeline]
+        T7[list_beliefs]
+        T8[bulk_ingest]
+        T9[memory_forget]
+        T10[erasure_preview/execute]
+        T11[episodes_build/list]
+        T12[case_create/update/get/list/search]
+        T13[vocab_create/list]
+        T14[temporal_register/list]
+        T15[health_check]
+        T16[admin_metrics]
+        T17[export_scope]
     end
     
     subgraph "Transport"
-        STDIO[stdio]
-        HTTP[streamable-http]
+        STDIO[stdio - 本地单 agent]
+        HTTP[streamable-http - 多人共享]
     end
     
     LLM --> STDIO
     LLM --> HTTP
     STDIO --> T1
-    STDIO --> T2
-    HTTP --> T3
-    HTTP --> T4
+    HTTP --> T2
 ```
+
+## 23 工具一览
+
+| 类别 | 工具 | 说明 |
+|------|------|------|
+| **核心** | `memory_store` | 存文本 + 同步抽取三元组 |
+| | `memory_search` | 6 通道混合检索 |
+| | `answer` | 检索 + LLM 回答 |
+| | `get_context` | holistic 检索（含祖先 scope） |
+| **查询** | `memory_list` | 列出 scope 的 events |
+| | `memory_get` | 获取单个 event 详情 |
+| | `entity_list` | 列出实体（图节点） |
+| | `entity_edges` | 实体的所有 live facts |
+| | `facts_timeline` | 双时态超替链 |
+| | `list_beliefs` | 概率断言列表 |
+| **写入** | `bulk_ingest` | 批量存文本 |
+| | `memory_forget` | 软遗忘（close recorded_to） |
+| **Erasure** | `erasure_preview` | GDPR 预演 |
+| | `erasure_execute` | GDPR 执行 |
+| **Case** | `case_create` | 创建诊断 case |
+| | `case_update` | 更新 case 阶段/状态 |
+| | `case_get` | 获取 case 详情 |
+| | `case_list` | 列出 cases |
+| | `case_search` | 搜索 cases |
+| **Vocab** | `vocab_create` | 创建词表 |
+| | `vocab_list` | 列出词表 |
+| **Temporal** | `temporal_register` | 注册时间短语 |
+| | `temporal_list` | 列出时间短语 |
+| **Admin** | `health_check` | 健康检查 |
+| | `admin_metrics` | 存储指标 |
+| | `export_scope` | 导出 JSONL |
 
 ## 双传输模式
 
 ### stdio 模式
 
+本地单 agent，每 agent 一个子进程：
+
+```bash
+uv run python -m cortex.cli mcp
+```
+
 ```{mermaid}
 sequenceDiagram
-    participant C as MCP Client (Claude Desktop)
+    participant C as MCP Client
     participant S as cortex-mcp (stdio)
     participant DB as PostgreSQL
     
     C->>S: 启动进程 (stdin/stdout)
     C->>S: JSON-RPC: tools/list
-    S-->>C: [experience, recall, answer, ...]
+    S-->>C: [memory_store, memory_search, ...]
     
     C->>S: JSON-RPC: tools/call
-    Note over C,S: name: "recall"
-    Note over C,S: arguments: {scope: "...", query: "..."}
+    Note over C,S: name: "memory_search"
+    Note over C,S: args: {query: "..."}
     
-    S->>DB: 查询
+    S->>DB: 6通道检索
     DB-->>S: 结果
-    S-->>C: JSON-RPC response
+    S-->>C: StratifiedPack
 ```
 
-**特点**：
-- 单用户
-- 本地运行
-- 简单直接
+**.mcp.json 注册**（给 Claude Code 自动发现）：
+
+```json
+{
+  "mcpServers": {
+    "cortex": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "python", "-m", "cortex.cli", "mcp"],
+      "env": {
+        "CORTEX_SCOPE": "org:acme/dept:sales/user:alice"
+      }
+    }
+  }
+}
+```
 
 ### streamable-http 模式
 
+多人共享，按 `X-Cortex-Scope` 请求头隔离：
+
+```bash
+uv run python -m cortex.cli mcp-http --port 8001
+```
+
 ```{mermaid}
 sequenceDiagram
-    participant C1 as Client 1 (Alice)
-    participant C2 as Client 2 (Bob)
+    participant C1 as Agent A (Alice)
+    participant C2 as Agent B (Bob)
     participant S as cortex-mcp (HTTP)
     participant DB as PostgreSQL
     
-    C1->>S: POST /mcp (scope=alice)
-    C2->>S: POST /mcp (scope=bob)
+    C1->>S: POST /mcp (X-Cortex-Scope: equip:XXX-v1)
+    C2->>S: POST /mcp (X-Cortex-Scope: equip:YYY-v2)
     
-    S->>DB: 查询 scope=alice
-    S->>DB: 查询 scope=bob
+    S->>DB: 查询 scope=equip:XXX-v1
+    S->>DB: 查询 scope=equip:YYY-v2
     
     DB-->>S: Alice 的数据
     DB-->>S: Bob 的数据
@@ -81,286 +145,106 @@ sequenceDiagram
     S-->>C2: Bob 的结果
 ```
 
-**特点**：
-- 多用户共享
-- 按 scope 隔离
-- 支持远程访问
+## Scope 解析规则
 
-## 23 个 MCP 工具
-
-### 工具清单
-
-| 工具 | 类型 | 说明 |
-|------|------|------|
-| `experience` | 写入 | 记录经验 |
-| `recall` | 读取 | 检索记忆 |
-| `answer` | 读取 | 回答问题 |
-| `forget` | 删除 | 遗忘记忆 |
-| `erasures` | 删除 | GDPR 删除 |
-| `list_entities` | 读取 | 列出实体 |
-| `list_facts` | 读取 | 列出事实 |
-| `list_beliefs` | 读取 | 列出信念 |
-| `list_episodes` | 读取 | 列出情节 |
-| `get_entity` | 读取 | 获取实体详情 |
-| `get_fact` | 读取 | 获取事实详情 |
-| `get_belief` | 读取 | 获取信念详情 |
-| `search_entities` | 读取 | 搜索实体 |
-| `search_facts` | 读取 | 搜索事实 |
-| `add_alias` | 写入 | 添加别名 |
-| `remove_alias` | 删除 | 移除别名 |
-| `merge_entities` | 写入 | 合并实体 |
-| `register_phrase` | 写入 | 注册时间短语 |
-| `list_phrases` | 读取 | 列出时间短语 |
-| `delete_phrase` | 删除 | 删除时间短语 |
-| `get_stats` | 读取 | 获取统计 |
-| `lifecycle_stream` | 订阅 | 生命周期流 |
-| `health` | 读取 | 健康检查 |
-
-## 实现架构
+`_eff_scope` 函数决定每次调用的 scope：
 
 ```python
-# mcp_server.py
-from fastmcp import FastMCP
+def _eff_scope(ctx, scope_arg):
+    """显式 arg > HTTP 头 X-Cortex-Scope > 环境变量 CORTEX_SCOPE"""
+    if scope_arg:
+        return scope_arg
+    try:
+        req = ctx.request_context.request
+        h = req.headers.get("x-cortex-scope")
+        if h:
+            return h
+    except Exception:
+        pass
+    return DEFAULT_SCOPE  # "org:local/user:default"
+```
 
-mcp = FastMCP("cortex-py", 
-              description="CortexDB 记忆系统")
+## 关键工具详解
 
+### memory_store
+
+核心写入工具，存文本 + 同步抽取（存完立即可搜）：
+
+```python
 @mcp.tool()
-def experience(scope: str, modality: str, content: dict, 
-               idempotency_key: str, ...):
-    """记录一条经验"""
-    from .core import append_event
-    event_id, wal_offset = append_event(
-        scope=scope, modality=modality, 
-        content=content, idempotency_key=idempotency_key, ...
-    )
-    return {"event_id": event_id, "wal_offset": wal_offset}
+def memory_store(text, scope=None, modality="conversation", ctx=None):
+    sc = _eff_scope(ctx, scope)
+    eid, off = append_event(scope=sc, modality=modality,
+        content={"kind": "message", "role": "user", "text": text},
+        context={}, caller="mcp",
+        idempotency_key=f"mcp-{uuid.uuid4().hex[:16]}")
+    res = extract_event(eid)  # 同步抽取！
+    return {"event_id": eid, "wal_offset": off,
+            "facts_extracted": res["facts_extracted"],
+            "entities": res["entities"]}
+```
 
-@mcp.tool()
-def recall(scope: str, query: str, view: str = "local", 
-           top_k: int = 40, ...):
-    """检索记忆"""
-    from .retrieval.pipeline import recall as do_recall
-    result = do_recall(scope, query, view, top_k, ...)
-    return result
+**关键设计**：MCP 内同步抽取（不通过 worker 队列），保证存完立即可搜。
 
+### memory_search
+
+核心读取工具，6 通道混合检索：
+
+```python
 @mcp.tool()
-def answer(scope: str, question: str, ...):
-    """回答问题"""
-    from .retrieval.pipeline import recall
-    from .services import llm_chat
+def memory_search(query, scope=None, view="local", top_k=20, ctx=None):
+    pack = recall(scope=_eff_scope(ctx, scope), query=query,
+                  view=view, top_k=top_k)
+    return {"pack_id": pack["pack_id"], "scope": pack["scope"],
+            "facts": pack["layers"]["facts"],
+            "beliefs": pack["layers"]["beliefs"],
+            "context_block": pack["context_block"]}
+```
+
+### answer
+
+检索 + LLM 回答（带 `[n]` 引用标记）：
+
+```python
+@mcp.tool()
+def answer(query, scope=None, ctx=None):
+    pack = recall(scope=sc, query=query)
+    if llm_configured("answer"):
+        raw = services.llm_chat("answer", prompt, json.dumps(pack))
+        ans = services.strip_think(raw)
+    else:
+        ans = services.mock_answer(query, json.dumps(pack))
+    return {"answer": ans, "model_used": model, "citations": [...]}
+```
+
+## Auth 中间件
+
+streamable-http 模式下可选静态 key 鉴权：
+
+```python
+class _AuthASGI:
+    def __init__(self, app, key):
+        self.app = app
+        self.key = (key or "").strip()
     
-    # 1. 检索相关记忆
-    context = recall(scope, question, ...)
-    
-    # 2. LLM 回答
-    answer = llm_chat("answer", 
-        "基于以下上下文回答问题...",
-        f"上下文: {context}\n问题: {question}"
-    )
-    
-    return {"answer": answer, "sources": context}
+    async def __call__(self, scope, receive, send):
+        if self.key and scope["type"] == "http":
+            # 检查 Authorization: Bearer <key>
+            ...
+            if auth != f"Bearer {self.key}":
+                return 401
+        await self.app(scope, receive, send)
 ```
 
-## scope 隔离
-
-### HTTP 模式的 scope
-
-```{mermaid}
-flowchart TD
-    A[请求] --> B{解析 scope}
-    B --> C[scope = user:alice]
-    C --> D[查询 WHERE scope = 'user:alice']
-    D --> E[只返回 Alice 的数据]
-```
-
-### 实现
-
-```python
-# HTTP 传输时，从请求中提取 scope
-@mcp.tool()
-def recall(scope: str, query: str, ...):
-    """scope 从请求参数传入"""
-    # scope 由调用方提供
-    # Server 不做鉴权，只做隔离
-    return do_recall(scope, query, ...)
-```
-
-## FastMCP 配置
-
-### stdio 模式启动
-
-```python
-if __name__ == "__main__":
-    mcp.run(transport="stdio")
-```
-
-### HTTP 模式启动
-
-```python
-if __name__ == "__main__":
-    mcp.run(
-        transport="streamable-http",
-        host="0.0.0.0",
-        port=8000
-    )
-```
-
-## CLI 集成
-
-### 启动命令
+## 启动命令速查
 
 ```bash
-# stdio 模式
-uv run python -m cortex.mcp_server
+# stdio（本地 agent）
+uv run python -m cortex.cli mcp
 
-# HTTP 模式
-uv run python -m cortex.mcp_server --transport http --port 8000
-```
+# streamable-http（多人共享）
+uv run python -m cortex.cli mcp-http --port 8001
+# → http://host:8001/mcp
 
-### Claude Desktop 配置
-
-```json
-{
-  "mcpServers": {
-    "cortex": {
-      "command": "uv",
-      "args": ["run", "python", "-m", "cortex.mcp_server"],
-      "cwd": "/path/to/cortex-py"
-    }
-  }
-}
-```
-
-## 工具实现示例
-
-### experience 工具
-
-```python
-@mcp.tool()
-def experience(
-    scope: str,
-    modality: str = "conversation",
-    content: dict = None,
-    context: dict = None,
-    observed_actor: str = None,
-    subject: str = None,
-    directives: dict = None,
-    idempotency_key: str = None
-) -> dict:
-    """
-    记录一条经验到记忆系统。
-    
-    Args:
-        scope: 记忆作用域，如 "org:acme/user:alice"
-        modality: 模态类型 (conversation/document/tool_result/...)
-        content: 内容对象 {kind, role, text, data, blob_id}
-        context: 上下文 {observed_at, labels, intent, preceded_by}
-        observed_actor: 观察者 (默认=caller)
-        subject: 主题 (默认=observed_actor)
-        directives: 指令 {extract, consolidate_into, ...}
-        idempotency_key: 幂等键 (必须唯一)
-    
-    Returns:
-        {event_id, wal_offset, status}
-    """
-    from .core import append_event
-    
-    # 参数验证
-    if not idempotency_key:
-        idempotency_key = str(uuid.uuid4())
-    
-    if content is None:
-        content = {"kind": "message", "text": ""}
-    
-    # 调用核心写入
-    event_id, wal_offset = append_event(
-        scope=scope,
-        modality=modality,
-        content=content,
-        context=context or {},
-        caller="mcp",
-        observed_actor=observed_actor,
-        subject=subject,
-        directives=directives,
-        idempotency_key=idempotency_key
-    )
-    
-    return {
-        "event_id": event_id,
-        "wal_offset": wal_offset,
-        "status": "accepted"
-    }
-```
-
-### recall 工具
-
-```python
-@mcp.tool()
-def recall(
-    scope: str,
-    query: str = None,
-    view: str = "local",
-    include: list = None,
-    top_k: int = 40,
-    as_of: str = None,
-    include_superseded: bool = False,
-    temporal: str = None,
-    budgets: dict = None,
-    citation_mode: str = "inline_with_markers"
-) -> dict:
-    """
-    从记忆中检索相关信息。
-    
-    Args:
-        scope: 记忆作用域
-        query: 查询文本
-        view: 视图模式 (local/holistic/descend)
-        include: 包含的层 [events, facts, beliefs, understanding]
-        top_k: 返回数量
-        as_of: 时间点 (ISO 8601)
-        include_superseded: 是否包含被取代的
-        temporal: 时间短语 (如 "last week")
-        budgets: token 预算 {max_tokens, per_layer_limits}
-        citation_mode: 引用模式
-    
-    Returns:
-        {pack, stats}
-    """
-    from .retrieval.pipeline import recall as do_recall
-    
-    result = do_recall(
-        scope=scope,
-        query=query,
-        view=view,
-        include=include,
-        top_k=top_k,
-        as_of=as_of,
-        include_superseded=include_superseded,
-        temporal=temporal,
-        budgets=budgets,
-        citation_mode=citation_mode
-    )
-    
-    return result
-```
-
-## 错误处理
-
-```python
-@mcp.tool()
-def experience(...):
-    try:
-        # ... 正常逻辑
-        return {"event_id": event_id, ...}
-    except IdempotencyConflict as e:
-        return {
-            "error": "idempotency_conflict",
-            "message": str(e)
-        }
-    except Exception as e:
-        return {
-            "error": "internal_error",
-            "message": str(e)
-        }
+# 带 key 鉴权（config.api.key 非空时自动启用）
 ```

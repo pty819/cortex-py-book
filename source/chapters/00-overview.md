@@ -124,6 +124,7 @@ flowchart TD
     F --> H[触发下游]
     H --> I[Belief 聚合]
     H --> J[Episode 分段]
+    H --> K[Understanding 合成]
 ```
 
 ### 3. 检索系统 (retrieval/pipeline.py)
@@ -136,8 +137,22 @@ flowchart TD
 | BM25 | tsvector | facts/events 全文检索 |
 | 图遍历 | 递归 CTE | 种子实体 BFS 2-3 跳 |
 | Entity Name | pg_trgm | 模糊实体名匹配 |
-| Synonym | entity_aliases | 别名匹配 |
-| Temporal | 时间衰减 | 按 observed_at 加权 |
+| Synonym | synonyms 表 | 同义词扩展 |
+| Temporal-decay | access_count + 衰减 | 热数据优先 |
+
+### 4. 新增模块
+
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| **Ontology** | `ontology.py` | 谓词本体（结构/因果/诊断/状态）、图准入规则 |
+| **Prompt 体系** | `prompts.py` | 半导体级诊断 prompts，10+ 实体类型，40+ 谓词 |
+| **Understanding** | `understanding.py` | 概念合成层，related 图遍历 |
+| **Maintenance** | `maintenance.py` | methylation（软剪枝）+ consolidation（去重） |
+| **Erasures** | `erasures.py` | GDPR 4 阶段引用计数真删 |
+| **Ingest** | `ingest.py` | bulk 写入 + 5 导入器 |
+| **Episodes/Case** | `episodes.py` | 诊断 Case 全生命周期管理 |
+| **Temporal** | `temporal.py` | NL 时间短语解析 |
+| **Schemas** | `schemas.py` | Pydantic API 契约 |
 
 ## 代码结构
 
@@ -145,12 +160,21 @@ flowchart TD
 src/cortex/
 ├── config.py          # YAML 配置 + 维度强校验
 ├── db.py              # engine / session / schema 初始化
-├── core.py            # WAL append(幂等) + 队列 + lifecycle
-├── services.py        # embedding / rerank / LLM 客户端
+├── schema.sql         # 全表 DDL（单一真相源）
+├── core.py            # WAL append(幂等) + 队列 + lifecycle + ?wait=
+├── services.py        # embedding / rerank / LLM 客户端 + think 剥离
+├── ontology.py        # 谓词本体（结构/因果/诊断/状态）
+├── prompts.py         # 半导体级诊断 prompts（10+ 实体, 40+ 谓词）
 ├── extraction/        # 抽取管线 + 实体链接 B over C
 ├── retrieval/         # 6 通道 + RRF + rerank + StratifiedPack
 ├── worker/            # Postgres-as-queue worker 循环
 ├── api/               # FastAPI 全端点
+├── episodes.py        # Episodes + 诊断 Case 管理
+├── understanding.py   # 概念合成层
+├── ingest.py          # 批量 + 5 导入器
+├── erasures.py        # GDPR 引用计数真删（4 阶段）
+├── maintenance.py     # methylation / consolidation
 ├── mcp_server.py      # MCP server（23 工具，双传输）
-└── ...
+├── temporal.py        # NL 时间短语解析
+└── schemas.py         # Pydantic API schemas
 ```

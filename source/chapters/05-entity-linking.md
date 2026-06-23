@@ -1,6 +1,6 @@
 # 第5章 实体链接详解
 
-## B over C 策略
+## B-over-C 三层策略
 
 实体链接是**图谱质量的命门**。Cortex-PY 采用三层策略：
 
@@ -8,363 +8,242 @@
 graph TB
     subgraph "A 层: 别名精确匹配"
         A1[查 entity_aliases]
-        A2[命中 → 直接返回]
+        A2[匹配 identity_context]
+        A3[命中 → 直接返回]
     end
     
     subgraph "B 层: 向量近邻"
         B1[pgvector 近邻查询]
-        B2{相似度判断}
-        B3[高: 直接合并]
-        B4[中: LLM 判定]
-        B5[低: 创建新实体]
+        B2[context_key 过滤]
+        B3{身份敏感兼容性}
+        B4{相似度判断}
+        B5[高: 直接合并]
+        B6[中: LLM 判定]
+        B7[低: 创建新实体]
     end
     
     subgraph "C 层: 创建新实体"
         C1[生成 UUID]
         C2[计算 embedding]
-        C3[存入 entities]
+        C3[存入 entities + aliases]
     end
     
     A1 --> A2
+    A2 -->|context_key 匹配| A3
+    A2 -->|不匹配| B1
     A1 -->|未命中| B1
     B1 --> B2
-    B2 -->|> 0.85| B3
-    B2 -->|0.30-0.85| B4
-    B2 -->|< 0.30| C1
-    B4 -->|是同一实体| B3
-    B4 -->|不是| C1
+    B2 --> B3
+    B3 -->|兼容| B4
+    B3 -->|不兼容| C1
+    B4 -->|> 0.85| B5
+    B4 -->|0.30-0.85| B6
+    B4 -->|< 0.30| C1
+    B6 -->|是同一实体| B5
+    B6 -->|不是| C1
 ```
 
 ## A 层: 别名匹配
 
-### 最快路径
+### 精确匹配 + 身份上下文
 
 ```python
-def match_by_alias(conn, scope, name):
-    """A 层: 别名精确匹配"""
-    row = conn.execute(text("""
-        SELECT e.entity_id, e.canonical_name
-        FROM entity_aliases a
-        JOIN entities e ON e.entity_id = a.entity_id
-        WHERE a.alias = :name 
-          AND e.scope = :scope
-          AND e.merged_into IS NULL
-        LIMIT 1
-    """), {"name": name, "scope": scope}).fetchone()
+def _resolve_or_create(conn, scope, name, etype, description, thresholds, model, context_text="", identity_context=None):
+    """返回 entity_id。A 层别名→C 层向量召回→阈值→新建。"""
+    canonical_ctx = _identity_context_for_type(identity_context, etype)
+    ctx_key = json.dumps(canonical_ctx, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     
-    return row
+    # A 层: 别名精确命中
+    exact = conn.execute(text("""
+        SELECT DISTINCT e.entity_id, e.context_key FROM entities e
+        LEFT JOIN entity_aliases a ON a.entity_id=e.entity_id
+        WHERE e.scope=:s AND e.merged_into IS NULL
+          AND (lower(e.canonical_name)=lower(:n) OR lower(a.alias)=lower(:n))
+          AND ((:t IS NULL AND e.entity_type IS NULL) OR e.entity_type=:t)
+        ORDER BY e.entity_id
+    """), {"s": scope, "n": name, "t": etype}).fetchall()
+    
+    # 身份上下文匹配
+    if canonical_ctx:
+        matches = [r for r in exact if r.context_key == ctx_key]
+        if len(matches) == 1:
+            return str(matches[0].entity_id)
+        # 兼容旧数据:无上下文的单条记录可升级
+        legacy = [r for r in exact if r.context_key == "{}"]
+        if not matches and len(exact) == 1 and len(legacy) == 1:
+            conn.execute(text("""UPDATE entities SET identity_context=CAST(:ctx AS jsonb), 
+                                 context_key=:ck, updated_at=now() WHERE entity_id=:e"""),
+                         {"ctx": json.dumps(canonical_ctx), "ck": ctx_key, "e": legacy[0].entity_id})
+            return str(legacy[0].entity_id)
+    elif len(exact) == 1:
+        return str(exact[0].entity_id)
+    
+    # 同名但上下文不同必须保守分离
+    if exact:
+        cands = []
+    else:
+        cands = None
+    
+    # C 层: 向量召回
+    # ... 继续到向量层
 ```
-
-### 为什么先查别名？
-
-- **速度**：索引查询，O(1)
-- **确定性**：精确匹配，不需要相似度判断
-- **常见场景**：别名已经积累了大量映射
 
 ## B 层: 向量近邻
 
-### pgvector 查询
+### 身份上下文过滤
+
+向量查询时强制 `context_key` 过滤：
 
 ```python
-def vector_recall(conn, scope, name, top_k=5):
-    """B 层: 向量近邻查询"""
-    # 计算查询向量
-    query_emb = services.embed_one(name)
+cands = conn.execute(text("""
+    SELECT entity_id, canonical_name, description, entity_type, context_key,
+           1-(embedding <=> CAST(:q AS vector)) AS cos
+    FROM entities WHERE scope=:s AND merged_into IS NULL AND embedding IS NOT NULL
+      AND ((:t IS NULL AND entity_type IS NULL) OR entity_type=:t)
+      AND context_key=:ck
+    ORDER BY embedding <=> CAST(:q AS vector) LIMIT 5
+"""), {"q": str(emb), "s": scope, "t": etype, "ck": ctx_key}).fetchall()
+```
+
+### 身份敏感匹配 (`_identity_candidate_compatible`)
+
+```python
+_IDENTITY_SENSITIVE_TYPES = {
+    "component", "sensor", "controller", "process_param", "measurement",
+    "metrology_result", "recipe", "recipe_revision",
+}
+
+def _critical_identity_tokens(value):
+    """提取关键身份标识符（编号+量纲）"""
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    identifiers = re.findall(r"[a-z]+(?:[-_][a-z]+)*[-_]?\d+(?:\.\d+)?[a-z%°μ]*", normalized)
+    quantities = re.findall(r"\d+(?:\.\d+)?\s*(?:kw|w|v|a|ma|pa|torr|mtorr|sccm|slm|°?c|nm|um|μm|%|hz|khz|mhz)", normalized)
+    return tuple(sorted(set(identifiers + quantities)))
+
+def _identity_candidate_compatible(name, candidate_name, entity_type):
+    """身份敏感类型:关键标识符必须一致"""
+    if _canonical_text(entity_type or "") not in _IDENTITY_SENSITIVE_TYPES:
+        return True
+    incoming = _critical_identity_tokens(name)
+    existing = _critical_identity_tokens(candidate_name)
+    return not (incoming or existing) or incoming == existing
+```
+
+### 阈值策略
+
+| 余弦相似度 | 策略 | 说明 |
+|------------|------|------|
+| >= 0.85 | 直接合并 | 高置信度，省 LLM |
+| 0.30 - 0.85 | LLM 灰区判定 | 传入候选实体 + 原文上下文 |
+| < 0.30 | 创建新实体 | 低置信度，保守新建 |
+
+## C 层: LLM 灰区判定
+
+当相似度在灰区时，调用 LLM 判定：
+
+```python
+def _llm_entity_link(name, etype, description, candidates, context_text):
+    """LLM 灰区判定:决定复用哪个候选还是新建"""
+    from ..prompts import ENTITY_LINK_SYSTEM
+    payload = json.dumps({
+        "new_entity": {"name": name, "type": etype, "description": description},
+        "candidates": candidates,
+        "context": context_text[:2000],
+    }, ensure_ascii=False)
+    raw = services.llm_chat("extraction", ENTITY_LINK_SYSTEM, payload, max_tokens=1024)
+    data = services.parse_llm_json(raw)
+    return {"reuse": data.get("reuse", False),
+            "entity_name": data.get("entity_name"),
+            "reason": data.get("reason", "")}
+```
+
+### LLM 判定 Prompt
+
+```python
+ENTITY_LINK_SYSTEM = PROJECT_CONTEXT + """【本次任务:实体灰区判定 — 新实体是复用已有还是新建?】
+
+## 判断准则
+1. **看上下文**:原文上下文里这个实体出现在什么设备/子系统/工艺背景下?
+2. **看类型**:类型不同(如一个是 sensor 一个是 component)→ 大概率不同实体
+3. **看描述**:描述里提到的位置/编号/型号是否一致?
+4. **保守原则**:如果不确定,倾向于新建(宁可重复也不错误合并)
+
+## 输出格式
+```json
+{"reuse": true/false, "entity_name": "...", "reason": "..."}
+```"""
+```
+
+## Fact 超替机制
+
+单值谓词的新事实到达时，超替旧值：
+
+```python
+def _close_superseded(conn, scope, subject_id, predicate, valid_from):
+    """超替:仅对单值谓词,把同 (subject,predicate) 的当前活 fact 闭合"""
+    if not _is_single_value(conn, scope, predicate):
+        return None
     
-    # pgvector cosine distance
     rows = conn.execute(text("""
-        SELECT 
-            entity_id,
-            canonical_name,
-            entity_type,
-            description,
-            1 - (embedding <=> CAST(:q AS vector)) as similarity
-        FROM entities
-        WHERE scope = :s 
-          AND merged_into IS NULL
-          AND embedding IS NOT NULL
-        ORDER BY embedding <=> CAST(:q AS vector)
-        LIMIT :k
-    """), {
-        "s": scope, 
-        "q": str(query_emb), 
-        "k": top_k
-    }).fetchall()
+        SELECT fact_id::text, valid_from::text FROM facts 
+        WHERE scope=:s AND subject_id=CAST(:sub AS uuid) AND predicate=:p
+          AND recorded_to IS NULL AND polarity='positive'
+          AND assertion_status IN ('observed','confirmed')
+        ORDER BY valid_from FOR UPDATE
+    """), {"s": scope, "sub": subject_id, "p": predicate}).fetchall()
     
-    return rows
+    target = _parse_timestamp(valid_from)
+    for row in rows:
+        point = _parse_timestamp(row.valid_from)
+        if point == target:
+            conn.execute(text("UPDATE facts SET recorded_to=now() WHERE fact_id=CAST(:f AS uuid)"),
+                        {"f": row.fact_id})
+            return row.valid_to
+    # 闭合前驱
+    ...
 ```
 
-### 阈值判断
-
-```{mermaid}
-flowchart TD
-    A[相似度 score] --> B{score > 0.85?}
-    B -->|是| C[高置信: 直接合并]
-    B -->|否| D{score > 0.30?}
-    D -->|是| E[灰区: LLM 判定]
-    D -->|否| F[低置信: 新建实体]
-    
-    E --> G{LLM 判断?}
-    G -->|是同一实体| C
-    G -->|不是| F
-```
-
-**配置** (`config.py`):
-
-```python
-class LinkThresholds(BaseModel):
-    merge: float = 0.85   # 高于此直接合并
-    new: float = 0.30     # 低于此新建实体
-```
-
-### 直接合并
-
-```python
-def merge_entity(conn, source_id, target_id):
-    """合并实体: source → target"""
-    conn.execute(text("""
-        UPDATE entities 
-        SET merged_into = :target
-        WHERE entity_id = :source
-    """), {"source": source_id, "target": target_id})
-    
-    # 把 source 的 facts 转移到 target
-    conn.execute(text("""
-        UPDATE facts 
-        SET subject_id = :target
-        WHERE subject_id = :source
-    """), {"source": source_id, "target": target_id})
-    
-    conn.execute(text("""
-        UPDATE facts 
-        SET object_entity_id = :target
-        WHERE object_entity_id = :source
-    """), {"source": source_id, "target": target_id})
-    
-    # 更新 target 的统计
-    conn.execute(text("""
-        UPDATE entities 
-        SET fact_count = (
-            SELECT COUNT(*) FROM facts 
-            WHERE subject_id = :target
-        )
-        WHERE entity_id = :target
-    """), {"target": target_id})
-```
-
-## 灰区: LLM 判定
-
-### Prompt 设计
-
-```python
-JUDGE_PROMPT = """
-判断以下两个实体是否指代同一事物:
-
-实体 A: {name_a}
-实体 B: {name_b}
-实体 B 描述: {description_b}
-
-考虑:
-1. 名称相似度 (包含、缩写、别名)
-2. 描述语义相似度
-3. 实体类型一致性
-
-输出 JSON: {{"is_same": boolean, "reason": "判断理由"}}
-"""
-```
-
-### LLM 判定实现
-
-```python
-def llm_judge_linkage(name, candidate_name, candidate_desc):
-    """LLM 判定两个实体是否相同"""
-    if not llm_configured("extraction"):
-        # 无 LLM key 时的默认行为
-        return {"is_same": False, "reason": "no LLM"}
-    
-    prompt = JUDGE_PROMPT.format(
-        name_a=name,
-        name_b=candidate_name,
-        description_b=candidate_desc or "无描述"
-    )
-    
-    result = services.llm_chat("extraction", prompt, "")
-    return services.parse_llm_json(result)
-```
-
-## C 层: 创建新实体
-
-### 创建流程
-
-```{mermaid}
-flowchart TD
-    A[创建新实体] --> B[生成 UUID]
-    B --> C[设置基本信息]
-    C --> D[计算 embedding]
-    D --> E[存入 entities]
-    E --> F[添加别名]
-    F --> G[更新统计]
-```
-
-### 实现
-
-```python
-def create_entity(conn, scope, name, entity_type=None, description=None):
-    """创建新实体"""
-    entity_id = uuid.uuid4()
-    
-    # 1. 插入实体
-    conn.execute(text("""
-        INSERT INTO entities (
-            entity_id, scope, canonical_name, 
-            entity_type, description
-        ) VALUES (
-            :id, :scope, :name, :type, :desc
-        )
-    """), {
-        "id": entity_id,
-        "scope": scope,
-        "name": name,
-        "type": entity_type,
-        "desc": description
-    })
-    
-    # 2. 添加别名
-    conn.execute(text("""
-        INSERT INTO entity_aliases (entity_id, alias)
-        VALUES (:id, :alias)
-        ON CONFLICT DO NOTHING
-    """), {"id": entity_id, "alias": name})
-    
-    # 3. 异步计算 embedding (enrich job)
-    # 不阻塞当前流程
-    
-    return entity_id
-```
-
-### Embedding 计算时机
+## 完整实体链接流程
 
 ```{mermaid}
 sequenceDiagram
-    participant C as Client
-    participant API as API
-    participant DB as DB
-    participant W as Worker
+    participant EXT as 抽取管线
+    participant LINK as 实体链接
+    participant DB as PostgreSQL
+    participant LLM as LLM 灰区
     
-    C->>API: 写入 Event
-    API->>DB: INSERT event
-    API->>DB: INSERT job (extract)
-    API-->>C: 202
+    EXT->>LINK: _resolve_or_create(name, type, ctx)
+    LINK->>DB: A层: 别名查询
+    DB-->>LINK: 精确命中?
     
-    Note over W: 异步处理
-    
-    W->>DB: claim extract job
-    W->>W: LLM 抽取
-    W->>DB: INSERT entity (无 embedding)
-    W->>DB: INSERT job (enrich)
-    
-    Note over W: 再次异步
-    
-    W->>DB: claim enrich job
-    W->>W: 计算 embedding
-    W->>DB: UPDATE entity SET embedding = ...
+    alt A层命中
+        LINK->>DB: 检查 context_key
+        DB-->>LINK: 匹配→返回 entity_id
+    else A层未命中
+        LINK->>DB: B层: 向量近邻 (context_key 过滤)
+        DB-->>LINK: top-5 候选
+        
+        LINK->>LINK: _identity_candidate_compatible
+        alt 高相似度 >= 0.85
+            LINK->>DB: 直接合并
+        else 灰区 0.30-0.85
+            LINK->>LLM: 灰区判定
+            LLM-->>LINK: 复用/新建
+            alt LLM 复用
+                LINK->>DB: 合并到候选
+            else LLM 新建
+                LINK->>DB: 创建新实体
+            end
+        else 低相似度 < 0.30
+            LINK->>DB: 创建新实体
+        end
+    end
+    LINK-->>EXT: entity_id
 ```
 
-## 别名管理
+## 关键原则
 
-### 别名来源
-
-1. **创建时**：canonical_name 自动成为别名
-2. **合并时**：被合并实体的名称成为别名
-3. **手动添加**：API 调用添加别名
-
-```python
-def add_alias(conn, entity_id, alias):
-    """添加别名"""
-    conn.execute(text("""
-        INSERT INTO entity_aliases (entity_id, alias)
-        VALUES (:id, :alias)
-        ON CONFLICT DO NOTHING
-    """), {"id": entity_id, "alias": alias})
-```
-
-### 别名索引
-
-```sql
--- 用于快速查找和模糊匹配
-CREATE INDEX idx_aliases_alias ON entity_aliases 
-    USING gin (alias gin_trgm_ops);
-```
-
-## 实体分裂
-
-### 场景
-
-当发现两个被合并的实体实际上是不同事物时，需要分裂。
-
-```{mermaid}
-flowchart TD
-    A[发现误合并] --> B[创建新实体]
-    B --> C[重新分配 facts]
-    C --> D[更新 embedding]
-    D --> E[添加别名]
-```
-
-### 实现
-
-```python
-def split_entity(conn, original_id, new_name, new_type, new_desc):
-    """分裂实体"""
-    # 1. 创建新实体
-    new_id = create_entity(conn, scope, new_name, new_type, new_desc)
-    
-    # 2. 重新分配部分 facts (需要人工判断哪些分配给新实体)
-    # 这里简化: 把所有 object 是原实体的 facts 分配给新实体
-    conn.execute(text("""
-        UPDATE facts 
-        SET object_entity_id = :new
-        WHERE object_entity_id = :original
-    """), {"original": original_id, "new": new_id})
-    
-    # 3. 更新统计
-    update_entity_stats(conn, original_id)
-    update_entity_stats(conn, new_id)
-    
-    return new_id
-```
-
-## 质量监控
-
-### 实体质量指标
-
-| 指标 | 计算方式 | 目标 |
-|------|----------|------|
-| 唯一实体率 | unique / total | > 90% |
-| 平均别名数 | aliases / entities | 2-5 |
-| 灰区命中率 | gray_zone / total | < 20% |
-| 合并准确率 | correct_merges / total_merges | > 95% |
-
-### 监控查询
-
-```sql
--- 唯一实体率
-SELECT 
-    COUNT(DISTINCT canonical_name) * 1.0 / COUNT(*) as unique_rate
-FROM entities 
-WHERE merged_into IS NULL;
-
--- 平均别名数
-SELECT 
-    COUNT(*) * 1.0 / COUNT(DISTINCT entity_id) as avg_aliases
-FROM entity_aliases;
-
--- 最近合并操作
-SELECT 
-    e1.canonical_name as source,
-    e2.canonical_name as target,
-    e1.updated_at
-FROM entities e1
-JOIN entities e2 ON e1.merged_into = e2.entity_id
-ORDER BY e1.updated_at DESC
-LIMIT 10;
-```
+1. **保守合并**：宁可重复也不错误合并——重复可以后续 consolidate，错误合并会污染因果链
+2. **身份隔离**：同名实体在不同设备/腔体中保持独立
+3. **灰区 LLM**：中间阈值走 LLM 判定，利用上下文信息
+4. **自动别名**：新实体创建时自动注册 canonical_name 为别名

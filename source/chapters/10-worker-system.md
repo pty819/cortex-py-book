@@ -1,387 +1,222 @@
 # 第10章 Worker 系统
 
-## Postgres-as-Queue 设计
+## 概述
 
-### 为什么不用 Redis?
+cortex 的 Worker 系统基于 **Postgres-as-queue** 模式，无需 Redis 等外部队列组件。所有任务通过 `jobs` 表管理，worker 通过 `SKIP LOCKED` 原子抢任务。
 
-```{admonition} 设计决策
-1. **简单** —— 少一个依赖，少一个运维负担
-2. **事务一致** —— 写 WAL 和入队在同一事务
-3. **足够快** —— 个人/小团队规模，Postgres 完全够用
-4. **SKIP LOCKED** —— 高效的任务抢占，避免锁竞争
+```{mermaid}
+graph TB
+    subgraph 写入
+        A[append_event] --> B[enqueue_job]
+    end
+    
+    subgraph Worker 循环
+        C[claim_next_job] --> D{执行任务}
+        D -->|成功| E[complete_job]
+        D -->|失败| F[exponential backoff]
+        F -->|未超限| C
+        F -->|超限| G[dead letter]
+    end
+    
+    subgraph 守护
+        H[reap_zombies] --> C
+    end
+    
+    B --> C
 ```
 
-## 队列表设计
-
-### Schema
+## Jobs 表结构
 
 ```sql
 CREATE TABLE jobs (
     job_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_type        TEXT NOT NULL,
+    job_type        TEXT NOT NULL,       -- 'extract' | 'consolidate' | ...
     scope           TEXT NOT NULL,
     event_id        UUID REFERENCES events(event_id),
-    payload         JSONB,
-    
-    -- 状态机
-    status          TEXT NOT NULL DEFAULT 'queued',
-    attempts        INTEGER NOT NULL DEFAULT 0,
-    max_attempts    INTEGER NOT NULL DEFAULT 3,
-    
-    -- 时间跟踪
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    batch_id        UUID,
+    status          TEXT NOT NULL DEFAULT 'queued'
+                    CHECK (status IN ('queued','running','completed','failed','cancelled')),
+    attempts        INT NOT NULL DEFAULT 0,
+    max_attempts    INT NOT NULL DEFAULT 3,
+    priority        INT NOT NULL DEFAULT 0,
+    run_after       TIMESTAMPTZ NOT NULL DEFAULT now(),   -- 退避时间
+    locked_by       TEXT,                -- worker ID
     locked_at       TIMESTAMPTZ,
-    locked_by       TEXT,
-    started_at      TIMESTAMPTZ,
-    completed_at    TIMESTAMPTZ,
-    
-    -- 错误信息
+    payload         JSONB,
+    result          JSONB,
     error           TEXT,
-    
-    -- 约束
-    CONSTRAINT valid_status CHECK (status IN ('queued', 'running', 'completed', 'failed'))
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    started_at      TIMESTAMPTZ,
+    completed_at    TIMESTAMPTZ
 );
+
+CREATE INDEX idx_jobs_queue ON jobs 
+    (priority DESC, run_after, created_at) WHERE status = 'queued';
 ```
 
-### 状态机
-
-```{mermaid}
-stateDiagram-v2
-    [*] --> queued: 创建任务
-    queued --> running: Worker 抢锁
-    running --> completed: 成功
-    running --> failed: 失败
-    running --> queued: 超时 (reaper)
-    failed --> queued: 重试 (attempts < max)
-    failed --> [*]: 最终失败 (attempts >= max)
-    completed --> [*]: 完成
-```
-
-## 任务抢占
-
-### SKIP LOCKED 原理
-
-```{mermaid}
-sequenceDiagram
-    participant W1 as Worker 1
-    participant W2 as Worker 2
-    participant DB as PostgreSQL
-    participant Q as Jobs Table
-    
-    Note over Q: status=queued, job_id=J1
-    
-    W1->>DB: BEGIN
-    W2->>DB: BEGIN
-    
-    W1->>DB: SELECT ... FOR UPDATE SKIP LOCKED
-    W2->>DB: SELECT ... FOR UPDATE SKIP LOCKED
-    
-    Note over DB: W1 锁定 J1
-    Note over DB: W2 跳过 J1 (SKIP LOCKED)
-    
-    DB-->>W1: job_id=J1
-    DB-->>W2: null
-    
-    W1->>DB: UPDATE status='running'
-    W2->>DB: ROLLBACK
-    
-    W1->>W1: 执行任务...
-```
-
-### 实现
+## 原子抢任务
 
 ```python
-# core.py
-def claim_next_job(conn, worker_id: str) -> Optional[dict]:
-    """抢占下一个 queued 任务"""
+def claim_next_job(conn, worker_id):
+    """SKIP LOCKED 原子抢一个到期 job"""
     row = conn.execute(text("""
-        UPDATE jobs 
-        SET 
-            status = 'running',
-            locked_at = now(),
-            locked_by = :wid,
-            started_at = now(),
-            attempts = attempts + 1
-        WHERE job_id = (
-            SELECT job_id 
-            FROM jobs
-            WHERE status = 'queued'
-              AND attempts < max_attempts
-            ORDER BY created_at
-            FOR UPDATE SKIP LOCKED
-            LIMIT 1
-        )
-        RETURNING *
-    """), {"wid": worker_id}).fetchone()
-    
-    return dict(row) if row else None
+        UPDATE jobs SET status='running', locked_by=:w, locked_at=now(), 
+                        started_at=now(), attempts=attempts+1
+        WHERE job_id = (SELECT job_id FROM jobs
+                        WHERE status='queued' AND run_after <= now()
+                        ORDER BY priority DESC, run_after, created_at
+                        FOR UPDATE SKIP LOCKED LIMIT 1)
+        RETURNING job_id, job_type, scope, event_id, attempts, max_attempts, payload
+    """), {"w": worker_id}).fetchone()
+    if not row:
+        return None
+    return {"job_id": str(row.job_id), "job_type": row.job_type, ...}
 ```
+
+**SKIP LOCKED** 是 PostgreSQL 9.5+ 的特性，允许多个 worker 并发抢任务而不互相阻塞。
+
+## 完成与失败处理
+
+### 成功完成
+
+```python
+def complete_job(conn, job_id, result=None):
+    conn.execute(text("""
+        UPDATE jobs SET status='completed', completed_at=now(), 
+                        result=CAST(:r AS jsonb)
+        WHERE job_id=CAST(:j AS uuid)
+    """), {"r": json.dumps(result) if result else None, "j": job_id})
+```
+
+### 失败 + 退避重试
+
+```python
+def fail_job(conn, job_id, error, backoff_base=4, terminal=False):
+    info = conn.execute(text("""
+        SELECT attempts, max_attempts FROM jobs WHERE job_id=CAST(:j AS uuid)
+    """), {"j": job_id}).fetchone()
+    
+    if terminal or (info and info.attempts >= info.max_attempts):
+        # 死信：标记为 failed
+        conn.execute(text("""
+            UPDATE jobs SET status='failed', error=:e, completed_at=now()
+            WHERE job_id=CAST(:j AS uuid)
+        """), {"e": error[:500], "j": job_id})
+    else:
+        # 指数退避：下次执行时间 = now + 4^attempts 秒
+        conn.execute(text("""
+            UPDATE jobs SET status='queued', locked_by=NULL, locked_at=NULL,
+                            run_after=now() + make_interval(secs => :backoff), error=:e
+            WHERE job_id=CAST(:j AS uuid)
+        """), {"backoff": float(backoff_base ** info.attempts), "e": error[:500], "j": job_id})
+```
+
+**退避策略**：
+- 第 1 次失败：4 秒后重试
+- 第 2 次失败：16 秒后重试
+- 第 3 次失败（超限）：死信
+
+## 僵尸回收
+
+当 worker 崩溃时，正在 running 的 job 会变成僵尸：
+
+```python
+def reap_zombies(conn, visibility_secs=300):
+    """回收超时的 running jobs"""
+    r = conn.execute(text("""
+        UPDATE jobs SET status='queued', locked_by=NULL, locked_at=NULL
+        WHERE status='running' 
+          AND locked_at < now() - make_interval(secs => :v)
+    """), {"v": float(visibility_secs)})
+    return r.rowcount or 0
+```
+
+默认 visibility timeout = 300 秒。超过 5 分钟未完成的任务自动回到队列。
 
 ## Worker 主循环
 
-### 流程图
-
-```{mermaid}
-flowchart TD
-    A[Worker 启动] --> B[初始化]
-    B --> C[主循环]
-    
-    C --> D{claim_next_job}
-    D -->|有任务| E{job_type?}
-    D -->|无任务| F[sleep poll_interval]
-    F --> C
-    
-    E -->|extract| G[extraction_pipeline]
-    E -->|segment| H[segment_scope]
-    E -->|synthesize| I[synthesize_scope]
-    E -->|methylation| J[methylation_run]
-    E -->|consolidate| K[consolidation_run]
-    E -->|enrich| L[enrich_entities]
-    
-    G --> M[complete_job]
-    H --> M
-    I --> M
-    J --> M
-    K --> M
-    L --> M
-    
-    G -->|失败| N[fail_job]
-    H -->|失败| N
-    I -->|失败| N
-    
-    M --> C
-    N --> C
-    
-    C -->|Ctrl-C| O[退出]
-```
-
-### 完整实现
-
 ```python
-# worker/runner.py
-def run_worker(*, max_iterations: int = 0) -> None:
-    """阻塞跑 worker"""
-    cfg = load_config()
-    worker_id = f"worker-{int(time.time()) % 100000}"
-    poll = cfg.worker.poll_interval_secs
-    vis = cfg.worker.visibility_timeout_secs
-    last_reap = 0.0
-    it = 0
-    
-    log.info("worker %s started (poll=%.2fs vis=%ss)", 
-             worker_id, poll, vis)
-    
-    while max_iterations == 0 or it < max_iterations:
-        it += 1
+def worker_loop():
+    worker_id = f"worker-{uuid.uuid4().hex[:8]}"
+    while True:
+        with session_scope() as conn:
+            # 1. 回收僵尸
+            reaped = reap_zombies(conn, visibility_secs=300)
+            
+            # 2. 抢任务
+            job = claim_next_job(conn, worker_id)
+        
+        if not job:
+            time.sleep(1)  # 空转等待
+            continue
+        
         try:
+            if job["job_type"] == "extract":
+                result = extract_event(job["event_id"])
+            elif job["job_type"] == "consolidate":
+                result = consolidate_scope(job["scope"])
+            
             with session_scope() as conn:
-                # 定期回收僵尸任务
-                if time.time() - last_reap > cfg.worker.reaper_interval_secs:
-                    reaped = reap_zombies(conn, vis)
-                    if reaped:
-                        log.info("reaped %d zombie jobs", reaped)
-                    last_reap = time.time()
-                
-                # 抢任务
-                job = claim_next_job(conn, worker_id)
-                
-                if not job:
-                    # 没任务，sleep
-                    conn.execute(text("SELECT pg_sleep(:s)"), {"s": poll})
-                    continue
-                
-                log.info("worker %s claimed job %s (%s)", 
-                        worker_id, job["job_id"], job["job_type"])
-                
-                # 分发执行
-                try:
-                    result = _dispatch(job)
-                    complete_job(conn, job["job_id"], result)
-                    log.info("job %s completed: %s", 
-                            job["job_id"], result)
-                except Exception as e:
-                    log.exception("job %s failed", job["job_id"])
-                    fail_job(conn, job["job_id"], str(e))
-                    
-        except KeyboardInterrupt:
-            log.info("worker %s interrupted", worker_id)
-            break
-        except Exception:
-            log.exception("worker loop error")
-            time.sleep(1)
-    
-    log.info("worker %s exiting", worker_id)
+                complete_job(conn, job["job_id"], result)
+        except Exception as e:
+            with session_scope() as conn:
+                fail_job(conn, job["job_id"], str(e))
 ```
 
-## 任务分发
+## 生命周期事件通知
 
-### 分发器实现
+每次 job 状态变化都触发 lifecycle event，同时通过 `pg_notify` 推送给等待者：
 
 ```python
-def _dispatch(job: dict) -> dict:
-    """按 job_type 跑对应 handler"""
-    jt = job["job_type"]
-    scope = job.get("scope")
-    
-    if jt == "extract" and job.get("event_id"):
-        from ..extraction.pipeline import extract_event
-        return extract_event(job["event_id"])
-    
-    if jt == "segment" and scope:
-        from ..episodes import segment_scope
-        return segment_scope(scope)
-    
-    if jt == "synthesize" and scope:
-        from ..understanding import synthesize_scope
-        payload = job.get("payload") or {}
-        return synthesize_scope(scope, topics=payload.get("topics"))
-    
-    if jt == "methylation" and scope:
-        from ..maintenance import methylation_run
-        older = (job.get("payload") or {}).get("older_than_days", 30)
-        return methylation_run(scope, older_than_days=older)
-    
-    if jt == "consolidate" and scope:
-        from ..maintenance import consolidation_run
-        return consolidation_run(scope)
-    
-    if jt == "enrich" and scope:
-        # 异步 KG 增强
-        return _enrich_entities(scope)
-    
-    return {"ok": True, "note": f"no handler for {jt}"}
+def emit_lifecycle(conn, *, kind, scope, event_id=None, job_id=None, ...):
+    row = conn.execute(text("""...""")).fetchone()
+    # NOTIFY 让 ?wait= 的 listener 能立刻收到
+    conn.execute(text("SELECT pg_notify('cortex_lc', :msg)"),
+                 {"msg": f"{kind}|{event_id or ''}"})
 ```
 
-### 任务类型
+### ?wait= 同步等待
 
-| job_type | 处理器 | 说明 |
-|----------|--------|------|
-| `extract` | `extract_event` | 从 Event 抽取实体/事实 |
-| `segment` | `segment_scope` | 事件分段为 Episodes |
-| `synthesize` | `synthesize_scope` | 从 Beliefs 合成 Understanding |
-| `methylation` | `methylation_run` | 老化处理 |
-| `consolidate` | `consolidation_run` | 合并处理 |
-| `enrich` | `_enrich_entities` | 异步计算 embedding |
-
-## 任务完成与失败
-
-### 完成任务
+API 支持 `?wait=indexed` 参数，阻塞直到该 event 的抽取完成：
 
 ```python
-def complete_job(conn, job_id: str, result: dict):
-    """标记任务完成"""
-    conn.execute(text("""
-        UPDATE jobs 
-        SET 
-            status = 'completed',
-            completed_at = now(),
-            payload = payload || :result
-        WHERE job_id = :jid
-    """), {
-        "jid": job_id,
-        "result": json.dumps({"result": result})
-    })
+def wait_for_stage(event_id, target_stage, timeout=30.0):
+    """LISTEN pg_notify + 轮询，等待目标 stage"""
+    conn = psycopg2.connect(cfg.database.url)
+    conn.autocommit = True
+    conn.execute("LISTEN cortex_lc")
+    while time.time() - t0 < timeout:
+        # 查表（通知可能已积压）
+        # 等 notify（最多 1s）
+        select.select([conn], [], [], 1.0)
+        conn.poll()
+        # 检查通知内容
+        if payload matches target_stage:
+            return {"reached": True, ...}
+    return {"reached": False, "note": "timeout, downgraded to async"}
 ```
 
-### 失败任务
-
-```python
-def fail_job(conn, job_id: str, error: str):
-    """标记任务失败"""
-    conn.execute(text("""
-        UPDATE jobs 
-        SET 
-            status = CASE 
-                WHEN attempts < max_attempts THEN 'queued'
-                ELSE 'failed'
-            END,
-            locked_at = NULL,
-            locked_by = NULL,
-            error = :err
-        WHERE job_id = :jid
-    """), {
-        "jid": job_id,
-        "err": error
-    })
+**stage 顺序**：
+```
+captured(0) → extracted(1) → indexed(2) → consolidated(3)
 ```
 
-## Visibility Timeout & Reaper
+## 启动 Worker
 
-### 问题
+```bash
+# 启动 worker 循环
+uv run python -m cortex.cli worker
 
-```{mermaid}
-sequenceDiagram
-    participant W as Worker
-    participant DB as DB
-    
-    W->>DB: claim job (status=running)
-    Note over W: 执行中...
-    Note over W: Worker 崩溃!
-    Note over DB: job 卡在 running
+# 启动后端（另一个终端）
+uv run uvicorn cortex.api.app:app --port 8002
 ```
 
-### 解决方案
+## 关键设计决策
 
-```{mermaid}
-flowchart TD
-    A[Reaper 定时检查] --> B{"locked_at < now - timeout"}
-    B -->|是| C[重置为 queued]
-    B -->|否| D[跳过]
-    C --> E[其他 Worker 可抢]
-```
-
-### 实现
-
-```python
-def reap_zombies(conn, visibility_timeout: int = 300):
-    """回收超时的 running 任务"""
-    rows = conn.execute(text("""
-        UPDATE jobs 
-        SET 
-            status = 'queued',
-            locked_at = NULL,
-            locked_by = NULL
-        WHERE status = 'running'
-          AND locked_at < now() - make_interval(secs => :timeout)
-        RETURNING job_id
-    """), {"timeout": visibility_timeout}).fetchall()
-    
-    return len(rows)
-```
-
-## Worker 配置
-
-```python
-# config.py
-class WorkerCfg(BaseModel):
-    poll_interval_secs: float = 1.0      # 轮询间隔
-    visibility_timeout_secs: int = 300   # 可见性超时 (5分钟)
-    reaper_interval_secs: int = 60       # Reaper 检查间隔
-    max_attempts: int = 3                # 最大重试次数
-    backoff_base_secs: int = 4           # 退避基数
-```
-
-## 多 Worker 协作
-
-```{mermaid}
-graph TB
-    subgraph "Worker Pool"
-        W1[Worker 1]
-        W2[Worker 2]
-        W3[Worker 3]
-    end
-    
-    subgraph "Jobs Table"
-        J1["job1 (queued)"]
-        J2["job2 (queued)"]
-        J3["job3 (queued)"]
-    end
-    
-    W1 -->|claim| J1
-    W2 -->|claim| J2
-    W3 -->|claim| J3
-    
-    J1 -->|complete| D1[done]
-    J2 -->|fail| D2[retry]
-    J3 -->|timeout| D3[reaper]
-```
+| 决策 | 方案 | 理由 |
+|------|------|------|
+| 队列实现 | Postgres SKIP LOCKED | 无 Redis 依赖，减少运维复杂度 |
+| 退避策略 | 指数退避 (4^n s) | 避免瞬时失败风暴 |
+| 超限处理 | 死信 (failed) | 不自动丢弃，可人工介入 |
+| 僵尸回收 | 5 分钟 visibility timeout | 防止 worker 崩溃后任务永久丢失 |
+| 通知机制 | pg_notify | 零额外组件，Postgres 原生支持 |

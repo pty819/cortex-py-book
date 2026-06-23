@@ -1,394 +1,240 @@
 # 第7章 检索通道详解
 
-## 向量通道深度解析
+## 概述
 
-### pgvector HNSW 索引
-
-```sql
--- 创建 HNSW 索引
-CREATE INDEX idx_entities_embedding ON entities 
-    USING hnsw (embedding vector_cosine_ops) 
-    WITH (m = 16, ef_construction = 64);
-```
+cortex 的检索系统由 **6 个并行通道** 组成，每个通道从不同角度召回相关 facts，然后通过 RRF 融合。每个通道返回 fact_id 列表，统一时态过滤。
 
 ```{mermaid}
-graph TB
-    subgraph "HNSW 索引结构"
-        L0["Layer 0 (全部节点)"]
-        L1["Layer 1 (部分节点)"]
-        L2["Layer 2 (少量节点)"]
-        
-        L2 --> L1
-        L1 --> L0
-    end
+flowchart TB
+    Q[用户查询] --> VEC[通道1: 向量]
+    Q --> BM25[通道2: BM25]
+    Q --> GRAPH[通道3: 图遍历]
+    Q --> ENT[通道4: Entity Name]
+    Q --> SYN[通道5: Synonym]
+    Q --> TD[通道6: Temporal-decay]
     
-    Q[查询向量] --> L2
-    L2 --> L1
-    L1 --> L0
-    L0 --> R[最近邻]
+    VEC --> RRF[RRF 融合]
+    BM25 --> RRF
+    GRAPH --> RRF
+    ENT --> RRF
+    SYN --> RRF
+    TD --> RRF
+    
+    RRF --> RERANK[Prism Rerank]
+    RERANK --> PACK[StratifiedPack]
 ```
 
-### 向量查询优化
+## 通用时态过滤
+
+所有通道共享统一的时态过滤逻辑（`_temporal_clause`）：
 
 ```python
-def _chan_vector(conn, scope, view, q_emb, top_k):
-    """优化的向量查询"""
-    
-    # 使用 CTE 避免多次扫描
-    sql = """
+def _temporal_clause(as_of, include_superseded):
+    # 默认（无 as_of）：valid_to IS NULL AND recorded_to IS NULL（当前 live facts）
+    # as_of（不含 include_superseded）：valid_from<=t<valid_to AND recorded_to IS NULL
+    # as_of + include_superseded：包含历史认知
+    ...
+```
+
+## 通道1：向量检索（_chan_vector）
+
+**原理**：query → embedding → 实体近邻 → 近邻实体的 facts
+
+```python
+def _chan_vector(conn, scope, view, q_emb, top_k, as_of=None, include_superseded=False):
+    frag, p = _scope_filter(scope, view)
+    p["q"] = str(q_emb); p["k"] = top_k
+    tc = _temporal_clause(as_of, include_superseded)
+    sql = f"""
         WITH near AS (
-            -- 先找最近实体 (利用 HNSW 索引)
-            SELECT entity_id, 
-                   1 - (embedding <=> CAST(:q AS vector)) as sim
-            FROM entities
-            WHERE merged_into IS NULL 
-              AND embedding IS NOT NULL 
-              AND scope = :s
-            ORDER BY embedding <=> CAST(:q AS vector)
-            LIMIT :k
+          SELECT entity_id FROM entities
+          WHERE merged_into IS NULL AND embedding IS NOT NULL AND {frag}
+          ORDER BY embedding <=> CAST(:q AS vector) LIMIT :k
         )
-        -- 再找相关 facts
-        SELECT DISTINCT f.fact_id::text
-        FROM facts f
-        WHERE f.scope = :s
-          AND f.valid_to IS NULL
-          AND f.recorded_to IS NULL
-          AND (
-            f.subject_id IN (SELECT entity_id FROM near)
-            OR f.object_entity_id IN (SELECT entity_id FROM near)
-          )
+        SELECT DISTINCT f.fact_id::text FROM facts f
+        WHERE f.{frag} AND f.{tc}
+          AND (f.subject_id IN (SELECT entity_id FROM near)
+               OR f.object_entity_id IN (SELECT entity_id FROM near))
         LIMIT :k
     """
-    
-    return [r[0] for r in conn.execute(text(sql), {
-        "q": str(q_emb), "s": scope, "k": top_k
-    }).fetchall()]
+    return [r[0] for r in conn.execute(text(sql), p).fetchall()]
 ```
 
-## BM25 通道深度解析
+**执行流程**：
+```
+query → jina-v5 embedding(1024d) → pgvector HNSW 近邻搜索
+→ 最近 N 个实体 → 这些实体的所有 live facts
+```
 
-### tsvector 全文检索
+## 通道2：BM25 全文检索（_chan_bm25）
 
+**原理**：PostgreSQL tsvector 全文索引 + ILIKE 模糊匹配
+
+```python
+def _chan_bm25(conn, scope, view, query, top_k, as_of=None, include_superseded=False):
+    frag, p = _scope_filter(scope, view)
+    p["q"] = query; p["k"] = top_k; p["likeq"] = f"%{query.strip()}%"
+    tc = _temporal_clause(as_of, include_superseded)
+    sql = f"""
+        SELECT fact_id::text FROM facts
+        WHERE {frag} AND {tc}
+          AND (to_tsvector('simple', 
+               coalesce(predicate,'')||' '||coalesce(object_value->>'value','')
+               ||' '||coalesce((SELECT canonical_name FROM entities WHERE entity_id=facts.subject_id),''))
+               @@ plainto_tsquery(:q)
+               OR coalesce(object_value->>'value','') ILIKE :likeq
+               OR coalesce((SELECT canonical_name FROM entities WHERE entity_id=facts.subject_id),'') ILIKE :likeq)
+        ORDER BY ts_rank(...) DESC
+        LIMIT :k
+    """
+    return [r[0] for r in conn.execute(text(sql), p).fetchall()]
+```
+
+**索引支持**：
+- `idx_facts_text_fts`：facts 表 `(predicate || object_value)` 的 GIN tsvector 索引
+- `idx_events_content_fts`：events 表 `content->>'text'` 的 GIN tsvector 索引
+
+## 通道3：图遍历（_chan_graph）
+
+**原理**：种子实体 → 递归 CTE BFS 沿 facts 边遍历 2-3 跳
+
+```python
+def _chan_graph(conn, scope, view, q_emb, max_hops, top_k, as_of=None, include_superseded=False):
+    sql = """
+      WITH RECURSIVE seeds AS (
+        SELECT entity_id FROM entities WHERE merged_into IS NULL AND embedding IS NOT NULL AND {frag}
+        ORDER BY embedding <=> CAST(:q AS vector) LIMIT 5
+      ),
+      graph_walk AS (
+        SELECT f.object_entity_id AS node, f.fact_id, 1 AS hop
+          FROM facts f, seeds s
+         WHERE f.subject_id = s.entity_id AND {frag} AND {tc} AND {graph_eligible}
+           AND f.object_entity_id IS NOT NULL
+        UNION ALL
+        SELECT f.object_entity_id, f.fact_id, gw.hop + 1
+          FROM facts f JOIN graph_walk gw ON f.subject_id = gw.node
+         WHERE {frag} AND {tc} AND {graph_eligible}
+           AND f.object_entity_id IS NOT NULL
+           AND gw.hop < :h
+           AND NOT f.object_entity_id = ANY(gw.visited)
+      )
+      SELECT DISTINCT fact_id::text FROM graph_walk LIMIT :k
+    """
+    return [r[0] for r in conn.execute(text(sql), p).fetchall()]
+```
+
+**关键设计**：
+- 只走 `graph_eligible` 的边（排除 `no_correlation`/`contradicts`/`ruled_out`）
+- 因果谓词边要求 `assertion_status='confirmed'`（未确认的假设不进图）
+- 带 visited 环检测
+- 默认 2 跳（`max_hops=2`），可配置到 3
+
+## 通道4：Entity Name 匹配（_chan_entity_name）
+
+**原理**：从查询中提取实体名 → pg_trgm 模糊匹配 → 匹配实体的 facts
+
+```python
+def _chan_entity_name(conn, scope, view, query, top_k, as_of=None, include_superseded=False):
+    names = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\b", query)
+    if not names:
+        names = [w for w in re.findall(r"\w+", query) if len(w) > 3][:5]
+    for nm in names:
+        rows = conn.execute(text(f"""
+            SELECT entity_id::text FROM entities
+            WHERE {frag} AND merged_into IS NULL
+              AND (canonical_name ILIKE :nm
+                   OR EXISTS (SELECT 1 FROM entity_aliases a 
+                     WHERE a.entity_id=entities.entity_id AND a.alias ILIKE :nm)
+                   OR similarity(canonical_name, :nm) > 0.3)
+        """), {**p, "nm": f"%{nm}%"}).fetchall()
+    # 从匹配实体取 facts
+    ...
+```
+
+**支持**：`pg_trgm` 扩展的 `similarity()` 函数 + ILIKE + 别名表
+
+## 通道5：Synonym 同义词扩展（_chan_synonym）
+
+**原理**：查询词 → synonyms 表查找同义词 → 扩展后重新 BM25 检索
+
+```python
+def _chan_synonym(conn, scope, query, as_of=None, include_superseded=False):
+    words = re.findall(r"\w+", query.lower())
+    terms = set(words)
+    for w in words:
+        rows = conn.execute(text("""
+            SELECT term, aliases FROM synonyms 
+            WHERE scope=:s AND (term=:w OR :w = ANY(aliases))
+        """), {"s": scope, "w": w}).fetchall()
+        for r in rows:
+            terms.add(r[0]); terms.update(r[1] or [])
+    if terms == set(words):
+        return []  # 无同义词扩展
+    expanded = " ".join(sorted(terms))
+    # 用扩展后的查询做 BM25
+    ...
+```
+
+**同义词表结构**：
 ```sql
--- facts 表的 tsvector 列
-content_tsv tsvector GENERATED ALWAYS AS (
-    to_tsvector('english', predicate || ' ' || 
-                COALESCE(object_value->>'value', ''))
-) STORED
+CREATE TABLE synonyms (
+    synonym_id  UUID PRIMARY KEY,
+    scope       TEXT NOT NULL,
+    term        TEXT NOT NULL,         -- 规范词, 如 "own"
+    aliases     TEXT[] NOT NULL DEFAULT '{}',  -- 同义: "possess"/"has"/"owns"
+    UNIQUE (scope, term)
+);
 ```
 
-```{mermaid}
-flowchart LR
-    A["predicate: 'works_at'"] --> C[tsvector]
-    B["object: 'Acme Corp'"] --> C
-    C --> D["'acm':2 'corp':3 'work':1"]
-    
-    E["query: 'Acme'"] --> F[plainto_tsquery]
-    F --> G["'acm'"]
-    D --> H{match?}
-    G --> H
-    H -->|是| I[返回]
-```
+## 通道6：Temporal-decay 时间衰减
 
-### BM25 排序
+**原理**：按 access_count（访问热度）+ 时间衰减加权，热数据优先
+
+该通道使用 `events.access_count` 字段统计每个 event 被召回次数。access_count=0 且超过阈值的 events 会被 methylation 标记为 `excluded_from_recall`。
+
+## HyDE 假设性文档嵌入
+
+在检索前，先用 LLM 生成一段"假设知识库里有完美答案"的文本，将其嵌入后用向量检索：
 
 ```python
-def _chan_bm25(conn, scope, view, query, top_k):
-    """BM25 通道带排序"""
-    sql = """
-        SELECT 
-            fact_id::text,
-            ts_rank(content_tsv, q) as rank
-        FROM facts,
-             plainto_tsquery('english', :q) q
-        WHERE scope = :s
-          AND valid_to IS NULL
-          AND recorded_to IS NULL
-          AND content_tsv @@ q
-        ORDER BY rank DESC
-        LIMIT :k
-    """
-    
-    return [r[0] for r in conn.execute(text(sql), {
-        "s": scope, "q": query, "k": top_k
-    }).fetchall()]
+HYDE_SYSTEM = """【本次任务：查询 → 假设性文本（用于向量检索召回）】
+
+针对下游 agent 的查询，写一段"假设知识库里有完美匹配答案"的文本。
+包含可能的关键实体名（故障/部件/传感器/控制器/征兆/参数/步骤）。
+200-500字。纯文本，不输出 JSON/think。"""
 ```
 
-## 图遍历通道深度解析
+## Multihop 子问题分解
 
-### 递归 CTE 解析
-
-```{mermaid}
-flowchart TD
-    subgraph "递归 CTE 结构"
-        A["锚点成员 (Anchor)"] --> B["递归成员 (Recursive)"]
-        B --> C{终止条件?}
-        C -->|否| B
-        C -->|是| D[结果集]
-    end
-    
-    subgraph "图遍历"
-        E[种子实体] --> F[第 1 跳]
-        F --> G[第 2 跳]
-        G --> H[第 N 跳]
-    end
-```
-
-### 完整图遍历实现
+将复杂查询拆解为多个子查询，分别检索后融合结果：
 
 ```python
-def _chan_graph(conn, scope, view, q_emb, top_k, max_hops=2):
-    """图遍历通道: 完整实现"""
-    
-    sql = """
-        WITH RECURSIVE 
-        -- 1. 种子: 向量最近的 5 个实体
-        seeds AS (
-            SELECT entity_id
-            FROM entities
-            WHERE merged_into IS NULL 
-              AND embedding IS NOT NULL 
-              AND scope = :s
-            ORDER BY embedding <=> CAST(:q AS vector)
-            LIMIT 5
-        ),
-        
-        -- 2. 递归 BFS
-        graph_walk AS (
-            -- 锚点: 种子直接关联的 facts
-            SELECT 
-                f.fact_id,
-                f.subject_id,
-                f.object_entity_id,
-                0 as depth,
-                ARRAY[f.fact_id] as path  -- 防止循环
-            FROM facts f
-            JOIN seeds s ON (
-                f.subject_id = s.entity_id 
-                OR f.object_entity_id = s.entity_id
-            )
-            WHERE f.scope = :s
-              AND f.valid_to IS NULL
-              AND f.recorded_to IS NULL
-            
-            UNION ALL
-            
-            -- 递归: 扩展到下一跳
-            SELECT 
-                f.fact_id,
-                f.subject_id,
-                f.object_entity_id,
-                gw.depth + 1,
-                gw.path || f.fact_id
-            FROM facts f
-            JOIN graph_walk gw ON (
-                -- 四种连接方式
-                f.subject_id = gw.object_entity_id 
-                OR f.object_entity_id = gw.subject_id
-                OR f.subject_id = gw.subject_id
-                OR f.object_entity_id = gw.object_entity_id
-            )
-            WHERE gw.depth < :hops
-              AND f.scope = :s
-              AND f.valid_to IS NULL
-              AND f.recorded_to IS NULL
-              AND f.fact_id != ALL(gw.path)  -- 防止循环
-        )
-        
-        -- 3. 去重返回
-        SELECT DISTINCT fact_id::text 
-        FROM graph_walk
-        ORDER BY depth  -- 近的优先
-        LIMIT :k
-    """
-    
-    return [r[0] for r in conn.execute(text(sql), {
-        "s": scope, "q": str(q_emb), 
-        "k": top_k, "hops": max_hops
-    }).fetchall()]
+MULTIHOP_SYSTEM = """【本次任务：查询 → 多个子查询（用于多跳检索）】
+
+将下游 agent 的诊断查询拆解为多个子查询。
+每个子查询聚焦一个方面：根因层/征兆层/传感器特征/控制逻辑/
+工艺参数/级联影响/历史案例/相关性分析/排除项。
+输出 JSON {"queries": ["子查询1", ...]}"""
 ```
 
-### 防止循环
+## scope 过滤视图
 
-```{mermaid}
-graph LR
-    A[Alice] -->|works_at| B[Acme]
-    B -->|employs| A
-    
-    subgraph "无循环检测"
-        E1[Alice → Acme → Alice → Acme → ...]
-    end
-    
-    subgraph "有循环检测"
-        E2["path: [fact1, fact2]"]
-        E3["跳过已访问"]
-    end
-```
+所有通道都支持 4 种 scope 视图：
 
-## Entity Name 通道深度解析
+| 视图 | 含义 | SQL |
+|------|------|-----|
+| `local` | 精确 scope 匹配 | `scope = :scope` |
+| `holistic` | 祖先链回溯 | `scope = ANY(前缀列表)` |
+| `descend` | scope + 子 scope | `(scope = :s OR scope LIKE :s || '/%')` |
+| `structured` | 精确匹配 | 同 local |
 
-### pg_trgm 模糊匹配
+## 通道对比
 
-```sql
--- 启用 pg_trgm 扩展
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
--- 创建 trgm 索引
-CREATE INDEX idx_entities_name_trgm ON entities 
-    USING gin (canonical_name gin_trgm_ops);
-```
-
-```{mermaid}
-flowchart LR
-    A["查询: 'Alice'"] --> B[pg_trgm]
-    B --> C{相似度}
-    C -->|"Alice"| D[1.0]
-    C -->|"Alicia"| E[0.6]
-    C -->|"Bob"| F[0.0]
-```
-
-### 查询实现
-
-```python
-def _chan_entity_name(conn, scope, view, query, top_k):
-    """Entity Name 通道"""
-    sql = """
-        SELECT DISTINCT f.fact_id::text
-        FROM facts f
-        JOIN entities e ON (
-            f.subject_id = e.entity_id 
-            OR f.object_entity_id = e.entity_id
-        )
-        WHERE f.scope = :s
-          AND f.valid_to IS NULL
-          AND e.canonical_name % :q  -- pg_trgm 匹配
-        ORDER BY similarity(e.canonical_name, :q) DESC
-        LIMIT :k
-    """
-    
-    return [r[0] for r in conn.execute(text(sql), {
-        "s": scope, "q": query, "k": top_k
-    }).fetchall()]
-```
-
-## Synonym 通道深度解析
-
-### 别名匹配
-
-```{mermaid}
-flowchart TD
-    A["查询: 'Google'"] --> B[entity_aliases]
-    B --> C["alias: 'Google'"]
-    B --> D["alias: 'Alphabet'"]
-    C --> E[entity_id: google]
-    D --> E
-    E --> F[facts about Google]
-```
-
-### 查询实现
-
-```python
-def _chan_synonym(conn, scope, view, query, top_k):
-    """Synonym 通道: 别名匹配"""
-    sql = """
-        WITH matched_entities AS (
-            SELECT DISTINCT entity_id
-            FROM entity_aliases
-            WHERE alias % :q
-            ORDER BY similarity(alias, :q) DESC
-            LIMIT 10
-        )
-        SELECT DISTINCT f.fact_id::text
-        FROM facts f
-        JOIN matched_entities me ON (
-            f.subject_id = me.entity_id 
-            OR f.object_entity_id = me.entity_id
-        )
-        WHERE f.scope = :s
-          AND f.valid_to IS NULL
-        LIMIT :k
-    """
-    
-    return [r[0] for r in conn.execute(text(sql), {
-        "s": scope, "q": query, "k": top_k
-    }).fetchall()]
-```
-
-## Temporal 通道深度解析
-
-### 时间衰减函数
-
-```{mermaid}
-graph LR
-    subgraph "时间衰减曲线"
-        T1["1天前: weight=0.37"]
-        T2["7天前: weight=0.0009"]
-        T3["30天前: weight≈0"]
-    end
-```
-
-### 衰减公式
-
-```python
-# 指数衰减: e^(-t/τ)
-# τ = 86400 秒 (1天)
-weight = exp(-age_seconds / 86400.0)
-```
-
-### 查询实现
-
-```python
-def _chan_temporal(conn, scope, view, top_k):
-    """Temporal 通道: 时间衰减"""
-    sql = """
-        SELECT 
-            fact_id::text,
-            EXP(
-                -EXTRACT(EPOCH FROM (now() - recorded_from)) / 86400.0
-            ) as temporal_weight
-        FROM facts
-        WHERE scope = :s
-          AND valid_to IS NULL
-          AND recorded_to IS NULL
-        ORDER BY temporal_weight DESC, recorded_from DESC
-        LIMIT :k
-    """
-    
-    return [r[0] for r in conn.execute(text(sql), {
-        "s": scope, "k": top_k
-    }).fetchall()]
-```
-
-## 通道权重配置
-
-### 默认权重
-
-```python
-# config.py
-class RetrievalCfg(BaseModel):
-    top_k: int = 40
-    rrf_k: float = 60.0
-    graph_weight: float = 0.20
-    graph_max_hops: int = 2
-```
-
-### 自定义权重
-
-```python
-# 可以通过 advanced 配置调整
-class AdvancedRetrievalCfg(BaseModel):
-    hyde_enabled: bool = False      # HyDE
-    multihop_enabled: bool = False  # 多跳推理
-    salience_weight: float = 0.0    # 显著性权重
-```
-
-## 性能对比
-
-| 通道 | 查询时间 | 准确率 | 适用场景 |
-|------|----------|--------|----------|
-| 向量 | ~10ms | 中 | 语义相似 |
-| BM25 | ~5ms | 高 | 精确匹配 |
-| 图遍历 | ~50ms | 高 | 关系推理 |
-| Entity Name | ~3ms | 中 | 名称匹配 |
-| Synonym | ~5ms | 中 | 别名扩展 |
-| Temporal | ~3ms | 低 | 近期优先 |
+| 通道 | 召回类型 | 适合场景 | 依赖 |
+|------|---------|---------|------|
+| 向量 | 语义相似 | "类似XX的问题" | embedding service |
+| BM25 | 关键词精确 | 查具体参数/编号 | tsvector index |
+| 图遍历 | 关联推理 | "XX的根因是什么" | graph_eligible facts |
+| Entity Name | 模糊名称 | 记不全的名字 | pg_trgm |
+| Synonym | 同义表达 | "owns vs has" | synonyms 表 |
+| Temporal | 热数据 | "最近的问题" | access_count |

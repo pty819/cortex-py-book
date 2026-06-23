@@ -21,6 +21,9 @@ chapters/11-temporal-system
 chapters/12-erasures
 chapters/13-architecture-diagrams
 chapters/14-api-reference
+chapters/15-understanding
+chapters/16-maintenance
+chapters/17-vocabularies
 ```
 
 ## 项目概览

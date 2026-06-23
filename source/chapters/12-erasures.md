@@ -1,395 +1,152 @@
-# 第12章 Erasure 系统 (GDPR)
+# 第12章 Erasures 系统
 
-## 设计目标
+## 概述
 
-支持 **GDPR "被遗忘权"**，真正删除数据，而不是软删除。
-
-```{admonition} 关键约束
-1. **引用计数** —— 被引用的数据不能直接删
-2. **4 阶段流程** —— enumerate → refcount → delete → cleanup
-3. **每 event 独立事务** —— 避免 PG tx 中毒
-4. **manifest 预览** —— 先看会删什么，再执行
-```
-
-## 4 阶段流程
+Erasures 实现了 GDPR 风格的**引用计数真删**——不是软标记，而是物理删除或内容擦除，同时维护引用完整性。
 
 ```{mermaid}
-flowchart TD
-    subgraph "阶段 1: enumerate"
-        A[选择 selector] --> B[收集 event_ids]
-        B --> C[生成 manifest]
+graph LR
+    subgraph 4 阶段流程
+        A[enumerate] --> B[refcount]
+        B --> C[delete]
+        C --> D[cleanup]
     end
     
-    subgraph "阶段 2: refcount"
-        D[检查每个 event 的引用] --> E{refcount > 0?}
-        E -->|是| F[标记为 redact]
-        E -->|否| G[标记为 delete]
-    end
-    
-    subgraph "阶段 3: delete"
-        H{action?} -->|delete| I[物理删除]
-        H -->|redact| J[清空 content]
-        I --> K[清理 supports]
-        J --> K
-    end
-    
-    subgraph "阶段 4: cleanup"
-        L[删除 orphan entities]
-        L --> M[删除 orphan blobs]
-        M --> N[记录审计日志]
-    end
-    
-    C --> D
-    F --> H
-    G --> H
-    K --> L
+    D -->|完成| E[completed]
+    A -->|预览| F[preview manifest]
 ```
 
-## Selector 选择器
+## 4 阶段执行
 
-### 支持的 Selector
+### 阶段 1：Enumerate（列举）
 
-```python
-# erasures.py
-selector = {
-    "memory_ids": ["event_id_1", "event_id_2"],  # 直接指定
-    "about_entity": "entity_id",                   # 按实体
-    "predicate": "works_at"                        # 按谓词
-}
-```
-
-### 实现
+根据 selector 收集命中的 event_id：
 
 ```python
 def _select_event_ids(conn, scope, selector):
-    """根据 selector 收集命中的 event_id"""
+    """memory_ids 直接；about_entity/predicate 走 facts.supports 反查"""
     ids = []
-    
-    # 1. 直接指定的 memory_ids
     if selector.get("memory_ids"):
         ids.extend(selector["memory_ids"])
-    
-    # 2. 按实体查找
-    cond = ""
-    params = {"s": scope}
-    
-    if selector.get("about_entity"):
-        cond += " AND (f.subject_id = CAST(:a AS uuid) OR f.object_entity_id = CAST(:a AS uuid))"
-        params["a"] = selector["about_entity"]
-    
-    if selector.get("predicate"):
-        cond += " AND f.predicate = :p"
-        params["p"] = selector["predicate"]
-    
-    # 通过 facts.supports 反查 event_ids
-    if cond:
-        rows = conn.execute(text(f"""
-            SELECT DISTINCT unnest(f.supports)::text 
-            FROM facts f
-            WHERE f.scope = :s {cond}
+    if selector.get("about_entity") or selector.get("predicate"):
+        rows = conn.execute(text("""
+            SELECT DISTINCT unnest(f.supports)::text FROM facts f
+            WHERE f.scope=:s AND (:a IS NULL OR f.subject_id=CAST(:a AS uuid))
         """), params).fetchall()
         ids.extend(r[0] for r in rows)
-    
-    # 去重 + 验证存在性
-    if not ids:
-        return []
-    
-    rows = conn.execute(text("""
-        SELECT event_id::text 
-        FROM events 
-        WHERE scope = :s 
-          AND event_id = ANY(CAST(:ids AS uuid[]))
-    """), {"s": scope, "ids": "{" + ",".join(ids) + "}"}).fetchall()
-    
-    return list({r[0] for r in rows})
+    return list(dict.fromkeys(ids))  # 去重
 ```
 
-## 引用计数
+### 阶段 2：Refcount（引用计数）
 
-### 原理
-
-```{mermaid}
-graph TB
-    E[Event] -->|supports| F1[Fact 1]
-    E -->|supports| F2[Fact 2]
-    E -->|supports| B1[Belief 1]
-    
-    subgraph "引用计数 = 3"
-        RC["refcount = COUNT(facts) + COUNT(beliefs)"]
-    end
-```
-
-### 实现
+对每个 event 计算引用数——有多少 facts/beliefs 的 `supports` 数组指向它：
 
 ```python
 def _event_refcount(conn, scope, event_id):
-    """计算 event 被引用的次数"""
     return conn.execute(text("""
-        SELECT 
-            (SELECT count(*) FROM facts WHERE scope = :s AND CAST(:e AS uuid) = ANY(supports))
-            +
-            (SELECT count(*) FROM beliefs WHERE scope = :s AND CAST(:e AS uuid) = ANY(supports))
+        SELECT (SELECT count(*) FROM facts   WHERE scope=:s AND CAST(:e AS uuid) = ANY(supports))
+             + (SELECT count(*) FROM beliefs WHERE scope=:s AND CAST(:e AS uuid) = ANY(supports))
     """), {"s": scope, "e": event_id}).scalar() or 0
 ```
 
-## Manifest 预览
+### 阶段 3：Delete（删除/擦除）
 
-### 生成 Manifest
+根据引用计数决定：
+
+| 引用计数 | 操作 |
+|---------|------|
+| `refcount = 0` | **物理删除**整行 |
+| `refcount > 0` | **擦除内容**：清空 `content`，设 `excluded_from_recall=true`，保留 event_id + wal_offset |
 
 ```python
-def preview_erasure(*, scope, selector):
-    """生成 erasure manifest 预览"""
+# refcount = 0：物理删
+DELETE FROM events WHERE event_id = :e
+
+# refcount > 0：擦除（保留行，清内容）
+UPDATE events SET content='{}', excluded_from_recall=true WHERE event_id = :e
+```
+
+### 阶段 4：Cleanup（清理引用）
+
+清理所有指向被删/擦除事件的 supports 引用：
+
+```python
+# 从 facts.supports 移除引用
+UPDATE facts SET supports = array_remove(supports, :e) 
+WHERE scope=:s AND :e = ANY(supports)
+
+# 从 beliefs.supports 移除引用
+UPDATE beliefs SET supports = array_remove(supports, :e) 
+WHERE scope=:s AND :e = ANY(supports)
+
+# 如果 blob 引用计数归零 → 删除 blob
+DELETE FROM blobs WHERE refcount = 0
+```
+
+## 事务策略
+
+每个 event 独立事务，避免 PG 事务中毒：
+
+```python
+for event_id in manifest["to_delete"]:
     with session_scope() as conn:
-        # 1. 收集 event_ids
+        conn.execute(text("DELETE FROM events WHERE event_id=CAST(:e AS uuid)"), ...)
+        conn.execute(text("UPDATE facts SET supports=array_remove(supports,:e) ..."), ...)
+
+for event_id in manifest["to_redact"]:
+    with session_scope() as conn:
+        conn.execute(text("UPDATE events SET content='{}', excluded_from_recall=true ..."), ...)
+```
+
+## 预览与执行
+
+### Preview（干跑，不做修改）
+
+```python
+def preview_erasure(scope, selector):
+    """返回 manifest：哪些删、哪些擦"""
+    with session_scope() as conn:
         eids = _select_event_ids(conn, scope, selector)
-        
-        manifest_entries = []
-        n_del = n_red = 0
-        
+        to_delete = []
+        to_redact = []
         for eid in eids:
-            # 2. 计算引用计数
             rc = _event_refcount(conn, scope, eid)
-            
-            # 3. 决定 action
-            action = "redact" if rc > 0 else "delete"
-            
-            if action == "redact":
-                n_red += 1
+            if rc == 0:
+                to_delete.append(eid)
             else:
-                n_del += 1
-            
-            manifest_entries.append({
-                "event_id": eid,
-                "action": action,
-                "refcount": rc
-            })
-        
-        # 4. 保存 manifest
-        preview_id = uuid.uuid4()
-        manifest = {
-            "events": manifest_entries,
-            "expires_at": (datetime.now(timezone.utc) + 
-                          timedelta(hours=MANIFEST_TTL_HOURS)).isoformat()
-        }
-        
-        conn.execute(text("""
-            INSERT INTO erasure_jobs (preview_id, scope, selector, manifest, phase)
-            VALUES (:pid, :s, CAST(:sel AS jsonb), CAST(:m AS jsonb), 'preview')
-        """), {
-            "pid": preview_id,
-            "s": scope,
-            "sel": json.dumps(selector),
-            "m": json.dumps(manifest)
-        })
-        
-        return {
-            "preview_id": str(preview_id),
-            "total_events": len(eids),
-            "to_delete": n_del,
-            "to_redact": n_red,
-            "manifest": manifest
-        }
+                to_redact.append({"event_id": eid, "refcount": rc})
+    return {"to_delete": to_delete, "to_redact": to_redact, ...}
 ```
 
-### Manifest 结构
-
-```json
-{
-    "preview_id": "uuid",
-    "total_events": 10,
-    "to_delete": 7,
-    "to_redact": 3,
-    "manifest": {
-        "events": [
-            {
-                "event_id": "uuid1",
-                "action": "delete",
-                "refcount": 0
-            },
-            {
-                "event_id": "uuid2",
-                "action": "redact",
-                "refcount": 2
-            }
-        ],
-        "expires_at": "2024-01-02T00:00:00Z"
-    }
-}
-```
-
-## 执行删除
-
-### 4 阶段实现
+### Execute（执行 + 审计）
 
 ```python
-def execute_erasure(*, scope, preview_id):
-    """执行 erasure"""
-    with session_scope() as conn:
-        # 读取 manifest
-        job = conn.execute(text("""
-            SELECT manifest FROM erasure_jobs 
-            WHERE preview_id = :pid AND phase = 'preview'
-        """), {"pid": preview_id}).fetchone()
-        
-        if not job:
-            raise ValueError("preview not found or expired")
-        
-        manifest = job.manifest
-        
-        # 阶段 3: 执行删除
-        for entry in manifest["events"]:
-            eid = entry["event_id"]
-            action = entry["action"]
-            
-            # 每个 event 独立事务
-            with session_scope() as event_conn:
-                if action == "delete":
-                    # 物理删除
-                    _delete_event(event_conn, scope, eid)
-                else:
-                    # redact: 清空 content
-                    _redact_event(event_conn, scope, eid)
-                
-                # 清理 supports 引用
-                _clean_supports(event_conn, scope, eid)
-        
-        # 阶段 4: 清理 orphan
-        _cleanup_orphan_entities(conn, scope)
-        _cleanup_orphan_blobs(conn, scope)
-        
-        # 记录审计日志
-        _audit_log(conn, scope, preview_id, manifest)
-        
-        return {"executed": len(manifest["events"])}
+def execute_erasure(scope, selector, from_preview_id=None):
+    # 1. 创建 erasure_job（含 idempotency_key）
+    # 2. 枚举 event_ids
+    # 3. 逐 event 处理（每 event 独立事务）
+    # 4. 记录审计日志
+    return {"deleted": n, "redacted": m, "audit_id": audit_id}
 ```
 
-### 删除 Event
+## 完整 API
 
-```python
-def _delete_event(conn, scope, event_id):
-    """物理删除 event"""
-    conn.execute(text("""
-        DELETE FROM events 
-        WHERE scope = :s AND event_id = :e
-    """), {"s": scope, "e": event_id})
+```
+POST /v1/erasures/preview    → 干跑预览
+POST /v1/erasures/execute    → 执行删除
+GET  /v1/erasures/status     → 查询任务状态
 ```
 
-### Redact Event
-
-```python
-def _redact_event(conn, scope, event_id):
-    """Redact event (清空 content，保留 id)"""
-    conn.execute(text("""
-        UPDATE events 
-        SET 
-            content = '{"redacted": true}'::jsonb,
-            context = '{"redacted": true}'::jsonb,
-            excluded_from_recall = true
-        WHERE scope = :s AND event_id = :e
-    """), {"s": scope, "e": event_id})
+MCP 工具：
+```
+erasure_preview(about_entity, predicate, scope)  → 预览
+erasure_execute(scope, about_entity, predicate)  → 执行
 ```
 
-### 清理 supports
+## 设计原则
 
-```python
-def _clean_supports(conn, scope, event_id):
-    """从 facts/beliefs.supports 中移除引用"""
-    # 从 facts.supports 移除
-    conn.execute(text("""
-        UPDATE facts 
-        SET supports = array_remove(supports, CAST(:e AS uuid))
-        WHERE scope = :s AND CAST(:e AS uuid) = ANY(supports)
-    """), {"s": scope, "e": event_id})
-    
-    # 从 beliefs.supports 移除
-    conn.execute(text("""
-        UPDATE beliefs 
-        SET supports = array_remove(supports, CAST(:e AS uuid))
-        WHERE scope = :s AND CAST(:e AS uuid) = ANY(supports)
-    """), {"s": scope, "e": event_id})
-```
-
-## Orphan 清理
-
-### Orphan Entity
-
-```python
-def _cleanup_orphan_entities(conn, scope):
-    """删除没有引用的 entities"""
-    conn.execute(text("""
-        DELETE FROM entities 
-        WHERE scope = :s 
-          AND merged_into IS NULL
-          AND entity_id NOT IN (
-            SELECT DISTINCT subject_id FROM facts WHERE scope = :s
-            UNION
-            SELECT DISTINCT object_entity_id FROM facts WHERE scope = :s
-            UNION
-            SELECT DISTINCT about_entity_id FROM beliefs WHERE scope = :s
-          )
-    """), {"s": scope})
-```
-
-### Orphan Blob
-
-```python
-def _cleanup_orphan_blobs(conn, scope):
-    """删除没有引用的 blobs"""
-    conn.execute(text("""
-        DELETE FROM blobs 
-        WHERE scope = :s 
-          AND refcount <= 0
-    """), {"s": scope})
-```
-
-## 完整流程图
-
-```{mermaid}
-sequenceDiagram
-    participant C as Client
-    participant API as API
-    participant DB as DB
-    
-    C->>API: POST /erasures/preview
-    API->>DB: SELECT events by selector
-    API->>DB: 计算 refcount
-    API->>DB: 保存 manifest
-    API-->>C: preview_id + manifest
-    
-    Note over C: 用户确认
-    
-    C->>API: POST /erasures/execute
-    API->>DB: 读取 manifest
-    
-    loop 每个 event
-        API->>DB: 独立事务
-        alt action = delete
-            API->>DB: DELETE event
-        else action = redact
-            API->>DB: UPDATE content = redacted
-        end
-        API->>DB: 清理 supports
-    end
-    
-    API->>DB: 清理 orphan entities
-    API->>DB: 清理 orphan blobs
-    API->>DB: 记录审计日志
-    
-    API-->>C: 执行结果
-```
-
-## 配置
-
-```python
-# config.py 中没有专门的 erasure 配置
-# 但有一些常量
-
-MANIFEST_TTL_HOURS = 24  # manifest 有效期
-```
-
-## 安全考虑
-
-1. **不可逆** —— 物理删除后无法恢复
-2. **审计日志** —— 记录所有删除操作
-3. **manifest 预览** —— 先看再删
-4. **独立事务** —— 避免部分删除
+1. **引用计数保安全**：有下游依赖的 event 不物理删，只擦除内容
+2. **可审计**：每次删除记录到 erasure_jobs 表 + audit_log
+3. **幂等**：同 erasure_job 重复执行安全
+4. **逐 event 事务**：防止大批量删除导致的事务膨胀
+5. **WAL 保留**：擦除后的 event 保留 wal_offset，不破坏 wal_offset 序列的连续性

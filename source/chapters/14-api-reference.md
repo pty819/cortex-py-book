@@ -1,427 +1,212 @@
 # 第14章 API 参考
 
-## REST API 端点
+## FastAPI 端点
 
-### Experience API
+所有端点前缀 `/v1`，需带 `Authorization: Bearer <key>`（如配置了 api.key）。
 
-**端点**: `POST /v1/experience`
+### 核心写入
 
-记录一条经验到记忆系统。
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/v1/experience` | POST | 写入单个 event（幂等） |
+| `/v1/experience/bulk` | POST | 批量写入 |
+| `/v1/experience/{event_id}/?wait=` | GET | 等待指定 stage |
+| `/v1/forget` | POST | 软遗忘 |
 
-```python
-# 请求
-{
-    "scope": "org:acme/user:alice",
-    "modality": "conversation",
-    "content": {
-        "kind": "message",
-        "role": "user",
-        "text": "Alice works at Acme Corp"
-    },
-    "context": {
-        "observed_at": "2024-01-15T10:00:00Z",
-        "labels": ["work", "introduction"]
-    },
-    "idempotency_key": "unique-key-123"
-}
+### 核心读取
 
-# 响应 (202 Accepted)
-{
-    "event_id": "uuid",
-    "wal_offset": 42,
-    "status": "accepted",
-    "lifecycle_stream": "/v1/lifecycle/stream?event_id=uuid"
-}
-```
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/v1/recall` | POST | 6 通道混合检索 |
+| `/v1/answer` | POST | 检索 + LLM 回答 |
+| `/v1/context` | GET | holistic 上下文 |
+| `/v1/timeline` | GET | 双时态超替链 |
 
-**幂等性**:
-- 同 `idempotency_key` + 同 body → 返回既有 (200)
-- 同 `idempotency_key` + 不同 body → 409 Conflict
+### 层直读
 
-### Recall API
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/v1/layers/events` | GET | 列出 events |
+| `/v1/layers/events/{event_id}` | GET | 单个 event |
+| `/v1/layers/entities` | GET | 列出实体 |
+| `/v1/layers/entities/{entity_id}/edges` | GET | 实体的 facts |
+| `/v1/layers/facts` | GET | 列出 facts |
+| `/v1/layers/beliefs` | GET | 列出 beliefs |
+| `/v1/layers/concepts` | GET | 列出 concepts |
 
-**端点**: `POST /v1/recall`
+### 导入导出
 
-从记忆中检索相关信息。
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/v1/import/jsonl` | POST | 从 JSONL 导入 |
+| `/v1/import/mem0` | POST | 从 Mem0 导入 |
+| `/v1/import/letta` | POST | 从 Letta 导入 |
+| `/v1/import/openai` | POST | 从 OpenAI 导入 |
+| `/v1/import/zep` | POST | 从 Zep 导入 |
+| `/v1/ingest/document` | POST | 文档切块入库 |
+| `/v1/export` | POST | 导出 JSONL |
 
-```python
-# 请求
-{
-    "scope": "org:acme/user:alice",
-    "query": "Alice 在哪工作?",
-    "view": "local",
-    "include": ["facts", "beliefs", "understanding"],
-    "top_k": 40,
-    "temporal": "last month",
-    "citation_mode": "inline_with_markers"
-}
+### Erasures
 
-# 响应
-{
-    "pack": {
-        "facts": [...],
-        "beliefs": [...],
-        "understanding": [...]
-    },
-    "stats": {
-        "total_results": 15,
-        "channels_used": 6,
-        "query_time_ms": 150
-    }
-}
-```
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/v1/erasures/preview` | POST | 干跑预览 |
+| `/v1/erasures/execute` | POST | 执行删除 |
+| `/v1/erasures/status/{erasure_id}` | GET | 任务状态 |
 
-**视图模式**:
+### Case 管理
 
-| 视图 | 说明 |
-|------|------|
-| `local` | 只看当前 scope |
-| `holistic` | 向上聚合所有父 scope |
-| `descend` | 向下展开所有子 scope |
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/v1/cases` | POST | 创建 case |
+| `/v1/cases/{episode_id}` | PATCH | 更新 case |
+| `/v1/cases/{episode_id}` | GET | 获取 case |
+| `/v1/cases` | GET | 列出 cases |
+| `/v1/cases/search` | POST | 搜索 cases |
 
-### Answer API
+### Vocab
 
-**端点**: `POST /v1/answer`
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/v1/vocab` | POST | 创建词表 |
+| `/v1/vocab` | GET | 列出词表 |
 
-基于记忆回答问题。
+### Temporal
 
-```python
-# 请求
-{
-    "scope": "org:acme/user:alice",
-    "question": "Alice 什么时候加入 Acme 的?",
-    "view": "holistic",
-    "top_k": 20
-}
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/v1/temporal` | POST | 注册时间短语 |
+| `/v1/temporal` | GET | 列出时间短语 |
 
-# 响应
-{
-    "answer": "Alice 于 2023 年 6 月加入 Acme Corp。",
-    "sources": [
-        {"fact_id": "uuid", "summary": "Alice works_at Acme (2023-06)"},
-        ...
-    ],
-    "confidence": 0.95
-}
-```
+### 维护
 
-### Forget API
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/v1/maintenance/methylation` | POST | 甲基化 |
+| `/v1/maintenance/consolidation` | POST | 去重 |
+| `/v1/maintenance/vocab/seed` | POST | 预置诊断词表 |
 
-**端点**: `POST /v1/forget`
+### Admin
 
-软删除记忆（标记为 excluded_from_recall）。
-
-```python
-# 请求
-{
-    "scope": "org:acme/user:alice",
-    "memory_ids": ["event_id_1", "event_id_2"]
-}
-
-# 响应
-{
-    "forgotten": 2,
-    "status": "ok"
-}
-```
-
-### Erasures API
-
-**端点**: `POST /v1/erasures/preview`
-
-预览 GDPR 删除。
-
-```python
-# 请求
-{
-    "scope": "org:acme/user:alice",
-    "selector": {
-        "about_entity": "entity_id",
-        "predicate": "works_at"
-    }
-}
-
-# 响应
-{
-    "preview_id": "uuid",
-    "total_events": 10,
-    "to_delete": 7,
-    "to_redact": 3,
-    "manifest": {...}
-}
-```
-
-**端点**: `POST /v1/erasures/execute`
-
-执行 GDPR 删除。
-
-```python
-# 请求
-{
-    "scope": "org:acme/user:alice",
-    "preview_id": "uuid"
-}
-
-# 响应
-{
-    "executed": 10,
-    "deleted": 7,
-    "redacted": 3
-}
-```
-
-### Layer Read API
-
-**端点**: `GET /v1/{layer}`
-
-直接读取各层数据。
-
-| 端点 | 说明 |
-|------|------|
-| `GET /v1/events?scope=...` | 读取 Events |
-| `GET /v1/entities?scope=...` | 读取 Entities |
-| `GET /v1/facts?scope=...` | 读取 Facts |
-| `GET /v1/beliefs?scope=...` | 读取 Beliefs |
-| `GET /v1/episodes?scope=...` | 读取 Episodes |
-| `GET /v1/understanding?scope=...` | 读取 Understanding |
-
-### Bulk API
-
-**端点**: `POST /v1/bulk/experience`
-
-批量写入。
-
-```python
-# 请求
-{
-    "items": [
-        {"scope": "...", "content": {...}, "idempotency_key": "key1"},
-        {"scope": "...", "content": {...}, "idempotency_key": "key2"}
-    ]
-}
-
-# 响应
-{
-    "accepted": 2,
-    "event_ids": ["uuid1", "uuid2"]
-}
-```
-
-### Import API
-
-**端点**: `POST /v1/import/{format}`
-
-支持多种导入格式。
-
-| 格式 | 说明 |
-|------|------|
-| `jsonl` | JSON Lines |
-| `csv` | CSV |
-| `markdown` | Markdown |
-| `text` | 纯文本 |
-| `conversation` | 对话格式 |
-
-### Export API
-
-**端点**: `GET /v1/export`
-
-导出数据为 JSONL。
-
-```python
-# 响应 (JSONL 流)
-{"event_id": "uuid1", "scope": "...", "content": {...}}
-{"event_id": "uuid2", "scope": "...", "content": {...}}
-```
-
-### Lifecycle API
-
-**端点**: `GET /v1/lifecycle/stream`
-
-SSE 流，实时推送任务进度。
-
-```
-event: captured
-data: {"event_id": "uuid", "scope": "..."}
-
-event: extracting
-data: {"event_id": "uuid", "scope": "..."}
-
-event: extracted
-data: {"event_id": "uuid", "scope": "...", "facts": 3, "entities": 2}
-```
-
-### Health API
-
-**端点**: `GET /v1/health`
-
-健康检查。
-
-```json
-{
-    "ok": true,
-    "version": "0.1.0",
-    "database": "ok",
-    "embedding": "ok",
-    "rerank": "ok",
-    "llm": "configured"
-}
-```
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/v1/health` | GET | 健康检查 |
+| `/v1/scopes/list` | GET | 列出 scopes |
+| `/v1/admin/metrics` | GET | 存储指标 |
+| `/v1/lifecycle` | GET | 生命周期事件（SSE） |
 
 ## MCP 工具
 
-### experience
+共 23 个工具，全部通过 `cortex.mcp_server` 注册。
 
-记录经验。
+### 核心记忆
 
-```python
-{
-    "name": "experience",
-    "arguments": {
-        "scope": "org:acme/user:alice",
-        "modality": "conversation",
-        "content": {"kind": "message", "text": "..."},
-        "idempotency_key": "unique-key"
-    }
-}
-```
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `health_check` | DB 连通性 + 行数 | - |
+| `memory_store` | 存文本 + 同步抽取 | text, scope, modality |
+| `memory_search` | 6 通道混合检索 | query, scope, view, top_k |
+| `answer` | 检索 + LLM 回答 | query, scope |
+| `get_context` | holistic 上下文 | scope, query |
 
-### recall
+### 查询
 
-检索记忆。
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `memory_list` | 列出 events | scope, limit |
+| `memory_get` | 单个 event | event_id |
+| `entity_list` | 列出实体 | scope, q, limit |
+| `entity_edges` | 实体的 facts | entity_id, scope |
+| `facts_timeline` | 双时态链 | subject, predicate, scope |
+| `list_beliefs` | 列出 beliefs | scope, about |
 
-```python
-{
-    "name": "recall",
-    "arguments": {
-        "scope": "org:acme/user:alice",
-        "query": "Alice 在哪工作?",
-        "view": "local",
-        "top_k": 40
-    }
-}
-```
+### 写入
 
-### answer
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `bulk_ingest` | 批量存文本 | texts[], scope, modality |
+| `memory_forget` | 软遗忘 | predicate, about_entity, scope |
 
-回答问题。
+### Erasure
 
-```python
-{
-    "name": "answer",
-    "arguments": {
-        "scope": "org:acme/user:alice",
-        "question": "Alice 什么时候加入 Acme 的?"
-    }
-}
-```
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `erasure_preview` | 干跑 | about_entity, predicate, scope |
+| `erasure_execute` | 执行 | scope, from_preview_id |
 
-### list_entities
+### Case
 
-列出实体。
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `case_create` | 创建 case | title, equipment, lot, recipe, scope |
+| `case_update` | 更新 case | episode_id, phase, status, root_cause |
+| `case_get` | 获取 case | episode_id |
+| `case_list` | 列出 cases | status, equipment, scope |
+| `case_search` | 搜索 cases | query, scope |
 
-```python
-{
-    "name": "list_entities",
-    "arguments": {
-        "scope": "org:acme/user:alice",
-        "limit": 100
-    }
-}
-```
+### Vocab
 
-### search_entities
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `vocab_create` | 创建词表 | name, kind, values[], scope |
+| `vocab_list` | 列出词表 | scope |
 
-搜索实体。
+### Temporal
 
-```python
-{
-    "name": "search_entities",
-    "arguments": {
-        "scope": "org:acme/user:alice",
-        "query": "Alice",
-        "limit": 10
-    }
-}
-```
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `temporal_register` | 注册短语 | name, expression |
+| `temporal_list` | 列出短语 | - |
 
-### merge_entities
+### Admin
 
-合并实体。
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `admin_metrics` | 存储指标 | scope |
+| `export_scope` | 导出 JSONL | scope |
+| `episodes_build` | 构建 episodes | scope |
+| `episodes_list` | 列出 episodes | scope |
 
-```python
-{
-    "name": "merge_entities",
-    "arguments": {
-        "source_id": "uuid1",
-        "target_id": "uuid2"
-    }
-}
-```
+## Pydantic Schemas
 
-### add_alias
+### 请求 Schema
 
-添加别名。
+| Schema | 用途 |
+|--------|------|
+| `ExperienceRequest` | 单条写入 |
+| `BulkExperienceRequest` | 批量写入 |
+| `RecallRequest` | 检索请求 |
+| `AnswerRequest` | 问答请求 |
+| `ForgetRequest` | 遗忘请求 |
+| `ErasurePreviewRequest` | 擦除预览 |
+| `ErasureExecuteRequest` | 擦除执行 |
+| `CaseCreateRequest` | 创建案例 |
+| `CaseUpdateRequest` | 更新案例 |
+| `CaseSearchRequest` | 搜索案例 |
+| `VocabCreateRequest` | 创建词表 |
+| `VocabReplaceRequest` | 替换词表 |
+| `TemporalPhraseRequest` | 时间短语 |
+| `IngestDocumentRequest` | 文档入库 |
+| `ImportJsonlRequest` | JSONL 导入 |
+| `ImportMem0Request` | Mem0 导入 |
+| `ImportLettaRequest` | Letta 导入 |
+| `ImportOpenAIRequest` | OpenAI 导入 |
+| `ImportZepRequest` | Zep 导入 |
+| `ExportRequest` | 导出请求 |
+| `MaintenanceRequest` | 维护请求 |
 
-```python
-{
-    "name": "add_alias",
-    "arguments": {
-        "entity_id": "uuid",
-        "alias": "Google"
-    }
-}
-```
+### 响应 Schema
 
-### register_phrase
-
-注册时间短语。
-
-```python
-{
-    "name": "register_phrase",
-    "arguments": {
-        "name": "recent",
-        "expression": "-P7D..P0D"
-    }
-}
-```
-
-### get_stats
-
-获取统计。
-
-```python
-# 响应
-{
-    "entities": 150,
-    "facts": 420,
-    "beliefs": 85,
-    "events": 1000,
-    "episodes": 45
-}
-```
-
-## 错误码
-
-| HTTP | 说明 |
-|------|------|
-| 200 | 成功 |
-| 202 | 已接受 (异步处理) |
-| 400 | 请求错误 |
-| 404 | 未找到 |
-| 409 | 冲突 (幂等键) |
-| 500 | 服务器错误 |
-
-## 认证
-
-### API Key
-
-```bash
-curl -H "Authorization: Bearer YOUR_API_KEY" \
-     -X POST http://localhost:8000/v1/recall \
-     -d '{"scope": "...", "query": "..."}'
-```
-
-### MCP
-
-MCP 通过 scope 隔离，不需要额外认证。
+| Schema | 用途 |
+|--------|------|
+| `ExperienceResponse` | 写入响应 |
+| `StratifiedPack` | 检索响应 |
+| `AnswerResponse` | 问答响应 |
+| `TimelineResponse` | 时间线响应 |
+| `ForgetResponse` | 遗忘响应 |
+| `ImportResponse` | 导入响应 |
+| `ExportResponse` | 导出响应 |
+| `EntityOut` | 实体输出 |
+| `FactOut` | 事实输出 |
+| `BeliefOut` | 信念输出 |
+| `EventOut` | 事件输出 |

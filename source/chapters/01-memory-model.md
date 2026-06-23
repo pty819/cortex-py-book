@@ -11,11 +11,11 @@ graph TB
     end
     
     subgraph 短期记忆
-        EP[Episodes<br/>有界事件序列]
+        EP[Episodes<br/>有界事件序列<br/>Case 诊断案例]
     end
     
     subgraph 长期记忆
-        F[Facts<br/>双时态三元组]
+        F[Facts<br/>双时态三元组<br/>polarity + assertion_status]
         B[Beliefs<br/>概率断言]
         U[Understanding<br/>概念合成]
     end
@@ -65,6 +65,15 @@ CREATE TABLE events (
 );
 ```
 
+### 关键字段说明
+
+- **`scope`**：命名空间路径，隔离不同设备/产线的知识图谱
+- **`idempotency_key`**：幂等键，同 key + 同 body → 返回已有；同 key + 异 body → 409
+- **`excluded_from_recall`**：软删除/甲基化标记（由 maintenance 自动管理）
+- **`extraction_diagnostics`**：抽取管线诊断信息 JSON
+- **`methylated_at`**：甲基化时间戳（长期不召回的事件被标记）
+- **`case_id`**：关联的诊断案例 ID（诊断场景）
+
 ### 幂等写入
 
 ```{mermaid}
@@ -79,7 +88,7 @@ flowchart TD
     C --> H[emit lifecycle]
 ```
 
-**实现代码** (`core.py`):
+**实现代码** (`core.py`)：
 
 ```python
 def append_event(*, scope, modality, content, context, 
@@ -98,293 +107,251 @@ def append_event(*, scope, modality, content, context,
         raise IdempotencyConflict("同 key 不同 body")
     
     # 2. 写入 WAL
-    row = c.execute("""
-        INSERT INTO events (scope, modality, content, context, 
-                           caller, idempotency_key, ...)
-        VALUES (...)
-        RETURNING event_id, wal_offset
-    """).fetchone()
+    row = c.execute("""INSERT INTO events (...) 
+        VALUES (...) RETURNING event_id, wal_offset""", ...)
     
-    # 3. 自动 provision scope
+    # 3. 自动注册 scope
     _auto_provision_scope(c, scope)
     
     # 4. 发送生命周期事件
     emit_lifecycle(c, kind="captured", scope=scope, event_id=row.event_id)
     
-    return row.event_id, row.wal_offset
+    return str(row.event_id), row.wal_offset
 ```
 
-### Experience Envelope
-
-```python
-# schemas.py
-class Content(BaseModel):
-    kind: str = "message"      # message|text|json|blob_ref|triple
-    role: Optional[str] = None # user|assistant|tool|system
-    text: Optional[str] = None
-    data: Optional[Dict] = None
-    blob_id: Optional[str] = None
-
-class Context(BaseModel):
-    observed_at: Optional[str] = None
-    labels: List[str] = Field(default_factory=list)
-    intent: Optional[str] = None
-    preceded_by: List[str] = Field(default_factory=list)
-```
-
-## 第2层：Episodes（情节层）
+## 第2层：Episodes（事件分段层）
 
 ### 定义
 
-Episodes 是有界事件序列，按时间间隔自动分段。
+Episodes 是按时间窗口或诊断 Case 分组的"有界事件序列"。
 
-### 分段逻辑
-
-```{mermaid}
-flowchart TD
-    A[Events 序列] --> B{时间间隔 > 30min?}
-    B -->|否| C[加入当前 Episode]
-    B -->|是| D[封存当前 Episode]
-    D --> E[创建新 Episode]
-    E --> C
+```sql
+CREATE TABLE episodes (
+    episode_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scope           TEXT NOT NULL,
+    title           TEXT,
+    event_ids       UUID[] NOT NULL DEFAULT '{}',
+    actors          TEXT[] NOT NULL DEFAULT '{}',
+    causal_chain    JSONB,
+    
+    -- 双时态
+    started_at      TIMESTAMPTZ NOT NULL,
+    ended_at        TIMESTAMPTZ,
+    valid_from      TIMESTAMPTZ NOT NULL,
+    valid_to        TIMESTAMPTZ,
+    recorded_from   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_to     TIMESTAMPTZ,
+    sealed          BOOLEAN NOT NULL DEFAULT false,
+    
+    -- 诊断 Case 扩展（新增）
+    case_id         TEXT,          -- 案例编号
+    equipment       TEXT,          -- 设备标识
+    lot             TEXT,          -- 批次号
+    recipe          TEXT,          -- 配方
+    phase           TEXT,          -- 诊断阶段
+    root_cause      TEXT,          -- 根因结论
+    resolution      TEXT,          -- 修复措施
+    status          TEXT DEFAULT 'open',  -- open/investigating/resolved/closed
+    metadata        JSONB DEFAULT '{}'
+);
 ```
 
-**实现** (`episodes.py`):
+### 两种分段模式
 
-```python
-def segment_scope(scope: str):
-    """扫描 scope 下的 events，按时间间隔分段"""
-    events = fetch_events_ordered(scope)
-    
-    current_episode = None
-    last_time = None
-    
-    for event in events:
-        if last_time and (event.observed_at - last_time).seconds > 1800:
-            # 超过 30 分钟，封存当前 episode
-            seal_episode(current_episode)
-            current_episode = None
-        
-        if not current_episode:
-            current_episode = create_episode(scope)
-        
-        add_event_to_episode(current_episode, event.event_id)
-        last_time = event.observed_at
-    
-    if current_episode:
-        seal_episode(current_episode)
+1. **自动分段**（`segment_scope`）：按 30 分钟时间窗口或 `case_id` 分组
+2. **显式 Case**（`create_case`）：下游 agent 创建诊断 Case，手动关联 events
+
+### Case 生命周期
+
+```
+open → investigating → resolved → closed
+```
+
+诊断阶段（phase）：
+```
+observation → scoping → investigation → correlation → root_cause → remediation → regression
 ```
 
 ## 第3层：Facts（事实层）
 
-### 定义
-
-Facts 是**双时态三元组**，同时承担：
-1. 知识图谱的边 (subject-predicate-object)
-2. 双时态记录 (当时 vs 现在)
-
-### 双时态设计
-
-```{mermaid}
-graph LR
-    subgraph 记录时间
-        RT[recorded_from<br/>何时记录]
-        RT2[recorded_to<br/>何时被取代]
-    end
-    
-    subgraph 有效时间
-        VT[valid_from<br/>何时开始为真]
-        VT2[valid_to<br/>何时不再为真]
-    end
-    
-    F[Fact] --> RT
-    F --> RT2
-    F --> VT
-    F --> VT2
-```
-
-**4 个时间字段**：
-
-| 字段 | 含义 |
-|------|------|
-| `recorded_from` | 系统何时获知此 fact |
-| `recorded_to` | 此 fact 何时被新版本取代 (NULL=当前有效) |
-| `valid_from` | 此 fact 在世界中何时开始为真 |
-| `valid_to` | 此 fact 在世界中何时不再为真 (NULL=仍然为真) |
-
-**查询示例**：
-
-```sql
--- 问"现在什么是真的"
-SELECT * FROM facts 
-WHERE valid_to IS NULL AND recorded_to IS NULL;
-
--- 问"当时我们怎么以为的"
-SELECT * FROM facts 
-WHERE recorded_from < '2024-01-01' AND recorded_to > '2024-01-01';
-```
-
-### Schema
+Facts 是系统的**核心知识表示**——subject-predicate-object 三元组，同时作为知识图谱的边。
 
 ```sql
 CREATE TABLE facts (
-    fact_id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    scope             TEXT NOT NULL,
-    
-    -- 三元组
-    subject_id        UUID NOT NULL REFERENCES entities(entity_id),
-    predicate         TEXT NOT NULL,
-    object_entity_id  UUID REFERENCES entities(entity_id),
-    object_value      JSONB,  -- {datatype, value}
-    
-    -- 置信度
-    confidence        REAL NOT NULL DEFAULT 0.5,
+    fact_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scope            TEXT NOT NULL,
+    subject_id       UUID NOT NULL REFERENCES entities(entity_id),
+    predicate        TEXT NOT NULL,
+    object_type      TEXT NOT NULL,        -- 'entity' | 'literal'
+    object_entity_id UUID REFERENCES entities(entity_id),
+    object_value     JSONB,                -- {value: "..."} for literals
     
     -- 双时态
-    valid_from        TIMESTAMPTZ,
-    valid_to          TIMESTAMPTZ,
-    recorded_from     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    recorded_to       TIMESTAMPTZ,
+    valid_from       TIMESTAMPTZ NOT NULL,
+    valid_to         TIMESTAMPTZ,
+    recorded_from    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_to      TIMESTAMPTZ,
     
-    -- 证据链
-    supports          UUID[] NOT NULL DEFAULT '{}',
-    
-    -- 向量
-    embedding         vector(1024),
-    
-    -- 全文检索
-    content_tsv       tsvector GENERATED ALWAYS AS (
-        to_tsvector('english', predicate || ' ' || 
-                    COALESCE(object_value->>'value', ''))
-    ) STORED
+    -- 语义字段
+    confidence       FLOAT NOT NULL DEFAULT 0.5,
+    polarity         TEXT NOT NULL DEFAULT 'positive',  -- positive | negative
+    assertion_status TEXT NOT NULL DEFAULT 'observed',  -- observed|hypothesized|confirmed|ruled_out|rejected
+    evidence_span    TEXT,
+    supports         UUID[] NOT NULL DEFAULT '{}',      -- → event_id
+    extraction_model TEXT,
+    CHECK (object_type = 'entity' AND object_entity_id IS NOT NULL
+        OR object_type = 'literal' AND object_value IS NOT NULL)
 );
+```
+
+### 断言语义
+
+**Polarity**（极性）：
+| 值 | 含义 | 示例 |
+|----|------|------|
+| `positive` | 肯定断言 | "腔体压力异常" |
+| `negative` | 否定/排除 | "腔体压力未异常" |
+
+**Assertion Status**（断言状态）：
+| 值 | 含义 | 适用谓词 |
+|----|------|----------|
+| `observed` | 观察到的，确认无误 | 结构/配置/传感器等非因果 |
+| `hypothesized` | 假设/推断（未确认） | 因果谓词默认 |
+| `confirmed` | 有证据确认 | 因果谓词 + 证据支撑 |
+| `ruled_out` | 被排除了 | 对立谓词自动 |
+| `rejected` | 被驳回 | 明确否定 |
+
+**自动规则**（`_assertion_semantics` 函数）：
+- 对立谓词（`ruled_out`）→ 自动 `negative` + `ruled_out`
+- 因果谓词 + 无证据 → `hypothesized`
+- 因果谓词 + 证据支撑 + 来源可信 → `confirmed`
+- 非因果谓词 → 保留 LLM 指定的值
+
+### 谓词本体（Ontology）
+
+所有谓词在 `ontology.py` 中集中定义，三大类：
+
+**结构/配置关系**（静态拓扑）：
+```
+part_of, has_component, installed_on, located_in,
+monitored_by, controlled_by, regulates, configured_as, depends_on
+```
+
+**因果/级联关系**（故障传播）：
+```
+caused_by, led_to, cascades_to, affects, triggers,
+contributes_to, correlates_with, suggests, symptom_of, has_symptom
+```
+
+**诊断推理关系**（排查过程）：
+```
+investigates, checked, found, normal, ruled_out,
+supports, contradicts, refines_to, alternative_to,
+confirmed_by, repaired_by, references, drifts_from,
+measured_as, deviates_from, feedback_to, preceded_by
+```
+
+**状态谓词**（单值超替）：
+```
+has_status, deal_stage
+```
+
+### 图准入规则
+
+不是所有 facts 都进图遍历。`graph_eligible()` 函数定义准入条件：
+```
+1. polarity = 'positive'
+2. predicate 不是排除谓词（no_correlation, contradicts, ruled_out）
+3. 因果谓词 → 必须 assertion_status = 'confirmed'
+4. 非因果谓词 → assertion_status ∈ {'observed', 'confirmed'}
 ```
 
 ## 第4层：Beliefs（信念层）
 
-### 定义
-
-Beliefs 是**概率断言**，从多个 facts 推理得出，带置信度和证据链。
-
-### 结构
-
-```{mermaid}
-graph TB
-    F1[Fact 1: Alice works at Acme] --> B[Belief: Alice 是 Acme 员工]
-    F2[Fact 2: Acme 是公司] --> B
-    F3[Fact 3: Alice 有 Acme 邮箱] --> B
-    
-    B --> C[confidence: 0.95]
-    B --> D[supports: fact1_id, fact2_id, fact3_id]
-```
-
-### Schema
+Beliefs 是 Facts 聚合而成的**概率断言**，回答"我们目前怎么看 X"。
 
 ```sql
 CREATE TABLE beliefs (
-    belief_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    scope             TEXT NOT NULL,
-    
-    -- 关于谁
-    about_entity_id   UUID NOT NULL REFERENCES entities(entity_id),
-    canonical_name    TEXT NOT NULL,
-    
-    -- 断言
-    stance            TEXT NOT NULL,  -- supports/refutes/neutral
-    claim             TEXT NOT NULL,
-    
-    -- 置信度
-    confidence        REAL NOT NULL,
-    confidence_interval REAL[],
-    
-    -- 证据链
-    supports          UUID[] NOT NULL DEFAULT '{}',
+    belief_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scope          TEXT NOT NULL,
+    about_entity_id UUID NOT NULL REFERENCES entities(entity_id),
+    stance         TEXT NOT NULL,  -- supports|likely_true|uncertain|likely_false|contradicts
+    claim          TEXT NOT NULL,
+    confidence     FLOAT NOT NULL,
+    confidence_interval JSONB,       -- [lower, upper]
+    supports       UUID[] NOT NULL DEFAULT '{}',  -- → fact_id / event_id
     
     -- 双时态
-    valid_from        TIMESTAMPTZ,
-    valid_to          TIMESTAMPTZ,
-    recorded_from     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    recorded_to       TIMESTAMPTZ
+    valid_from     TIMESTAMPTZ NOT NULL,
+    valid_to       TIMESTAMPTZ,
+    recorded_from  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_to    TIMESTAMPTZ,
+    last_revised_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
+Belief 的 5 种立场：
+
+| 立场 | 含义 |
+|------|------|
+| `supports` | 证据支持 |
+| `likely_true` | 很可能为真 |
+| `uncertain` | 不确定 |
+| `likely_false` | 很可能为假 |
+| `contradicts` | 反驳/矛盾 |
+
 ## 第5层：Understanding（理解层）
 
-### 定义
+Understanding 层对 Beliefs 做**高阶概念合成**，产生主题级概括。
 
-Understanding 是**概念合成**，从多个 beliefs 聚合得出高级概念。
-
-### 合成流程
-
-```{mermaid}
-flowchart TD
-    A[Beliefs 关于同一实体] --> B{LLM 合成}
-    B --> C[生成 concept]
-    C --> D[name: 概念名]
-    C --> E[summary: 摘要]
-    C --> F[confidence: 置信度]
-    C --> G[related: 关联概念]
+```sql
+CREATE TABLE concepts (
+    concept_id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scope        TEXT NOT NULL,
+    name         TEXT NOT NULL,
+    topic        TEXT,              -- 主题分类
+    version      INT NOT NULL DEFAULT 1,
+    summary      TEXT,              -- LLM 合成的概括
+    supports     UUID[] NOT NULL DEFAULT '{}',  -- → fact_id / belief_id / episode_id
+    related      JSONB NOT NULL DEFAULT '[]',    -- [{name, relation}]
+    confidence   FLOAT NOT NULL DEFAULT 0.5,
+    valid_from   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 ```
 
-**实现** (`understanding.py`):
-
-```python
-def synthesize_scope(scope, topics=None):
-    """从 beliefs 合成 understanding"""
-    beliefs = fetch_beliefs_for_synthesis(scope)
-    
-    if not topics:
-        # 自动按实体名分 topic
-        topics = {b.canonical_name for b in beliefs}
-    
-    for topic in topics:
-        relevant = [b for b in beliefs if b.canonical_name == topic]
-        
-        # 调 LLM 合成
-        if llm_configured("synthesis"):
-            result = llm_chat("synthesis", 
-                "为给定主题合成一个概念...",
-                material)
-            concept = parse_json(result)
-        else:
-            # Mock: 简单聚合
-            concept = {
-                "name": topic,
-                "summary": "; ".join(b.claim for b in relevant[:3]),
-                "confidence": 0.6
-            }
-        
-        # 存入 understanding 表
-        insert_understanding(scope, concept)
+related 图支持 5 种关系：
+```
+specializes, generalizes, contrasts, co_occurs, causes
 ```
 
-## 层间关系
+## 数据派生关系
 
 ```{mermaid}
 graph TB
     subgraph 写入
-        E[Event] -->|1. append| WAL[WAL]
-        WAL -->|2. enqueue| Q[Job Queue]
+        E[Events] -->|extract| F[Facts]
+        E -->|segment| EP[Episodes]
     end
     
-    subgraph 异步处理
-        Q -->|3. claim| W[Worker]
-        W -->|4. extract| EXT[Extraction]
-        EXT -->|5. link| LINK[Entity Linking]
-        LINK -->|6. fact| F[Facts]
-        LINK -->|7. entity| ENT[Entities]
-        W -->|8. segment| EP[Episodes]
-        W -->|9. aggregate| B[Beliefs]
-        W -->|10. synthesize| U[Understanding]
+    subgraph 推理
+        F -->|aggregate| B[Beliefs]
+        B -->|synthesize| U[Understanding]
     end
     
     subgraph 读取
-        R[Recall] -->|query| RET[Retrieval]
-        RET -->|6 channels| MIX[Mix]
-        MIX -->|RRF| PACK[StratifiedPack]
+        F -->|6通道检索| R[Recall]
+        EP -->|Case 检索| R
+        B -->|信念检索| R
+        U -->|概念检索| R
     end
     
-    F --> RET
-    B --> RET
-    U --> RET
+    R -->|StratifiedPack| A[Answer / Agent]
 ```
+
+## 分层架构的优势
+
+1. **可溯源**：每个 Fact 的 `supports` 指向产生它的 Event（"这个结论来自哪条记录"）
+2. **双视角**：同时回答"现在什么是真的"和"当时我们怎么以为的"
+3. **渐进合成**：原始事件 → 结构化事实 → 概率断言 → 概念概括，每层都是下层的高阶抽象
+4. **按需存储**：不需要的层可以不生成（如关闭 Understanding 合成不影响检索）
