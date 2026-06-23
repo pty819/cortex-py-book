@@ -232,32 +232,6 @@ flowchart TD
     NEW2 --> DONE
 ```
 
-对应的交互时序（简化版）：
-
-```{mermaid}
-sequenceDiagram
-    participant EXT as 抽取管线
-    participant LINK as 实体链接
-    participant DB as PostgreSQL
-    participant LLM as LLM 灰区
-    
-    EXT->>LINK: _resolve_or_create(name, type, ctx)
-    LINK->>DB: A层: 别名 + context_key
-    DB-->>LINK: 精确命中? → entity_id 或空
-    
-    alt 别名命中 + 上下文匹配
-        LINK-->>EXT: 返回已有 entity_id
-    else 别名未命中或上下文不匹配
-        LINK->>DB: B层: 向量近邻 (context_key 过滤)
-        DB-->>LINK: top-5 候选 + 余弦相似度
-        
-        Note over LINK: 阈值判断: >=0.85直接合并<br/>0.30~0.85 LLM判定<br/><0.30新建实体
-        
-        LINK->>DB: 直接合并 / 创建新实体
-        LINK-->>EXT: entity_id
-    end
-```
-
 ## 关键原则
 
 1. **保守合并**：宁可重复也不错误合并——重复可以后续 consolidate，错误合并会污染因果链
