@@ -206,6 +206,35 @@ def _close_superseded(conn, scope, subject_id, predicate, valid_from):
 ## 完整实体链接流程
 
 ```{mermaid}
+flowchart TD
+    EXT[抽取管线] -->|_resolve_or_create| LINK[实体链接]
+    LINK --> A[别名查询 entity_aliases]
+    A --> HIT{精确命中?}
+    HIT -->|是| CTX{context_key 匹配?}
+    CTX -->|匹配| DONE[返回 entity_id]
+    CTX -->|不匹配| B[向量近邻]
+    HIT -->|否| B
+    
+    B --> CAND[top-5 候选<br/>context_key 过滤]
+    CAND --> COMPAT{身份敏感<br/>兼容?}
+    COMPAT -->|不兼容| NEW1[创建新实体]
+    COMPAT -->|兼容| SIM{余弦相似度}
+    SIM -->|>= 0.85| MERGE[直接合并]
+    SIM -->|0.30 - 0.85| LLM[LLM 灰区判定]
+    SIM -->|< 0.30| NEW2[创建新实体]
+    
+    LLM --> DECIDE{LLM 判定}
+    DECIDE -->|同一实体| MERGE
+    DECIDE -->|不同实体| NEW2
+    
+    MERGE --> DONE
+    NEW1 --> DONE
+    NEW2 --> DONE
+```
+
+对应的交互时序（简化版）：
+
+```{mermaid}
 sequenceDiagram
     participant EXT as 抽取管线
     participant LINK as 实体链接
@@ -213,32 +242,26 @@ sequenceDiagram
     participant LLM as LLM 灰区
     
     EXT->>LINK: _resolve_or_create(name, type, ctx)
-    LINK->>DB: A层: 别名查询
-    DB-->>LINK: 精确命中?
+    LINK->>DB: A层: 别名 + context_key
+    DB-->>LINK: 精确命中? → entity_id 或空
     
-    alt A层命中
-        LINK->>DB: 检查 context_key
-        DB-->>LINK: 匹配→返回 entity_id
-    else A层未命中
+    alt 别名命中 + 上下文匹配
+        LINK-->>EXT: 返回已有 entity_id
+    else 别名未命中或上下文不匹配
         LINK->>DB: B层: 向量近邻 (context_key 过滤)
-        DB-->>LINK: top-5 候选
+        DB-->>LINK: top-5 候选 + 余弦相似度
         
-        LINK->>LINK: _identity_candidate_compatible
-        alt 高相似度 >= 0.85
+        alt 相似度 >= 0.85
             LINK->>DB: 直接合并
-        else 灰区 0.30-0.85
-            LINK->>LLM: 灰区判定
-            LLM-->>LINK: 复用/新建
-            alt LLM 复用
-                LINK->>DB: 合并到候选
-            else LLM 新建
-                LINK->>DB: 创建新实体
-            end
-        else 低相似度 < 0.30
+        else 0.30 <= 相似度 < 0.85
+            LINK->>LLM: 传入候选 + 原文上下文
+            LLM-->>LINK: {reuse, entity_name}
+            LINK->>DB: 复用候选 / 创建新实体
+        else 相似度 < 0.30
             LINK->>DB: 创建新实体
         end
+        LINK-->>EXT: entity_id
     end
-    LINK-->>EXT: entity_id
 ```
 
 ## 关键原则
