@@ -372,25 +372,7 @@ sequenceDiagram
     LLM->>LLM: 结构化输出 JSON
     LLM-->>L: entities + facts
     
-    L->>L: A层：查别名
-    alt 命中别名
-        L-->>DB: 返回已有 entity_id
-    else 未命中
-        L->>DB: C层：向量召回
-        L->>L: 阈值判断
-        alt > merge_thr
-            L->>DB: 直接合并
-        else > new_thr
-            L->>LLM: 灰区判定
-            alt 是同一实体
-                L->>DB: 合并
-            else 不同
-                L->>DB: 创建新实体
-            end
-        else < new_thr
-            L->>DB: 创建新实体
-        end
-    end
+    Note over L: 实体链接 B-over-C<br/>A层别名→C层向量→阈值/LLM
     
     L->>DB: 插入 facts
     L->>DB: 超替闭合

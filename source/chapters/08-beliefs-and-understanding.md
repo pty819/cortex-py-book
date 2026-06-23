@@ -66,10 +66,10 @@ CREATE TABLE beliefs (
 
 ```{mermaid}
 graph TB
-    E1[Event: 故障报告<br/>"压力异常，怀疑密封圈"] --> F1[Fact: 压力异常<br/>caused_by 密封圈老化]
-    E2[Event: 排查记录<br/>"更换密封圈后恢复"] --> F2[Fact: 密封失效<br/>repaired_by 更换密封圈]
+    E1[Event: 故障报告<br/>压力异常，怀疑密封圈] --> F1[Fact: 压力异常<br/>caused_by 密封圈老化]
+    E2[Event: 排查记录<br/>更换密封圈后恢复] --> F2[Fact: 密封失效<br/>repaired_by 更换密封圈]
     
-    F1 --> B1[Belief: supports<br/>"密封圈老化是根因<br/>置信度0.85"]
+    F1 --> B1[Belief: supports<br/>密封圈老化是根因<br/>置信度0.85]
     F2 --> B1
     
     B1 --> U1[Concept: 密封类故障<br/>典型演化路径]
