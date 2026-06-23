@@ -4,26 +4,52 @@
 
 ```{toctree}
 :maxdepth: 2
-:caption: 目录
+:caption: 上篇：架构总览
 
 chapters/00-overview
 chapters/01-memory-model
 chapters/02-data-model
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: 中篇：写入路径——从原始事件到结构化知识
+
 chapters/03-wal-and-events
 chapters/04-extraction-pipeline
 chapters/05-entity-linking
-chapters/06-retrieval-system
-chapters/07-retrieval-channels
-chapters/08-rrf-fusion
-chapters/09-mcp-server
-chapters/10-worker-system
-chapters/11-temporal-system
-chapters/12-erasures
-chapters/13-architecture-diagrams
+chapters/06-ontology-and-assertion
+chapters/07-episodes-and-case
+chapters/08-beliefs-and-understanding
+chapters/09-vocabularies
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: 下篇：读取路径——精准召回
+
+chapters/10-retrieval-system
+chapters/11-retrieval-channels
+chapters/12-rrf-fusion
+chapters/13-temporal-system
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: 接口篇
+
 chapters/14-api-reference
-chapters/15-understanding
-chapters/16-maintenance
-chapters/17-vocabularies
+chapters/15-mcp-server
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: 运维篇
+
+chapters/16-worker-system
+chapters/17-maintenance
+chapters/18-erasures
+chapters/19-architecture-diagrams
 ```
 
 ## 项目概览
