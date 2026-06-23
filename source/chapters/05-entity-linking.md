@@ -251,15 +251,9 @@ sequenceDiagram
         LINK->>DB: B层: 向量近邻 (context_key 过滤)
         DB-->>LINK: top-5 候选 + 余弦相似度
         
-        alt 相似度 >= 0.85
-            LINK->>DB: 直接合并
-        else 0.30 <= 相似度 < 0.85
-            LINK->>LLM: 传入候选 + 原文上下文
-            LLM-->>LINK: {reuse, entity_name}
-            LINK->>DB: 复用候选 / 创建新实体
-        else 相似度 < 0.30
-            LINK->>DB: 创建新实体
-        end
+        Note over LINK: 阈值判断: >=0.85直接合并<br/>0.30~0.85 LLM判定<br/><0.30新建实体
+        
+        LINK->>DB: 直接合并 / 创建新实体
         LINK-->>EXT: entity_id
     end
 ```
