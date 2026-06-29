@@ -52,6 +52,13 @@ chapters/18-erasures
 chapters/19-architecture-diagrams
 ```
 
+```{toctree}
+:maxdepth: 2
+:caption: 对比篇
+
+chapters/20-competitive-analysis
+```
+
 ## 项目概览
 
 **Cortex-PY** 是 [CortexDB](https://cortexdb.ai/docs/) 记忆系统的 Python 复刻实现，面向个人/小团队的 Agent 长期记忆层。
