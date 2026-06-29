@@ -1,362 +1,407 @@
-# 第20章 竞品分析：Agent 记忆/上下文系统全面对比
+# 第20章 竞品分析：Agent 记忆/上下文系统与复杂故障诊断场景的适配性
 
 ## 为什么要做这个对比
 
-Cortex-PY 不是一个诞生在真空中项目。当决定构建它时（而不是直接使用已有方案），有必要理解它和其他系统的本质差异——它解决什么问题、不解决什么问题、在什么场景下是不可替代的。
+Cortex-PY 的目标场景是**复杂机械设备的故障诊断**——刻蚀机、CVD、PVD、涡轮机、压缩机这类设备，其故障排查涉及多跳因果推理、事件时序分析、多类型数据源融合（传感器时序、工艺参数、文本报告、维修记录），以及设备结构层次的关键信息提取。
 
-本章从**技术架构**、**设计哲学**、**数据模型**、**检索策略**、**部署取舍**五个维度，对比四个有代表性的系统：
+当决定构建这样一个系统时（而不是直接使用已有方案），一个核心问题必须回答：
 
-| 系统 | 版本/调研时间 | 定位 | 开发方 |
-|------|-------------|------|--------|
-| **Cortex-PY** | v0.1 (Jun 2026) | 精密设备故障诊断专用知识图谱+记忆 | 个人项目 |
+> **现有的通用记忆/知识图谱系统，到底能不能满足复杂故障诊断场景的需求？**
+
+本章从**技术架构**、**数据模型**、**实体提取能力**、**多跳推理支持**、**时序处理**五个维度，对比六个有代表性的系统，逐层分析它们在复杂故障诊断场景下的能力边界。
+
+### 对比系统一览
+
+| 系统 | 版本/调研 | 定位 | 开发方 |
+|------|----------|------|--------|
+| **Cortex-PY** | v0.1 (Jun 2026) | 复杂设备故障诊断专用知识图谱+记忆系统 | 个人项目 |
 | **Mem0** | v2.0.10 (Apr 2026) | 通用 Agent 记忆层 | Mem0 AI |
 | **Graphiti (Zep)** | main (2026) | 时态知识图谱引擎 | Zep AI |
 | **OpenViking** | v0.4.5 (Jun 2026) | Agent 上下文文件系统 | 字节跳动/火山引擎 |
+| **agentmemory** | latest (2026) | AI 编程 agent 持久化记忆 | Rohit G. / iii |
+| **neo4j-agent-memory** | experimental (2026) | 图原生 Agent 记忆系统 | Neo4j Labs |
 
 ---
 
-## 1. 核心问题：它们各自在解决什么
+## 1. 诊断场景为什么不是"文档切块+GraphRAG"
 
-### Cortex-PY
+在深入对比之前，有必要先澄清一个常见的误解：**复杂故障诊断不等于文档知识库检索，也不是 GraphRAG 能解决的问题。**
 
-```{admonition} 核心问题
-半导体刻蚀/CVD 设备的故障排查经验如何**结构化、可溯源、可推理**？
+### 1.1 GraphRAG 能做什么
+
+Microsoft GraphRAG（以及同类方案）的工作模式是：
+
+```
+文档 → 切块(chunk) → LLM 抽取实体关系 → 社区检测 → 社区摘要 → 检索时用摘要回答问题
 ```
 
-工程师写了一份故障排查报告（如"腔体压力异常——怀疑密封圈老化——检查了 MFC 正常——更换 O-ring 后恢复"）。Cortex-PY 把这篇文章变成一张图：
+这适合的场景：
+- 对大量文档做知识库问答（"报告里提到了哪些故障类型？"）
+- 主题级概括（"密封类故障有哪些常见表现？"）
+- 文档间交叉引用发现
 
-- 每个实体（传感器/故障/怀疑/证据）有唯一身份
-- 每条因果关系有认知状态（假设 vs 已确认）
-- 排除的嫌疑不污染因果推理路径
-- 每条事实能追溯到原始事件
-
-**输出**：下游诊断 agent 可以通过图遍历回答"密封圈老化导致了什么"、"还有哪些故障表现为压力异常"。
-
-### Mem0
-
-```{admonition} 核心问题
-AI agent 如何在多轮对话、多 session 中**记住用户偏好和历史**？
-```
-
-用户今天说"我喜欢简洁的回答"，明天说"请用 Python 实现"。Mem0 把关键偏好提取为 memory 条目（"用户偏好简洁回答"、"用户技术栈是 Python"），下次对话自动召回。
-
-**输出**：prompt 里注入相关记忆条目，让 LLM 产生个性化回答。
-
-### Graphiti (Zep)
-
-```{admonition} 核心问题
-Agent 如何理解**实体关系随时间的变化**——什么变了、什么时候变的、变之前是什么？
-```
-
-Alice 先喜欢 Nike 鞋，后改喜欢 Adidas。这个变化不是"覆盖"——原来的偏好还在历史上可查。Graphiti 用**时态知识图谱**（neo4j）记录每个事实的有效时间窗口。
-
-**输出**：支持点-in-time 查询（"2026 年 1 月 Alice 喜欢什么鞋"）和历史状态重建。
-
-### OpenViking
-
-```{admonition} 核心问题
-Agent 的**上下文（记忆+资源+技能）如何统一管理、按需精确加载**，而不是一股脑塞进 prompt？
-```
-
-代码库、PDF 文档、历史对话、用户偏好——传统做法是全部向量化后倒进一个"向量汤"里。OpenViking 用**虚拟文件系统**（`viking://` URI 树）组织所有上下文，按三级粒度(L0/L1/L2)按需加载。
-
-**输出**：一个 agent 在写代码时能精确定位到 `viking://resources/codebase/auth/middleware.py`，而不是从向量库里捞出 5 段不相关的碎片。
-
----
-
-## 2. 架构深度对比
-
-### 2.1 存储模型
-
-| 维度 | Cortex-PY | Mem0 | Graphiti | OpenViking |
-|------|-----------|------|----------|------------|
-| **主存储** | PostgreSQL + pgvector | Valkey/Redis + Qdrant | **Neo4j** / FalkorDB | 本地文件系统 + VikingDB |
-| **数据层次** | **5 层记忆模型** | 平面"memory"条目 | 4 组件(实体+边+episode+社区) | **3 级树** (L0摘要/L1概述/L2原文) |
-| **双时态** | ✅ 完整4字段: `valid_from/to` + `recorded_from/to` | ❌ 仅有创建时间戳 | ✅ 完整的 valid + transaction time | ❌ 版本快照(非精细化时态) |
-| **知识图谱** | 内建: facts 表即图边, 递归 CTE BFS | 可选: Mem0g 版用图后端 | **核心架构**: Neo4j 原生图 | ❌ 无内建图谱(层次文件树) |
-| **向量** | pgvector (1024d, HNSW 索引) | Qdrant / 多种可插拔 | Neo4j 向量索引 | VikingDB (可插拔) |
-| **关系约束** | **40+ 预定义谓词闭集**: 结构/因果/诊断三类 | ❌ 无谓词概念 | ✅ 可自定义 Pydantic ontology | ❌ 无谓词约束 |
-
-### 2.2 抽取与实体链接
-
-Cortex-PY 的抽取管线是**领域深度最大的**：
-
-```{mermaid}
-flowchart TB
-    subgraph Cortex-PY 抽取管线
-        A[Event] --> B{intent?}
-        B -->|diagnosis| C[DIAGNOSIS prompt<br/>16实体类型+40谓词+8准则]
-        B -->|structure| D[STRUCTURE prompt<br/>8实体类型]
-        B -->|其他| E[GENERAL prompt<br/>无类型定义]
-        
-        C --> F[LLM 结构化输出]
-        F --> G[B-over-C 实体链接]
-        G --> H[谓词词表约束 closed set]
-        H --> I[断言语义分析<br/>polarity + assertion_status]
-        I --> J[图准入检查]
-        J --> K[单值超替闭合]
-        K --> L[Belief 聚合]
-    end
-```
-
-```{mermaid}
-flowchart TB
-    subgraph Mem0 抽取
-        M1[输入文本] --> M2[LLM 单次抽取事实]
-        M2 --> M3[ADD-only: 无更新/删除]
-        M3 --> M4[实体嵌入+索引]
-    end
-    
-    subgraph Graphiti 抽取
-        G1[Episode] --> G2[LLM 提取实体+关系]
-        G2 --> G3[实体解析/合并于neo4j]
-        G3 --> G4[社区检测+摘要]
-        G4 --> G5[更新时态窗口]
-    end
-    
-    subgraph OpenViking 抽取
-        O1[Session 结束] --> O2[异步后处理]
-        O2 --> O3[提取摘要→L0]
-        O2 --> O4[提取概述→L1]
-        O2 --> O5[保留原文→L2]
-    end
-```
-
-**关键差异**：
-
-| 维度 | Cortex-PY | Mem0 | Graphiti | OpenViking |
-|------|-----------|------|----------|------------|
-| 抽取 prompt 数 | **3 套定制系统** + 实体链接 prompt | 1 套通用 prompt | 1 套通用 + 自定义类型 | ASync 后处理 |
-| 实体类型 | **16 种**半导体领域专有 | 无约束 | 自定义 Pydantic 模型 | 无约束 |
-| 谓词约束 | **40+ 闭集**，未命中→quarantine | 无 | 可自定义 | 无 |
-| 实体链接策略 | **B-over-C 三层**: 别名→向量→LLM灰区 | embedding 近邻 | LLM 解析+社区合并 | 路径定位 |
-| 身份上下文隔离 | **强**: fab/equipment/chamber 6 字段 | 弱: user_id 字符串 | 弱: user/entity | **强**: URI 路径树 |
-| 断言语义 | **polarity + assertion_status**(5状态) | 无 | 时间窗(valid/invalid) | 无 |
-
-> **Cortex-PY 的 identity_context 设计在半导体的价值**：`MFC-1` 安装在腔体 C1 和腔体 C3 上是**两个不同的实体**——因为它们在知识图谱中连接的传感器、控制的参数、关联的故障都不同。通用系统(如 Mem0)基于 user_id 做隔离，无法处理"同名设备不同位置"的语义区分。
-
-### 2.3 检索策略
+### 1.2 GraphRAG 不能做什么（诊断需要什么）
 
 ```{mermaid}
 graph TB
-    subgraph Cortex-PY 6通道+融合
-        CP1[用户查询] --> CP2[embedding]
-        CP2 --> CP3[6通道并行]
-        CP3 --> CP4[RRF 融合 k=60]
-        CP4 --> CP5[Prism Rerank]
-        CP5 --> CP6[StratifiedPack]
+    subgraph "GraphRAG 能做的"
+        G1["文档A→抽取实体→社区摘要<br/>'密封类故障的常见表现'"]
     end
     
-    subgraph Mem0 多信号
-        M1[查询] --> M2[语义+BM25+实体 并行]
-        M2 --> M3[分数融合]
-        M3 --> M4[top-k 记忆]
-    end
-    
-    subgraph Graphiti 混合
-        G1[查询] --> G2[语义搜索]
-        G1 --> G3[关键词搜索]
-        G1 --> G4[图遍历]
-        G2 --> G5[混合融合]
-        G3 --> G5
-        G4 --> G5
-    end
-    
-    subgraph OpenViking 目录递归
-        O1[查询] --> O2[intent 分析]
-        O2 --> O3[向量定位到目录]
-        O3 --> O4[目录内精搜]
-        O4 --> O5[递归下钻]
-        O5 --> O6[聚合结果]
+    subgraph "诊断场景实际需要的"
+        D1["从多个数据源<a>融合信息</a><br/>传感器日志+工艺参数+人工报告"]
+        D2["沿着<a>因果链</a>做多跳推理<br/>A→B→C→D 四层追溯"]
+        D3["区分<a>认知状态</a><br/>'怀疑'≠'已确认'≠'已排除'"]
+        D4["跨设备的<a>身份隔离</a><br/>腔体1的MFC-1≠腔体3的MFC-1"]
+        D5["保留<a>排查时序</a><br/>先查了什么→发现了什么→排除了什么→剩下什么"]
+        D6["融合<a>多类型属性</a><br/>数值参数+文本描述+传感器趋势"]
     end
 ```
 
-| 维度 | Cortex-PY | Mem0 | Graphiti | OpenViking |
-|------|-----------|------|----------|------------|
-| **检索通道** | **6 个**: 向量+BM25+图+实体名+同义词+时间衰减 | 3 个: 语义+BM25+实体 | 3 个: 语义+关键词+图 | **目录递归**: intent→vector→dir→drill→aggregate |
-| **融合策略** | RRF + Rerank + StratifiedPack | 并行评分融合 | 混合融合 | 路径遍历+向量排序 |
-| **HyDE** | ✅ | ❌ | ❌ | ❌ |
-| **MultiHop** | ✅ 子问题分解 | ❌ | ❌ | ❌ |
-| **时态查询** | ✅ 完整: as_of/超替链/NL时间短语 | ❌ 基础过滤 | ✅ 完整: valid time 窗口 | ❌ |
-| **缓存** | recall_packs(60s TTL) | Valkey 缓存 | ❌ | BM25 缓存(RAGFS) |
-| **召回对象** | **facts**(结构化的 subject-predicate-object) | 文本片段 | 实体+边+社区 | 文件/目录块 |
+| 能力要求 | GraphRAG | 诊断实际需要 |
+|---------|----------|------------|
+| 因果推理 | ❌ 社区摘要只是静态描述 | ✅ 多跳因果链（A caused_by B caused_by C） |
+| 认知状态区分 | ❌ 所有实体平等 | ✅ 区分 hypothesis / confirmed / ruled_out |
+| 跨设备身份隔离 | ❌ 同名实体会被合并 | ✅ 同型号传感器在不同设备上是不同实体 |
+| 时序恢复 | ❌ chunk 有顺序但无精细化时间轴 | ✅ 排查过程的时间窗口、双时态 |
+| 排除链保留 | ❌ 只存"哪里有问题" | ✅ 也要存"哪里没问题"（排查过正常的子系统） |
+| 属性组合查询 | ❌ 语义相似度为主 | ✅ "压力>阈值 + 时间窗口 + 传感器类型"的组合条件 |
+| 数据源融合 | ❌ 同质文本 | ✅ 传感器数值 + 文本报告 + 工艺配方 + 维修记录 |
+
+**核心差异一句话**：GraphRAG 是把文档转化为"知识摘要"给人看；诊断场景需要把多源数据转化为"可推理的因果图"给 agent 去做多跳分析。这两个是不同的任务。
 
 ---
 
-## 3. 设计哲学：核心决策对比
+## 2. 实体提取能力——这是诊断场景的命门
 
-### 3.1 数据质量 vs 检索速度
+### 2.1 为什么实体提取是核心
+
+复杂设备诊断的"智能"不在于检索到了什么文档，而在于**能不能准确识别和区分实体**：
+
+```
+一段真实排查记录：
+"对腔体C3的MFC-1进行检查，发现其输出流量偏低了约5%。"
+```
+
+这条记录里至少有 5 类实体需要正确识别：
+
+| 实体 | 类型 | 关键属性 | 为什么重要 |
+|------|------|---------|-----------|
+| 腔体C3 | chamber | 属于设备 E-301 | 和其他腔体的同名部件隔离 |
+| MFC-1 | component | 安装在腔体C3上 | 和腔体C1上的MFC-1是两个实体 |
+| 输出流量 | process_param | 标称值 | 和设定值对比才知道偏不偏低 |
+| 偏低5% | symptom | 偏差幅度 | 量化标准用于召回时排序 |
+| 检查 | diagnostic_action | 对应排查步骤 | 用于重建排查时序 |
+
+**如果实体提取在这一步就丢了信息，后续所有推理都是错的。**
+
+### 2.2 各系统的实体提取能力对比
+
+| 维度 | **Cortex-PY** | **Mem0** | **Graphiti** | **OpenViking** | **agentmemory** | **neo4j-agent-memory** |
+|------|:-----------:|:-------:|:-----------:|:-------------:|:--------------:|:--------------------:|
+| **实体类型体系** | **16 种预定义**（equipment/component/sensor/fault/symptom/hypothesis/evidence...） | 无预定义（自由文本） | 可自定义（Pydantic model） | 无（文件路径表达） | 无（自由文本） | 有（POLE+O 模型，但偏通用） |
+| **实体内置属性槽** | ✅ 身份上下文6字段+命名规范+量纲提取 | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **跨设备同名实体隔离** | ✅ **强隔离**: identity_context 6字段(fab/equipment/module/chamber/recipe/revision) | ❌ user_id 级别 | ❌ user/entity 级别 | ✅ URI 路径树 | ❌ | ❌ 靠图结构间接区分 |
+| **谓词闭集约束** | ✅ **40+ 预定义**: 结构/因果/诊断三类，未命中→quarantine | ❌ 自由文本 | ✅ 可自定义 | ❌ | ❌ | ✅ 有 POLE+O 但偏通用 |
+| **断言语义（认知状态）** | ✅ **polarity + assertion_status**: observed/hypothesized/confirmed/ruled_out/rejected | ❌ | ✅ 时间窗(valid/invalid) | ❌ | ❌ | ❌ |
+| **数值参数提取** | ✅ 量纲自动识别(token提取:"1500W"、"3mTorr") | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **身份兼容性检查** | ✅ identity_sensitive_types: 传感器编号必须一致才合并 | ❌ | LLM 判定 | ❌ | ❌ | ❌ |
+
+**Cortex-PY 的差异化能力来源**：它的实体提取不是"从文本里找出名词"这么简单——它背后有一套领域级的实体模型：
+
+1. **命名规范约束**：传感器必须带编号（`MFC-1` vs 仅仅`质量流量控制器`）、故障必须带部位前缀（`腔体压力异常` vs `压力异常`）
+2. **量纲自动提取**：`射频功率1500W` 和 `射频功率1600W` 因为量纲 token 不同被判为不同参数，不会错误合并
+3. **身份上下文隔离**：`MFC-1` 安装在不同腔体上是不同实体，连接的不同传感器/参数/故障会自然分开
+4. **B-over-C 三层链接**：别名精确命中→向量近邻→LLM灰区判定，三层保障实体合并的准确性
+
+```{admonition} 降级对比：如果其他系统处理这段文本
+假设用 Mem0 或 agentmemory 处理"腔体C3的MFC-1输出流量偏低5%"：
+- 可能提取为实体：['腔体C3', 'MFC-1', '输出流量', '偏低5%']
+- 但问题来了：当另一个报告提到"腔体C1的MFC-1流量正常"时，两个系统无法判断此MFC-1非彼MFC-1——因为没有身份上下文
+- 更严重的是：它们不知道"偏低5%"是 symptoms，"检查MFC"是 diagnostic_action，"怀疑MFC漂移"是 hypothesis——所有实体类型平等，因果推理无法进行
+```
+
+---
+
+## 3. 能否支持多跳因果推理
+
+### 3.1 多跳推理的定义
+
+诊断场景的多跳推理不是"问一个问题，检索相关文档段落"——而是在因果图上**沿着边逐层追溯**：
+
+```
+刻蚀速率漂移 ↓caused_by
+  → 等离子不稳定 ↓cascades_to
+    → 腔体压力异常 ↓caused_by
+      → 密封圈老化
+```
+
+这是一个 4 跳的因果链。每跳都需要图遍历的能力。
+
+### 3.2 各系统的图遍历能力
+
+| 系统 | 图存储 | 图遍历 | 多跳支持 | 因果链过滤 |
+|------|--------|--------|---------|-----------|
+| **Cortex-PY** | ✅ 内建(facts 表当边) | **递归 CTE BFS** (2~3跳可配) | ✅ 完整的 visited 环检测 | ✅ **graph_eligible**: 只有 confirmed 的因果边+observed/confirmed 的结构边 |
+| **Mem0** | ❌ 平面记忆 | ❌ 无图遍历 | ❌ | ❌ |
+| **Graphiti** | ✅ Neo4j 原生图 | ✅ Cypher 图查询 | ✅ 完整 | ✅ 时间窗过滤 |
+| **OpenViking** | ❌ 层次文件树 | ❌ 无图关系 | ❌ | ❌ |
+| **agentmemory** | ✅ 可选(KG 图) | ❌ 无 BFS(只用 RRF 搜索) | ❌ 检索式非遍历式 | ❌ |
+| **neo4j-agent-memory** | ✅ Neo4j 原生图 | ✅ Cypher 图查询 | ✅ 完整 | ✅ POLE+O 但无认知状态过滤 |
+
+**关键差异在于"图准入"**——不是所有 fact 都适合做图遍历：
 
 ```{mermaid}
-graph LR
-    subgraph 质量优先极
-        CP[Cortex-PY<br/>谓词闭集+断言状态+身份上下文<br/>入库慢但图是准的]
-    end
-    subgraph 平衡区
-        GR[Graphiti<br/>时态窗口+LLM解析<br/>质量与速度的折中]
-    end
-    subgraph 速度优先极
-        M[Mem0<br/>ADD-only 无更新<br/>快但无结构化约束]
-        OV[OpenViking<br/>文件系统路径定位<br/>快但无关系推理]
-    end
+flowchart TD
+    F[Fact三元组] --> P{polarity?}
+    P -->|negative| EX[排除出图]
+    P -->|positive| E{predicate类别?}
+    E -->|ruled_out/no_correlation/contradicts| EX
+    E -->|因果谓词| S{assertion_status?}
+    S -->|confirmed| IN[✅ 入图遍历]
+    S -->|hypothesized| EX
+    E -->|非因果谓词| O{assertion_status?}
+    O -->|observed/confirmed| IN
+    O -->|hypothesized/ruled_out| EX
+```
+
+```{admonition} 为什么"图准入"在诊断中如此重要
+一条"腔体压力异常 caused_by 密封圈老化"的事实，在诊断文档里可能是以下任何一种情况：
+- 工程师的猜测（hypothesized）——不应该进图，它只是推测
+- 经过测试验证的结论（confirmed）——可以进图，供下游推理
+- 后续被其他测试排除的旧假设（ruled_out）——不能进图，但需要保留在历史中
+
+**Cortex-PY 是唯一在数据库层面区分这三种状态的系统。**
+其他系统的图结构要么不区分（平等对待所有三元组），要么只在LLM调用时临时判断——这就意味着"猜测"和"结论"在图里地位相同，推理结论不可靠。
+```
+
+---
+
+## 4. 时序处理能力
+
+复杂故障诊断的时序维度涉及三个层次：
+
+### 4.1 三层次时序需求
+
+| 层次 | 需要回答的问题 | Cortex-PY | 其他系统 |
+|------|-------------|:---------:|:--------:|
+| **事实有效时间** (valid time) | "2026年6月18日时，该设备的状态是什么？" | ✅ `valid_from/to` 4字段 | Graphiti ✅ / 其余 ❌ |
+| **认知记录时间** (transaction time) | "我们当时记录了什么？和现在知道的有何不同？" | ✅ `recorded_from/to` 4字段 | Graphiti ✅ / 其余 ❌ |
+| **排查时序重建** | "先查了什么→发现了什么→排除了什么→剩下什么" | ✅ 有 case_id + phase + checked/found/ruled_out 谓词体系 | ❌ 无！ |
+
+```{mermaid}
+sequenceDiagram
+    participant T1 as 6月18日 09:00
+    participant T2 as 6月18日 14:00
+    participant T3 as 6月19日 09:00
+    participant T4 as 6月20日
     
-    CP --- GR --- M
-    GR --- OV
+    Note over T1: 发现:刻蚀速率漂移
+    T1->>T2: 怀疑气体输送系统
+    Note over T2: checked:MFC正常→ruled_out
+    T2->>T3: 怀疑真空系统泄漏
+    Note over T3: RGA发现聚合物→refines_to
+    T3->>T4: 怀疑腔体积碳
+    Note over T4: 干法清洗→confirmed→根因确认
+    
+    Note over T1,T4: 排查时序是一条推理链条，不是多篇文档
 ```
 
-**Cortex-PY 的选择**：宁可抽取慢 1-2 秒，也要保证入库的事实是可被信任推理的。**图准入规则**确保只有 `confirmed` 的因果边和 `observed/confirmed` 的非因果边进入图遍历——`hypothesized` 的怀疑虽然入库但被排除在图推理之外。这不是过度设计，而是领域需求：如果"我怀疑密封圈老化"和"密封圈老化已被确认"在图里地位相同，因果推理链就会断裂。
+**核心问题**：排查时序不是多篇文档的时间顺序——它是一个**迭代收敛过程**。每一轮包含假设→排查→发现→排除/细化。排除项不能消失（要告诉后来的人"我们已经查过MFC了，它是正常的"），但排除项在图推理里不能扮演"病因"角色。
 
-### 3.2 层次化 vs 平面化
-
-OpenViking 和 Cortex-PY 在**反平面化**上有共识，但方式完全相反：
-
-| | OpenViking | Cortex-PY |
-|---|-----------|-----------|
-| **反对什么** | 向量汤（所有文本切块后平铺到向量空间） | 通用知识图谱（所有实体不加区分地混合） |
-| **解决方案** | **空间层次化**：`viking://` URI 树，上下文通过路径导航 | **语义层次化**：5 层记忆 + 身份上下文 + 谓词分类，上下文通过语义隔离 |
-| **对"层次"的理解** | where（在哪） | what + how sure（是什么 + 确信程度） |
-
-两者可以互补：OpenViking 管理"这个故障案例的原始报告存在哪里"，Cortex-PY 管理"这个故障案例的结构化推理图是什么"。
-
-### 3.3 记忆 vs 知识
-
-这是四条产品线最根本的分歧：
-
+**Cortex-PY 的诊断推理谓词专门为此设计**：
 ```
-Mem0:        用户说了什么 → 记住偏好（记忆）
-Graphiti:    事实如何变化 → 追踪关系（知识 + 时间）
-OpenViking:  上下文在哪 → 组织资源（管理）
-Cortex-PY:   故障怎么发生 → 结构化经验（专业知识）
+一轮典型排查 = investigated_by→checked→found→ruled_out/refines_to
 ```
-
-```{admonition} 记忆≠知识
-**记忆**是"用户喜欢 Python"——一段事实性陈述，不需要推理，记住就行。
-**知识**是"密封圈老化导致腔体压力异常，进而引起刻蚀速率漂移"——一条因果链，需要结构化和可推理。
-
-Mem0 擅长前者，Cortex-PY 擅长后者。不是谁替代谁的关系。
-```
+其他系统没有对应的谓词体系来区分"我查了MFC——查到它是正常的——因此排除MFC嫌疑"这个三段流程。
 
 ---
 
-## 4. 部署与运维
+## 5. 多类型数据源融合
 
-| 维度 | Cortex-PY | Mem0 | Graphiti | OpenViking |
-|------|-----------|------|----------|------------|
-| **主语言** | Python (FastAPI) | Python (核心) + TypeScript(SDK) | Python (graphiti-core) | Python (73%) + Rust (15%) |
-| **数据库依赖** | PostgreSQL 14+ (含 pgvector) | Valkey/Redis + Qdrant | **Neo4j** (强依赖) | 本地 FS + VikingDB |
-| **必配外部服务** | LLM API + Embedding API | LLM API + Embedding API | LLM API (强依赖 structured output) | LLM API + Embedding API |
-| **启动步骤** | 5 步: DB→API→Worker→MCP→前端 | 1 步: `pip install mem0ai` | 2 步: Neo4j docker → pip | 2 步: pip → `openviking-server` |
-| **运维复杂度** | 中 (PG 维护) | **低** (SaaS 优先) | **高** (Neo4j 集群管理) | 中 (文件系统 + 向量库) |
-| **SaaS 版本** | ❌ | ✅ (mem0.ai) | ✅ (Zep) | ❌ |
-| **开源协议** | 未明确 | Apache 2.0 | Apache 2.0 | AGPL-3.0 (主库) |
-
----
-
-## 5. 场景匹配矩阵
-
-| 场景 | 最佳选择 | 理由 |
-|------|---------|------|
-| **半导体刻蚀/CVD 设备故障诊断知识图谱** | **Cortex-PY** | 唯一具备身份上下文隔离 + 断言语义 + 领域谓词闭集的系统 |
-| **轻量 Agent 记忆（用户偏好/习惯）** | **Mem0** | 安装即用，SaaS 免运维，ADD-only 零维护 |
-| **企业客户画像（关系随时间变化）** | **Graphiti / Zep** | 时态图天然适合 CRM 场景；Neo4j 企业生态成熟 |
-| **Agent 上下文窗口管理（token 节省）** | **OpenViking** | L0/L1/L2 三级按需加载；文件路径即上下文 |
-| **精密设备结构文档管理** | **Cortex-PY + OpenViking** | 互补：Cortex-PY 做结构化入库，OpenViking 做原文管理 |
-| **多 session 跨周对话检索** | **Mem0 或 Graphiti** | 通用记忆场景，不需要领域谓词约束 |
-| **故障案例分析库（跨设备）** | **Cortex-PY** | Cortex-PY 的 episodes/case 系统专为此设计 |
-| **代码库级 Agent 上下文** | **OpenViking** | 可将整个代码仓库挂载为 `viking://resources/`，支持目录级检索 |
-| **实时 streaming agent 记忆** | **Mem0 (low latency)** | 论文报告 p95 < 1s，适合语音/实时对话 |
-
----
-
-## 6. Cortex-PY 的不可替代性
-
-### 6.1 竞品做不到的事
+诊断场景的数据从来不是单一类型：
 
 ```{mermaid}
 graph TB
-    subgraph Cortex-PY 独占能力
-        A1["identity_context 隔离<br/>MFC-1 in chamber C1 ≠ MFC-1 in chamber C3"]
-        A2["assertion_status 认知状态<br/>hypothesized ≠ confirmed ≠ ruled_out"]
-        A3["谓词闭集约束<br/>caused_by ≠ led_to ≠ cascades_to<br/>语义不同、图遍历的行为也不同"]
-        A4["图准入规则<br/>只有 confirmed 的因果边进 BFS"]
-        A5["排除链完整保留<br/>检查了MFC→MFC正常→MFC被排除<br/>但排除信息不进图"]
+    subgraph 数据源
+        A["文本报告<br/>故障描述、排查记录"]
+        B["传感器时序数据<br/>FDC趋势、OES光谱"]
+        C["工艺配方参数<br/>压力/温度/功率/气体流量设定"]
+        D["设备结构文档<br/>原理图、BOM表、维护手册"]
+        E["维修记录<br/>部件更换、清洁周期、校准记录"]
     end
     
-    A1 --> B["Cortex-PY<br/>可推理的知识图谱"]
-    A2 --> B
-    A3 --> B
-    A4 --> B
-    A5 --> B
+    subgraph 融合需求
+        F["文本→实体/关系<br/>因果链提取"]
+        G["时序→趋势识别<br/>漂移检测、周期性分析"]
+        H["参数→配置基线<br/>标称值vs实测值对比"]
+        I["结构→层次拓扑<br/>part_of/has_component连接"]
+        J["维修→时间标记<br/>事件锚定、生命周期关联"]
+    end
+    
+    A --> F
+    B --> G
+    C --> H
+    D --> I
+    E --> J
+    
+    F --> K["统一知识图谱<br/>所有数据源在实体/关系层面融合"]
+    G --> K
+    H --> K
+    I --> K
+    J --> K
 ```
 
-**具体来说：**
+| 系统 | 文本结构化 | 数值参数 | 层次结构 | 时序融合 | 多模态 |
+|------|:---------:|:--------:|:--------:|:--------:|:------:|
+| **Cortex-PY** | ✅ 3种 prompt 路线 | ✅ 量纲提取+参数实体 | ✅ part_of/has_component 谓词 | ✅ 双时态+case_id+phase | ❌ (纯文本) |
+| **Mem0** | ✅ LLM 提取 | ❌ | ❌ | ❌ | ❌ |
+| **Graphiti** | ✅ LLM 提取+自定义 | ❌ | ✅ Neo4j 图结构 | ✅ 时态图 | ❌ |
+| **OpenViking** | ❌ (路径管理) | ❌ | ✅ URI 树层次 | ❌ | ✅ (文件存储) |
+| **agentmemory** | ✅ LLM 压缩 | ❌ | ❌ | ❌ | ❌ |
+| **neo4j-agent-memory** | ✅ LLM 提取+spaCy | ❌ | ✅ Neo4j 图 | ❌ | ❌ |
 
-1. **身份上下文隔离** — 其他系统最多能做到 `user_id` 级别隔离。Cortex-PY 的 6 字段身份上下文（fab/equipment/module/chamber/recipe/revision）是专门为**多腔体/多设备产线**设计的。没有它，从两个腔体抽取的"MFC-1"会被当成同一个实体，因果链交叉污染。
+Cortex-PY 在这方面的独特设计在于：它不是简单地"把所有数据丢进一个向量空间"，而是为每种数据类型设计了不同的接入路径：
 
-2. **断言状态** — 这是**认知上的双时态**。普通双时态（valid time + transaction time）回答"什么时间什么是真的"；Cortex-PY 的 assertion_status 回答"我们有多大把握这是真的"。没有这个区分，假设和结论在图里地位相同，推理链失去可信度。
+- **已结构化的因果关系**：`kind=triple` 直写，零损失
+- **自然语言故障叙述**：`kind=message/text` + `intent=diagnosis`，LLM 抽取
+- **设备结构文档**：文档切块 `part_of` 连接
+- **结构化关系表**：JSONL/CSV 批量导入
 
-3. **谓词闭集约束** — 40+ 谓词的分词表设计不是限制，而是**推理的保证**。`caused_by`、`cascades_to`、`suggests` 三个词的语义不同，在图遍历时行为也不同（`cascades_to` 沿着传播方向走，`suggests` 不传播）。没有这个约束，LLM 可能用 `caused_by` 和 `led_to` 混用，图遍历就失去了语义一致性。
+```{admonition} 融合的本质挑战
+多数据源融合的难点不在于"能不能存"，而在于**同一个实体在不同数据源中的身份能否正确对应**：
+- 传感器日志里的 "MFC-1流量50sccm"
+- 维修记录的 "2026-06-18 更换MFC-1"
+- 文本报告里的 "检查MFC-1，发现偏差约5%"
 
-### 6.2 Cortex-PY 不做的事
-
+这三个" MFC-1 "是不是同一个？如果身份上下文只有一个(`user_id`)，你无法区分。
+Cortex-PY 的 6 字段身份上下文(fab/equipment/module/chamber/recipe/revision)正是为此设计。
 ```
-❌ 不做用户偏好记忆（这是 Mem0 的领域）
-❌ 不做上下文窗口管理（这是 OpenViking 的领域）
-❌ 不做 streaming 低延迟记忆（这是 Mem0/Zep SaaS 的领域）
-❌ 不做大规模实体关系随时间追踪（这是 Graphiti 的领域）
-```
-
-这不是短板，是设计取舍。Cortex-PY 专注于：**把精密设备的故障诊断经验变成可推理的结构化知识**。
 
 ---
 
-## 7. 协同比拼：如果放在一起用
+## 6. 各系统的诊断场景适配矩阵
 
-这些系统不是非此即彼的关系。一个完整的企业级 Agent 记忆方案可能是：
+| 诊断需求 | **Cortex-PY** | **Mem0** | **Graphiti** | **OpenViking** | **agentmemory** | **neo4j-agent-memory** |
+|---------|:-----------:|:-------:|:-----------:|:-------------:|:--------------:|:--------------------:|
+| **领域级实体提取**(16类型+编号+量纲+部位) | ✅✅ | ❌ | ⚠️ 可自定义但无预置 | ❌ | ❌ | ⚠️ POLE+O偏通用 |
+| **跨设备同名实体隔离** | ✅✅ 6字段身份上下文 | ❌ | ❌ | ✅ URI路径 | ❌ | ❌ |
+| **断言语义区分**(hypothesis≠confirmed≠ruled_out) | ✅✅ 5种认知状态 | ❌ | ⚠️ 时间窗(valid/invalid) | ❌ | ❌ | ❌ |
+| **多跳因果图遍历**(BFS 2~3跳) | ✅✅ 递归CTE+graph_eligible | ❌ | ✅✅ Neo4j原生 | ❌ | ❌ | ✅✅ Neo4j原生 |
+| **排查时序重建**(迭代假设→验证→排除) | ✅✅ 诊断谓词+case+phase | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **排除链保留**(不污染因果图) | ✅✅ quarantine+graph_eligible | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **多类型数据源融合** | ✅✅ 3入口+5导入器 | ❌ | ❌ | ✅ 文件系统 | ❌ | ✅ 多框架集成 |
+| **图准入规则**(因果confirmed才进图) | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **谓词闭集约束**(40+标准谓词) | ✅✅ | ❌ | ✅ 自定义 | ❌ | ❌ | ✅ POLE+O |
+| **双时态查询**(as_of时间点+超替链) | ✅✅ 4字段 | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **属性组合检索**(数值+文本+范围联合) | ✅✅ Facts的极性+断言+对象值 | ❌ | ⚠️ Cypher可拼 | ❌ | ❌ | ⚠️ Cypher可拼 |
+| **轻量部署**(个人/小团队) | ✅ PostgreSQL + LLM/Embedding API | ✅✅ SaaS可用 | ❌ 需Neo4j集群 | ✅ 本地文件系统 | ✅ 0外部依赖(SQLite) | ❌ 需Neo4j |
+| **通用agent偏好记忆** | ❌ 不支持 | ✅✅ | ✅ | ❌ | ✅✅ | ✅ |
 
-```{mermaid}
-graph TB
-    subgraph Agent 运行时
-        AGT[诊断 Agent]
-    end
-    
-    subgraph 上下文管理层
-        OV[OpenViking<br/>viking://user/diag/memories/<br/>存储原始文本+工作区]
-    end
-    
-    subgraph 知识图谱层
-        CP[Cortex-PY<br/>从文本抽取实体+因果><br/>结构化+可推理+可溯源]
-    end
-    
-    subgraph 偏好记忆层
-        M0[Mem0<br/>记住用户的偏好<br/>(语言/风格/格式习惯)]
-    end
-    
-    AGT -->|对话| OV
-    AGT -->|查询因果| CP
-    AGT -->|注入偏好| M0
-    
-    OV -->|原始文本| CP
-    CP -->|结构化结果| OV
+> ✅✅ = 强支持；✅ = 支持；⚠️ = 有但不够；❌ = 不支持
+
+---
+
+## 7. 五个竞品的典型"诊断场景翻车"分析
+
+### 7.1 场景：多源同名的实体合并
+
+> **输入数据**：报告A提到"腔体C1的MFC-1流量偏差"，报告B提到"腔体C3的MFC-1已更换"
+
+```
+Cortex-PY:   → 两个实体, identity_context不同(C1 vs C3)
+Mem0:        → 一个实体" MFC-1", 混乱
+Graphiti:    → 可能LLM解析为两个, 但不保证
+agentmemory: → 一个实体" MFC-1", 两个事实粘在一起
 ```
 
-这种分层架构让每层各司其职：
+**后果**：检索" MFC-1 的问题"时，会同时返回C1的流量偏差和C3的更换记录——但实际上它们毫无关系。
 
-- **OpenViking**：管理原始文档、代码、报告的层次化存储，三级按需加载控制 token
-- **Cortex-PY**：从原始文本抽取结构化知识，构建可推理的因果图
-- **Mem0**：记住 agent 操作者的个人偏好（语言、报告风格、优先级排序）
+**Cortex-PY 解决方案**：`context_key` 包含 chamber 字段，向量查询强制 `context_key` 过滤。同名字不同腔体的实体在存储层就隔离了。
+
+### 7.2 场景：假设性推断被当确认事实
+
+> **输入数据**："怀疑密封圈老化导致压力异常（后经检查确认密封圈正常，排除了这个假设）"
+
+```
+Cortex-PY:   → 两个事实
+               ① "压力异常 caused_by 密封圈老化" → hypothesis, 不入图
+               ② "密封圈老化 ruled_out" → negative+ruled_out, 不入图但可检索
+Mem0:        → "密封圈老化导致压力异常"（丢失排除信息）
+Graphiti:    → 可能用时间窗标记, 但具体语义丢失
+agentmemory: → "密封圈老化导致压力异常"（丢失排除信息）
+```
+
+**后果**：下次检索"压力异常的根因"时，"密封圈老化"还会被召回作为候选——但实际已经被排除了。agent 如果基于这个"记忆"做推理，会浪费时间重复排查已经排除过的方向。
+
+**Cortex-PY 解决方案**：`ruled_out` 谓词自动触发 `negative+polarity` + `ruled_out` assertion_status，不进图遍历（BFS 不会走到这条边），但 BM25 通道仍然可以命中（排除信息可追溯）。下游 agent 检索时能看到"这个方向已经被排除了"。
+
+### 7.3 场景：排查时序重建
+
+> **输入数据**：6月18日怀疑气体系统→6月18日下午检查MFC正常→6月19日怀疑真空系统→6月20日确认腔体积碳
+
+```
+Cortex-PY:   → 完整的 case timeline + 诊断谓词链
+               checks : MFC-1 → found: normal → ruled_out: gas_system
+               checks : RGA → found: polymer → refines_to: chamber_deposition
+               confirmed_by: dry_clean
+Mem0:        → 4条独立记忆, 无法串联成推理链
+agentmemory: → 4个episode, 有压缩但无结构化谓词关系
+```
+
+**后果**：当 agent 需要回答"排查过程是怎样的？先排除了什么、后确认了什么？"时，其他系统只能返回 4 段独立文本，无法重建推理链。
+
+**Cortex-PY 解决方案**：诊断谓词 `investigated_by` → `checked` → `found`/`normal` → `ruled_out`/`refines_to` 形成一个标准化的推理链，加上 `case_id` + `phase` 标记当前诊断阶段，agent 可以通过图遍历重建整个排查过程。
 
 ---
 
-## 8. 总结
+## 8. 部署与运维成本
 
-| 系统 | 一句话 | 强项 | 弱项 | 最佳场景 |
-|------|--------|------|------|---------|
-| **Cortex-PY** | 精密设备故障诊断专用知识图谱 | 领域深度、断言语义、身份隔离、可溯源 | 通用性窄、部署略复杂、不支持 SaaS | 半导体 fab 诊断 agent |
-| **Mem0** | Agent 通用记忆层 | 简单快速、SaaS 免运维、低延迟 | 无结构化、无谓词约束、无多设备隔离 | 消费级 agent 偏好记忆 |
-| **Graphiti** | 时态知识图谱引擎 | 时间维度丰富、关系推理强、Neo4j 生态 | Neo4j 运维成本高、强依赖 LLM structured output | 客户画像/CRM/时态关系分析 |
-| **OpenViking** | Agent 上下文文件系统 | 层次化组织、token 节省、URI 路径导航 | 无关系推理、无结构化知识、无语义约束 | Agent 上下文窗口管理、代码库理解 |
+| 维度 | **Cortex-PY** | **Mem0** | **Graphiti** | **OpenViking** | **agentmemory** | **neo4j-agent-memory** |
+|------|:-----------:|:-------:|:-----------:|:-------------:|:--------------:|:--------------------:|
+| **主语言** | Python | Python + TypeScript | Python | Python + Rust | TypeScript + Python | Python + TypeScript |
+| **存储依赖** | PostgreSQL+pgvector | Qdrant/Redis | **Neo4j** (强依赖) | 本地FS+VikingDB | **SQLite**(内建) | **Neo4j** (强依赖) |
+| **外部LLM** | 必配(抽取/回答) | 必配(抽取) | 必配(抽取/解析) | 必配(抽取) | 可选(可用本地embedding) | 必配 |
+| **零外部依赖运行** | ❌ | ❌ | ❌ | ❌ | ✅ 全本地+SQLite | ❌ |
+| **启动步骤** | 5步(DB+API+Worker+MCP+前端) | 1步(pip install) | 2步(Neo4j docker + pip) | 2步(pip + server) | 1步(npx) | 2步(Neo4j + pip) |
+| **运维复杂度** | 中 | **低** (SaaS) | **高** (Neo4j集群) | 中 | **极低** | **高** (Neo4j) |
+| **协议** | 未明确 | Apache 2.0 | Apache 2.0 | AGPL-3.0 | 未明确 | Apache 2.0 |
 
 ---
 
-> **Cortex-PY 和其他系统的关系不是替代，是补全。** 如果行业标准方案（Mem0/Graphiti/OpenViking）能覆盖你的全部需求，不需要 Cortex-PY。但如果你在做半导体设备故障诊断，需要一个"知道 MFC-1 在 C1 和 C3 上不是同一个实体"、知道"怀疑"和"确认"在图里应该有不同地位的系统——Cortex-PY 就是这个专用工具。
+## 9. 总结：什么时候该/不该用 Cortex-PY
+
+### 该用 Cortex-PY
+
+你的场景同时满足以下**任意 3 条以上**：
+
+1. ✅ **需要区分同名但不同位置的实体**（如"腔体C1的MFC-1"vs"腔体C3的MFC-1"）
+2. ✅ **诊断过程包含假设→验证→排除/确认的迭代**，需要保留认知状态区分
+3. ✅ **故障因果链可跨越3个以上层次**（如症状→子系统→部件→材料老化）
+4. ✅ **需要排除方向的可追溯**——知道"什么已经被查过、是正常的"
+5. ✅ **数据源类型多样**——传感器数值、报告文本、结构文档需要在同一张图上关联
+6. ✅ **需要时间点回溯**——"6月18日时我们知道什么？和6月20日有什么不同？"
+
+### 不该用 Cortex-PY
+
+| 场景 | 更合适的系统 | 理由 |
+|------|------------|------|
+| **记住用户偏好**（"喜欢Python、简洁回答"） | **Mem0** | 轻量、SaaS、一次API调用 |
+| **代码库级 agent 上下文管理** | **agentmemory / OpenViking** | 代码 agent 不需要结构化因果推理 |
+| **大规模实体关系随时间追踪**（CRM/客户画像） | **Graphiti** | Neo4j 时态图成熟稳定 |
+| **文档知识库问答**（"报告里写了什么"） | **GraphRAG / neo4j-agent-memory** | 不需要因果推理，文档检索即可 |
+| **快速原型、低成本验证** | **Mem0 / agentmemory** | 零配置启动 |
+
+### 最后一句话
+
+```
+Cortex-PY 不是"更好"的记忆系统——它是唯一为"复杂设备故障诊断"这个特定场景设计的系统。
+
+Mem0 更快、agentmemory 更轻、Graphiti 图能力更强、OpenViking 上下管理更灵活。
+但它们都解决不了同一个问题：当"腔体C1的MFC-1"和"腔体C3的MFC-1"在图里同一个节点时，
+因果推理一定是错的。
+
+Cortex-PY 的 5 层记忆 + 断言语义 + 身份上下文隔离 + 40+ 领域谓词，
+不是为了"炫技"——每一层设计都在回答同一个问题：
+  这条诊断结论，我能信多少？它来自哪？什么时候的结论？排除了什么？
+```
