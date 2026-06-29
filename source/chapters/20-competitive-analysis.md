@@ -68,7 +68,7 @@ add() 调用（新算法）
       检索时：从查询中提取实体 → 和 {collection}_entities 匹配 → 提升命中实体的记忆分数
 ```
 
-**移除点**：v3 删除了 ~4000 行的外部图存储代码（包括 Neo4j 集成、关系检索等）。\cite{mem0-v3-migration} Mem0 团队的官方解释是"实体连接现在通过检索排名应用，而不是作为单独的、可直接遍历的结构暴露"。\cite{mem0-v3-graph-removal}
+**移除点**：v3 删除了 ~4000 行的外部图存储代码（包括 Neo4j 集成、关系检索等）。Mem0 团队的官方解释是"实体连接现在通过检索排名应用，而不是作为单独的、可直接遍历的结构暴露"。
 
 ### 1.2 抽取能力的实际边界
 
@@ -109,7 +109,7 @@ def add(self, messages, user_id):
 - 身份上下文（不知道腔体 C1 和 C3 是两个隔离域）
 - 断言语义（不知道"怀疑"和"已排除"是两个不同的认知状态）
 
-Mem0 论文中 Mem0^g 在 LOCOMO 上比基本 Mem0 整体提升约 2%（68.44 vs 66.88），但在单跳和多跳问题中并没有显著优势，反而检索慢了约 3 倍、token 消耗约 2 倍。\cite{mem0-paper} 这个数据本身已经说明：**它当前的图记忆层的推理能力不足以支撑复杂的关系推理。**
+|Mem0 论文中 Mem0^g 在 LOCOMO 上比基本 Mem0 整体提升约 2%（68.44 vs 66.88），但在单跳和多跳问题中并没有显著优势，反而检索慢了约 3 倍、token 消耗约 2 倍。这个数据本身已经说明：**它当前的图记忆层的推理能力不足以支撑复杂的关系推理。**
 
 ---
 
@@ -117,7 +117,7 @@ Mem0 论文中 Mem0^g 在 LOCOMO 上比基本 Mem0 整体提升约 2%（68.44 vs
 
 ### 2.1 实际架构
 
-Graphiti 的核心是一个**基于 Neo4j 的时态知识图谱引擎**。\cite{graphiti-readme} 它的管线深度远大于 Mem0：
+Graphiti 的核心是一个**基于 Neo4j 的时态知识图谱引擎**。它的管线深度远大于 Mem0：
 
 ```
 add_episode() 调用
@@ -224,7 +224,7 @@ Cortex-PY 处理结果：
 
 ### 3.1 实际架构
 
-agentmemory 不是一个知识图谱系统——它是一个**编程 agent 会话记忆系统**。\cite{agentmemory-readme} 构建在 iii-engine 的 Worker/Function/Trigger 三个原语之上。
+agentmemory 不是一个知识图谱系统——它是一个**编程 agent 会话记忆系统**。构建在 iii-engine 的 Worker/Function/Trigger 三个原语之上。
 
 **核心：4 层记忆整合管线**
 
@@ -272,7 +272,7 @@ memory_smart_search(query)
 | **零外部依赖** | ✅ SQLite + iii-engine 全部内建 | ✅ 加分项 |
 | **低延迟、高 R@5(95.2%)** | ✅ LongMemEval 最优之一 | ❌ 需求不匹配 |
 
-agentmemory 的设计目标是**让编码 agent 记住会话上下文**——"这个项目的 JWT 认证用的是什么库"、"之前修复过什么 bug"。它的 95.2% R@5 在 LongMemEval 上证明了对这种任务的搜索有效性。但它的"知识图谱"本质上是**记忆之间的引用关系图**，而不是**实体之间的语义关系图**——这两个"图"在检索行为上有本质区别。\cite{agentmemory-graph-bfs}
+agentmemory 的设计目标是**让编码 agent 记住会话上下文**——"这个项目的 JWT 认证用的是什么库"、"之前修复过什么 bug"。它的 95.2% R@5 在 LongMemEval 上证明了对这种任务的搜索有效性。但它的"知识图谱"本质上是**记忆之间的引用关系图**，而不是**实体之间的语义关系图**——这两个"图"在检索行为上有本质区别。
 
 ---
 
@@ -280,7 +280,7 @@ agentmemory 的设计目标是**让编码 agent 记住会话上下文**——"�
 
 ### 4.1 实际架构
 
-OpenViking 的核心是将上下文组织为**虚拟文件系统**，通过 `viking://` URI 访问。\cite{openviking-architecture}
+OpenViking 的核心是将上下文组织为**虚拟文件系统**，通过 `viking://` URI 访问。
 
 **架构分层（从外到内）：**
 
@@ -335,56 +335,6 @@ Session 结束
 | **双时态** | ❌ 有版本快照但无精细化时间窗口 | ✅ |
 
 **关键认识**：OpenViking 的设计哲学和 Cortex-PY 是**正交互补**的。它回答的是"上下文在哪、怎么按需加载"，Cortex-PY 回答的是"知识是什么、怎么推理"。两者可以分层共存——OpenViking 管理原始文档，Cortex-PY 从文档中构建可推理的因果图。
-
----
-
-## 5. neo4j-agent-memory (Neo4j Labs)：图原生的记忆系统，但实体模型偏通用
-
-### 5.1 实际架构
-
-neo4j-agent-memory 是 Neo4j 官方出品的图原生记忆 Python 库。\cite{neo4j-agent-memory} 它的设计包含了短期（对话历史）、长期（实体/偏好/事实）和推理记忆（推理轨迹/工具使用）三层。
-
-**核心记忆模型（POLE+O）：**
-
-```
-P - People（人）
-O - Organizations（组织）
-L - Locations（地点）
-E - Events（事件）
-+ - 自定义扩展
-O - Objects（物品/概念）
-```
-
-**实体提取管线（多阶段可配置）：**
-
-```
-输入对话
-  ├── spaCy NER（快速命名实体识别）
-  ├── GLiNER（零样本实体分类）
-  ├── LLM（更精确但更慢）
-  └── GLiREL（关系提取）
-```
-
-**特色能力：**
-- 多 stage entity resolution（spaCy/GLiNER/LLM 可配置）
-- MCP server 16 个工具
-- 多个 agent 框架集成（LangChain/Pydantic AI/Google ADK/CrewAI）
-- `adopt_existing_graph()` 可以接入已有 Neo4j 图
-- `consolidation.dedupe_entities()` 实体去重
-- 推理轨迹通过 `:TOUCHED` 边显式记录
-
-### 5.2 能力边界
-
-| 能力 | neo4j-agent-memory | 诊断是否需要 |
-|------|:----------------:|:----------:|
-| **图原生存储** | ✅ Neo4j 原生 | ✅ |
-| **实体提取** | ✅ 多 pipeline 可选 (spaCy/GLiNER/LLM) | ✅ |
-| **谓词/关系约束** | ⚠️ POLE+O 偏通用 | ❌ 机械诊断需要专用的因果/诊断谓词集 |
-| **跨设备身份隔离** | ❌ 无身份上下文概念 | ✅ |
-| **断言语义** | ❌ 无 assertion_status | ✅ |
-| **排除链保留** | ❌ | ✅ |
-| **Neo4j 依赖** | ❌ 强依赖 | ⚠️ 运维成本 |
-| **成熟的框架集成** | ✅ LangChain/Pydantic AI/CrewAI | ⚠️ 加分但诊断场景不一定用这些框架 |
 
 ---
 
@@ -476,27 +426,27 @@ O - Objects（物品/概念）
 
 ---
 
-## 7. 六系统综合对比总表
+## 7. 五系统综合对比总表
 
-| 诊断需求 | **Cortex-PY** | **Mem0** | **Graphiti** | **OpenViking** | **agentmemory** | **neo4j-agent-memory** |
-|---------|:-----------:|:-------:|:-----------:|:-------------:|:--------------:|:--------------------:|
-| **实体类型体系**（16种专用+命名规范） | ✅✅ | ❌ | ⚠️ 自定义 Pydantic 但无约束 | ❌ | ❌ | ⚠️ POLE+O 通用 |
-| **身份上下文隔离**（跨设备同名隔离） | ✅✅ 6字段 | ❌ user_id仅 | ❌ | ✅ URI路径 | ❌ | ❌ |
-| **断言认知状态**（hypothesis≠confirmed≠ruled_out） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **排除项不入因果图**（graph_eligible 过滤） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **因果链多跳遍历** | ✅ 递归CTE BFS | ❌ | ✅✅ Neo4j Cypher | ❌ | ⚠️ 关联图非语义图 | ✅✅ Neo4j Cypher |
-| **谓词闭集约束**（40+标准谓词，未命中隔离） | ✅✅ **唯一实现** | ❌ | ⚠️ 自定义但无强制执行 | ❌ | ❌ | ❌ |
-| **双时态**（valid+recorded 4字段） | ✅✅ | ❌ | ✅✅ valid_at+invalid_at | ❌ | ❌ | ❌ |
-| **排查时序重建**（case+phase+诊断谓词链） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **属性组合检索**（predicate+status 结构化过滤） | ✅✅ SQL WHERE | ❌ | ✅ Cypher | ❌ | ❌ | ✅ Cypher |
-| **数值参数量纲识别**（1500W≠1600W自动区分） | ✅✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **多类型数据源融合**（3入口+5导入器+triple直写） | ✅✅ | ❌ | ❌ | ✅ FS统一管 | ❌ | ✅ 多框架集成 |
-| **轻量部署**（不需要额外图数据库） | ✅ PostgreSQL | ✅✅ SaaS/Redis | ❌ 需Neo4j | ✅ FS | ✅✅ SQLite | ❌ 需Neo4j |
-| **零 LLM 依赖运行**（mock抽取+本地embedding） | ⚠️ 基本可用 | ❌ | ❌ | ❌ | ✅✅ 全本地 | ❌ |
-| **图准入规则**（因果confirmed才进BFS） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **RAG 检索（搜索相关文档）** | ✅ 6通道+RRF+rerank | ✅✅ 多信号融合 | ✅ 混合融合 | ✅ 目录递归 | ✅✅ BM25+向量+图 | ✅ 混合 |
-| **token 节省（按需加载）** | ❌ 无 | ✅ 提取+摘要 | ❌ | ✅✅ L0/L1/L2 | ✅✅ 2000t budget | ❌ |
-| **SaaS 版本** | ❌ | ✅ Mem0 Cloud | ✅ Zep | ❌ | ❌ | ✅ NAMS |
+| 诊断需求 | **Cortex-PY** | **Mem0** | **Graphiti** | **OpenViking** | **agentmemory** |
+|---------|:-----------:|:-------:|:-----------:|:-------------:|:--------------:|
+| **实体类型体系**（16种专用+命名规范） | ✅✅ | ❌ | ⚠️ 自定义 Pydantic 但无约束 | ❌ | ❌ |
+| **身份上下文隔离**（跨设备同名隔离） | ✅✅ 6字段 | ❌ user_id仅 | ❌ | ✅ URI路径 | ❌ |
+| **断言认知状态**（hypothesis≠confirmed≠ruled_out） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ |
+| **排除项不入因果图**（graph_eligible 过滤） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ |
+| **因果链多跳遍历** | ✅ 递归CTE BFS | ❌ | ✅✅ Neo4j Cypher | ❌ | ⚠️ 关联图非语义图 |
+| **谓词闭集约束**（40+标准谓词，未命中隔离） | ✅✅ **唯一实现** | ❌ | ⚠️ 自定义但无强制执行 | ❌ | ❌ |
+| **双时态**（valid+recorded 4字段） | ✅✅ | ❌ | ✅✅ valid_at+invalid_at | ❌ | ❌ |
+| **排查时序重建**（case+phase+诊断谓词链） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ |
+| **属性组合检索**（predicate+status 结构化过滤） | ✅✅ SQL WHERE | ❌ | ✅ Cypher | ❌ | ❌ |
+| **数值参数量纲识别**（1500W≠1600W自动区分） | ✅✅ | ❌ | ❌ | ❌ | ❌ |
+| **多类型数据源融合**（3入口+5导入器+triple直写） | ✅✅ | ❌ | ❌ | ✅ FS统一管 | ❌ |
+| **轻量部署**（不需要额外图数据库） | ✅ PostgreSQL | ✅✅ SaaS/Redis | ❌ 需Neo4j | ✅ FS | ✅✅ SQLite |
+| **零 LLM 依赖运行**（mock抽取+本地embedding） | ⚠️ 基本可用 | ❌ | ❌ | ❌ | ✅✅ 全本地 |
+| **图准入规则**（因果confirmed才进BFS） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ |
+| **RAG 检索（搜索相关文档）** | ✅ 6通道+RRF+rerank | ✅✅ 多信号融合 | ✅ 混合融合 | ✅ 目录递归 | ✅✅ BM25+向量+图 |
+| **token 节省（按需加载）** | ❌ 无 | ✅ 提取+摘要 | ❌ | ✅✅ L0/L1/L2 | ✅✅ 2000t budget |
+| **SaaS 版本** | ❌ | ✅ Mem0 Cloud | ✅ Zep | ❌ | ❌ |
 
 > ✅✅ = 强支持、且该场景下唯此家有；✅ = 支持但有局限；⚠️ = 有但不够；❌ = 不支持
 
@@ -514,7 +464,7 @@ O - Objects（物品/概念）
 │   └── OpenViking（viking:// 文件系统）
 │
 ├── 理解实体关系随时间的变化（CRM/客户画像）
-│   └── Graphiti / Neo4j Agent Memory（时态图）
+│   └── Graphiti（时态图）
 │
 ├── 编程 session 跨会话记忆
 │   └── agentmemory（零外部依赖 + 自动钩子）
@@ -540,7 +490,6 @@ O - Objects（物品/概念）
 | **Graphiti** | 不能区分假设和确认（只有时间窗口没有认知状态）；不能隔离跨设备同名字体（EntityNode 无身份上下文）；不能同时跑于无 Neo4j 环境 |
 | **agentmemory** | 不是知识图谱系统——它的"图"是记忆引用图，不是语义关系图；不能做谓词约束；没有实体类型体系 |
 | **OpenViking** | 没有实体关系推理；没有谓词/断言概念；没有因果图——它是文件系统不是图谱 |
-| **neo4j-agent-memory** | POLE+O 模型偏通用商务领域（人物/组织/地点/事件），没有故障诊断的专用实体类型；没有断言认知状态 |
 | **Cortex-PY** | 不能做通用 agent 偏好记忆（没设计这个）；不能做上下文窗口管理（不是 OpenViking）；不能做 streaming 低延迟记忆 |
 
 ---
@@ -550,5 +499,4 @@ O - Objects（物品/概念）
 > - Graphiti 是**时间机器**（事实怎么变化）
 > - agentmemory 是**备忘**（编程 agent 的跨会话上下文）
 > - OpenViking 是**文件柜**（上下文按路径组织）
-> - neo4j-agent-memory 是**关系笔记**（实体关联在 Neo4j 里）
 > - **Cortex-PY 是故障诊断推理机**（结构化的因果图 + 每一步该信多少）
