@@ -97,7 +97,7 @@
 
 ## MCP 工具
 
-共 23 个工具，全部通过 `cortex.mcp_server` 注册。
+共 28 个工具，全部通过 `cortex.interfaces.mcp_server` 注册。
 
 ### 核心记忆
 

@@ -77,10 +77,10 @@ graph LR
 
 ## 核心组件
 
-### 1. 写入路径 (core.py)
+### 1. 写入路径 (infra/core.py)
 
 ```python
-# core.py - 核心写入逻辑
+# infra/core.py - 核心写入逻辑
 def append_event(*, scope, modality, content, context, 
                  caller, idempotency_key, ...):
     """幂等写入：同 key+同 body → 返回既有; 同 key+异 body → 409"""
@@ -103,7 +103,7 @@ def append_event(*, scope, modality, content, context,
     return event_id
 ```
 
-### 2. 抽取管线 (extraction/pipeline.py)
+### 2. 抽取管线 (graph/extraction/pipeline.py)
 
 ```{mermaid}
 flowchart TD
@@ -127,7 +127,7 @@ flowchart TD
     H --> K[Understanding 合成]
 ```
 
-### 3. 检索系统 (retrieval/pipeline.py)
+### 3. 检索系统 (graph/retrieval/pipeline.py)
 
 6 通道混合检索：
 
@@ -140,41 +140,52 @@ flowchart TD
 | Synonym | synonyms 表 | 同义词扩展 |
 | Temporal-decay | access_count + 衰减 | 热数据优先 |
 
-### 4. 新增模块
+### 4. 功能模块
 
 | 模块 | 文件 | 职责 |
 |------|------|------|
-| **Ontology** | `ontology.py` | 谓词本体（结构/因果/诊断/状态）、图准入规则 |
-| **Prompt 体系** | `prompts.py` | 半导体级诊断 prompts，10+ 实体类型，40+ 谓词 |
-| **Understanding** | `understanding.py` | 概念合成层，related 图遍历 |
-| **Maintenance** | `maintenance.py` | methylation（软剪枝）+ consolidation（去重） |
-| **Erasures** | `erasures.py` | GDPR 4 阶段引用计数真删 |
-| **Ingest** | `ingest.py` | bulk 写入 + 5 导入器 |
-| **Episodes/Case** | `episodes.py` | 诊断 Case 全生命周期管理 |
-| **Temporal** | `temporal.py` | NL 时间短语解析 |
-| **Schemas** | `schemas.py` | Pydantic API 契约 |
+| **Ontology** | `infra/ontology.py` | 谓词本体（结构/因果/诊断/状态）、图准入规则 |
+| **Prompt 体系** | `infra/prompts.py` | 半导体级诊断 prompts，10+ 实体类型，40+ 谓词 |
+| **Understanding** | `memory/understanding.py` | 概念合成层，related 图遍历 |
+| **Maintenance** | `memory/maintenance.py` | methylation（软剪枝）+ consolidation（去重） |
+| **Erasures** | `memory/erasures.py` | GDPR 4 阶段引用计数真删 |
+| **Ingest** | `memory/ingest.py` | bulk 写入 + 5 导入器 |
+| **Episodes/Case** | `memory/episodes.py` | 诊断 Case 全生命周期管理 |
+| **Temporal** | `memory/temporal.py` | NL 时间短语解析 |
+| **Schemas** | `interfaces/api/schemas.py` | Pydantic API 契约 |
 
 ## 代码结构
 
+> 4 子包分层（`infra` → `memory` → `graph` → `interfaces`，依赖单向无环）。完整架构说明见[第19章 架构视图](19-architecture-diagrams)。
+
 ```
 src/cortex/
-├── config.py          # YAML 配置 + 维度强校验
-├── db.py              # engine / session / schema 初始化
-├── schema.sql         # 全表 DDL（单一真相源）
-├── core.py            # WAL append(幂等) + 队列 + lifecycle + ?wait=
-├── services.py        # embedding / rerank / LLM 客户端 + think 剥离
-├── ontology.py        # 谓词本体（结构/因果/诊断/状态）
-├── prompts.py         # 半导体级诊断 prompts（10+ 实体, 40+ 谓词）
-├── extraction/        # 抽取管线 + 实体链接 B over C
-├── retrieval/         # 6 通道 + RRF + rerank + StratifiedPack
-├── worker/            # Postgres-as-queue worker 循环
-├── api/               # FastAPI 全端点
-├── episodes.py        # Episodes + 诊断 Case 管理
-├── understanding.py   # 概念合成层
-├── ingest.py          # 批量 + 5 导入器
-├── erasures.py        # GDPR 引用计数真删（4 阶段）
-├── maintenance.py     # methylation / consolidation
-├── mcp_server.py      # MCP server（23 工具，双传输）
-├── temporal.py        # NL 时间短语解析
-└── schemas.py         # Pydantic API schemas
+├── schema.sql              # 全表 DDL（单一真相源,19 张表）
+├── infra/                  # 基础设施（9 模块）
+│   ├── config.py           # YAML 配置 + 维度强校验
+│   ├── db.py               # engine / session / schema 初始化
+│   ├── core.py             # WAL append(幂等) + 队列 + lifecycle + ?wait=
+│   ├── services.py         # embedding / rerank / LLM + think 剥离 + 流式
+│   ├── prompts.py          # 半导体级诊断 prompts（10+ 实体, 40+ 谓词）
+│   ├── ontology.py         # 谓词本体（结构/因果/诊断/状态）
+│   ├── chunking.py         # 长文档分块
+│   ├── token_budget.py     # token 预算估算
+│   └── think_stream.py     # think 标签边界状态机
+├── memory/                 # 记忆写入与生命周期（7 模块）
+│   ├── ingest.py           # 批量 + 5 导入器
+│   ├── episodes.py         # Episodes + 诊断 Case 管理
+│   ├── erasures.py         # GDPR 引用计数真删（4 阶段）
+│   ├── temporal.py         # NL 时间短语解析
+│   ├── export_data.py      # 导出 JSONL
+│   ├── maintenance.py      # methylation / consolidation
+│   └── understanding.py    # 概念合成层
+├── graph/                  # 知识图谱
+│   ├── extraction/         # 抽取管线 + 实体链接 B over C
+│   └── retrieval/          # 6 通道 + RRF + rerank + StratifiedPack
+└── interfaces/             # 对外入口
+    ├── api/                # FastAPI 全端点（53 个）+ Pydantic schemas
+    ├── mcp_server.py       # MCP server（28 工具，双传输）
+    ├── cli.py              # CLI 入口
+    ├── smoke.py            # 端到端冒烟
+    └── worker/             # Postgres-as-queue worker 循环
 ```

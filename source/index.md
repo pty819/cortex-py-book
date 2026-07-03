@@ -72,7 +72,7 @@ chapters/20-competitive-analysis
 | 知识图谱 | Facts 当图边，递归 CTE 做 2-3 跳 BFS |
 | 6 通道检索 | 向量 + BM25 + 图遍历 + entity-name + synonym + temporal-decay |
 | 实体链接 | B over C 策略：向量召回 + 阈值 + LLM 灰区判定 |
-| MCP | 23 个工具，stdio + streamable-http 双传输 |
+| MCP | 28 个工具，stdio + streamable-http 双传输 |
 
 ### 技术栈
 

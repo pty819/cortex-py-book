@@ -131,7 +131,7 @@ def coerce_value(conn, scope, vocab_name, raw):
 
 ```bash
 # 新 scope 初始化时执行一次
-uv run python -m cortex.cli maintenance --action seed-vocab --scope equip:XXX-v1
+uv run python -m cortex.interfaces.cli maintenance --action seed-vocab --scope equip:XXX-v1
 ```
 
 预置后，该 scope 的抽取管线会自动约束谓词为 40+ 个预定义值。

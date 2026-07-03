@@ -10,7 +10,7 @@ graph TB
         LLM[Agent / LLM]
     end
     
-    subgraph "cortex MCP Server (23 工具)"
+    subgraph "cortex MCP Server (28 工具)"
         T1[memory_store]
         T2[memory_search]
         T3[answer]
@@ -41,7 +41,7 @@ graph TB
     HTTP --> T2
 ```
 
-## 23 工具一览
+## 28 工具一览
 
 | 类别 | 工具 | 说明 |
 |------|------|------|
@@ -79,7 +79,7 @@ graph TB
 本地单 agent，每 agent 一个子进程：
 
 ```bash
-uv run python -m cortex.cli mcp
+uv run python -m cortex.interfaces.cli mcp
 ```
 
 ```{mermaid}
@@ -108,7 +108,7 @@ sequenceDiagram
   "mcpServers": {
     "cortex": {
       "command": "uv",
-      "args": ["run", "--directory", ".", "python", "-m", "cortex.cli", "mcp"],
+      "args": ["run", "--directory", ".", "python", "-m", "cortex.interfaces.cli", "mcp"],
       "env": {
         "CORTEX_SCOPE": "org:acme/dept:sales/user:alice"
       }
@@ -122,7 +122,7 @@ sequenceDiagram
 多人共享，按 `X-Cortex-Scope` 请求头隔离：
 
 ```bash
-uv run python -m cortex.cli mcp-http --port 8001
+uv run python -m cortex.interfaces.cli mcp-http --port 8001
 ```
 
 ```{mermaid}
@@ -240,10 +240,10 @@ class _AuthASGI:
 
 ```bash
 # stdio（本地 agent）
-uv run python -m cortex.cli mcp
+uv run python -m cortex.interfaces.cli mcp
 
 # streamable-http（多人共享）
-uv run python -m cortex.cli mcp-http --port 8001
+uv run python -m cortex.interfaces.cli mcp-http --port 8001
 # → http://host:8001/mcp
 
 # 带 key 鉴权（config.api.key 非空时自动启用）

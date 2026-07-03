@@ -121,13 +121,13 @@ def seed_diagnosis_vocab(scope):
 
 ```bash
 # 甲基化
-uv run python -m cortex.cli maintenance --action methylation --scope equip:XXX-v1
+uv run python -m cortex.interfaces.cli maintenance --action methylation --scope equip:XXX-v1
 
 # 去重
-uv run python -m cortex.cli maintenance --action consolidation --scope equip:XXX-v1
+uv run python -m cortex.interfaces.cli maintenance --action consolidation --scope equip:XXX-v1
 
 # 预置诊断词表
-uv run python -m cortex.cli maintenance --action seed-vocab --scope equip:XXX-v1
+uv run python -m cortex.interfaces.cli maintenance --action seed-vocab --scope equip:XXX-v1
 ```
 
 ## API 端点

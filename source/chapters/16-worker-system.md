@@ -205,10 +205,10 @@ captured(0) → extracted(1) → indexed(2) → consolidated(3)
 
 ```bash
 # 启动 worker 循环
-uv run python -m cortex.cli worker
+uv run python -m cortex.interfaces.cli worker
 
 # 启动后端（另一个终端）
-uv run uvicorn cortex.api.app:app --port 8002
+uv run uvicorn cortex.interfaces.api.app:app --port 8002
 ```
 
 ## 关键设计决策
