@@ -3,6 +3,10 @@
 > 本章用 Kruchten 的 4+1 视图模型完整描述 cortex-py 的架构:逻辑视图(Logical)、进程视图(Process)、开发视图(Development)、物理视图(Physical),加上贯穿它们的场景视图(Scenarios)。
 >
 > 所有模块路径基于 `infra` / `memory` / `graph` / `interfaces` 四子包分层(重构 commit `347afb1` 之后)。
+>
+> ```{admonition} 自演化子系统(后置增量)
+> :class: important
+> 四子包重构落地后,在 `memory` 包内追加了**自演化子系统**:三个新模块 `feedback` / `dreaming` / `higher_order`,以及两个新 worker job 类型 `dream` / `higher_order`。三者通过 `access_count` + `salience` 这条**共享信号总线**耦合(而非各自为政),刻意避免 MindMemOS 把反馈/巩固/归纳解耦成三个互不知情的孤岛。本架每次涉及的计数(模块数、job 类型数、表数、端点数、工具数)均已同步到本版。```
 
 ```{admonition} 视图总览
 | 视图 | 回答的问题 | 主要制品 |
@@ -25,8 +29,8 @@
 ```{mermaid}
 graph TB
     subgraph interfaces ["interfaces · 对外入口"]
-        API["FastAPI 端点(53)"]
-        MCP["MCP Server(28 工具)"]
+        API["FastAPI 端点(62)"]
+        MCP["MCP Server(32 工具)"]
         CLI["CLI"]
         WK["Worker 循环"]
     end
@@ -40,6 +44,9 @@ graph TB
         ERASE["erasures · GDPR 真删"]
         MAINT["maintenance · 演化"]
         UNDER["understanding · 概念合成"]
+        FB["feedback · 反馈回灌"]
+        DREAM["dreaming · 离线巩固"]
+        HO["higher_order · 高阶归纳"]
     end
     subgraph infra ["infra · 基础设施"]
         CFG["config"]
@@ -87,7 +94,7 @@ graph TB
 | `token_budget` | token 预算估算 + 裁剪 | `fit_to_budget()` |
 | `think_stream` | think 标签边界状态机(跨 chunk 缓冲) | `split_think_stream()` |
 
-**memory —— 记忆写入与生命周期(7 模块)**
+**memory —— 记忆写入与生命周期(10 模块)**
 
 | 模块 | 职责 |
 |------|------|
@@ -98,6 +105,9 @@ graph TB
 | `export_data` | 导出 JSONL(可回灌) |
 | `maintenance` | methylation(软剪枝)+ consolidation(去重) |
 | `understanding` | 概念合成(per topic)+ related 图 + coverage |
+| `feedback` | 反馈回灌(双轨:软降权 `salience` + 硬归档 `recorded_to`),正反馈递增 `access_count` |
+| `dreaming` | 离线巩固(两阶段 LLM:`relation_detect` → `action_plan`),scheduler 定时触发 + heartbeat 续命 |
+| `higher_order` | 高阶归纳(evidence-driven LLM 归纳 `order=2` 谓词),extract 后异步触发 |
 
 **graph —— 知识图谱(2 子包)**
 
@@ -110,9 +120,9 @@ graph TB
 
 | 模块 | 职责 |
 |------|------|
-| `interfaces.api.app` | FastAPI 全端点(53 个) |
+| `interfaces.api.app` | FastAPI 全端点(62 个) |
 | `interfaces.api.schemas` | Pydantic 请求/响应契约 |
-| `interfaces.mcp_server` | MCP server(28 工具,双传输) |
+| `interfaces.mcp_server` | MCP server(32 工具,双传输) |
 | `interfaces.cli` | CLI 入口(db/worker/serve/probe-llm/smoke/mcp) |
 | `interfaces.smoke` | 端到端冒烟 |
 | `interfaces.worker.runner` | 队列 worker 循环 + reaper |
@@ -210,6 +220,8 @@ worker 按 `job_type` 分发(`worker.runner._dispatch`):
 | `consolidate` | `memory.maintenance.consolidation_run` | 定时 / admin |
 | `enrich` | 跨 event 实体消歧,补 embedding | 定时 / admin |
 | `synthesize` | `memory.understanding.synthesize_scope` | /v1/understanding/synthesize |
+| `dream` | `memory.dreaming.dream_run` | scheduler 定时触发(无 queued/running dream 时入队)+ heartbeat 续命 `locked_at` |
+| `higher_order` | `memory.higher_order.generate_higher_order` | extract 后异步触发(对新增 fact 做 `order=2` 归纳) |
 
 ---
 
@@ -221,7 +233,7 @@ worker 按 `job_type` 分发(`worker.runner._dispatch`):
 graph LR
     subgraph src ["src/cortex/"]
         INFRA["infra/<br/>config·db·core<br/>services·prompts·ontology<br/>chunking·token_budget·think_stream"]
-        MEM["memory/<br/>ingest·episodes·erasures<br/>temporal·export_data<br/>maintenance·understanding"]
+        MEM["memory/<br/>ingest·episodes·erasures<br/>temporal·export_data<br/>maintenance·understanding<br/>feedback·dreaming·higher_order"]
         GRAPH["graph/<br/>extraction/<br/>retrieval/"]
         IF["interfaces/<br/>api/·mcp_server<br/>cli·smoke·worker/"]
     end
@@ -236,16 +248,17 @@ graph LR
 ```
 src/cortex/
 ├── __init__.py                 # __version__
-├── schema.sql                  # 全表 DDL(19 张表,单一真相源)
+├── schema.sql                  # 全表 DDL(22 张表,单一真相源)
 │
 ├── infra/                      # 基础设施(9 模块)
 │   ├── config.py  db.py  core.py  services.py
 │   ├── prompts.py  ontology.py  chunking.py
 │   └── token_budget.py  think_stream.py
 │
-├── memory/                     # 记忆写入与生命周期(7 模块)
+├── memory/                     # 记忆写入与生命周期(10 模块)
 │   ├── ingest.py  episodes.py  erasures.py  temporal.py
-│   └── export_data.py  maintenance.py  understanding.py
+│   ├── export_data.py  maintenance.py  understanding.py
+│   └── feedback.py  dreaming.py  higher_order.py    # 自演化子系统
 │
 ├── graph/                      # 知识图谱
 │   ├── extraction/             # pipeline.py + probe.py
@@ -374,7 +387,7 @@ graph TB
 
 ## 19.5 场景视图(Scenarios)
 
-三个核心场景穿越全部四层,验证架构一致性。
+四个核心场景穿越全部四层,验证架构一致性。
 
 ### 19.5.1 场景一:Agent 写入记忆
 
@@ -479,6 +492,55 @@ sequenceDiagram
 
 **穿越层级**:interfaces → memory → infra.db。
 
+### 19.5.4 场景四:反馈回灌闭环
+
+用户/Agent 对某条召回结果打反馈,系统在**共享信号总线**(`access_count` + `salience`)上即时调整,后续召回自然重排;负反馈累积到阈值则触发 `methylation` 级联软剪枝。这条路径是自演化子系统对外可见的主入口。
+
+```{mermaid}
+sequenceDiagram
+    participant A as Agent
+    participant API as interfaces.api
+    participant FB as memory.feedback
+    participant DB as PostgreSQL
+    participant RET as graph.retrieval
+    participant MAINT as memory.maintenance
+
+    A->>API: POST /v1/feedback {target_id, signal_type}
+    API->>FB: submit_feedback
+    FB->>DB: SELECT ... FOR UPDATE(序列化同 fact 并发反馈)
+
+    alt signal_type=relevant(正)
+        FB->>DB: access_count += 1, salience 上调(ceil 封顶)
+        FB-->>API: actions=[salience_boosted]
+    else signal_type=irrelevant(负)
+        FB->>DB: salience 下调(floor 兜底), negative_feedback_count += 1
+        FB->>FB: _check_methylation(累积阈值?)
+        FB-->>API: actions=[salience_demoted]
+    else signal_type=wrong(强负)
+        FB->>DB: salience 下调 + assertion_status → ruled_out
+        FB->>DB: task_temporary 则软关 recorded_to(版本化归档)
+        FB-->>API: actions=[ruled_out / archived]
+    end
+
+    FB->>DB: cache invalidate(若 cfg.feedback.cache_invalidate)
+    API-->>A: 200 {feedback_id, actions}
+
+    Note over A,RET: 下一次召回
+    A->>API: POST /v1/recall
+    API->>RET: recall
+    RET->>DB: ORDER BY 综合分(含 salience 权重)
+    Note over RET: 正反馈项排序上升 / 负反馈项下沉
+    RET-->>API: 重排后的 pack
+
+    Note over DB,MAINT: 负反馈累积达阈值(后台)
+    DB->>MAINT: 触发 methylation cascade
+    MAINT->>DB: 跳过仍被其他活跃 fact 支撑的 event(不剪共享 evidence)
+```
+
+**穿越层级**:interfaces → memory.feedback → infra.db;副作用经信号总线回流到 graph.retrieval 的排序,并在阈值处触发 memory.maintenance 的级联。
+
+**关键不变量**:所有 fact 写操作带 `recorded_to IS NULL AND valid_to IS NULL` 守卫,不篡改已归档历史;`methylation` 跳过仍被其他活跃 fact 支撑的 event,避免误剪共享 evidence。
+
 ---
 
 ## 19.6 架构决策记录(关键 ADR 摘要)
@@ -491,6 +553,7 @@ sequenceDiagram
 | 实体链接 | B over C(向量召回 + 阈值 + LLM 灰区) | 图谱质量命门;纯向量误并,纯 LLM 太贵 |
 | 双时态 | 4 字段(valid/recorded × from/to) | 同时支持"现在什么是真的"和"当时我们怎么以为" |
 | 分层 | 4 子包(infra/memory/graph/interfaces) | 职责清晰;依赖单向无环;便于维护演进 |
+| 信号总线 | `access_count` + `salience` 作为共享信号层 | 单一信号层耦合 Feedback/Dreaming/Higher-Order,避免 MindMemOS 把三功能解耦成互不知情的孤岛;反馈即时回流召回排序 |
 
 ```{admonition} 与重构前的差异
 :class: important

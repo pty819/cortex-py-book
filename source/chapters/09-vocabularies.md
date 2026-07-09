@@ -99,6 +99,8 @@ PREDICATE_CARDINALITY = {
 }
 ```
 
+> **DB 镜像**：cardinality 现在也同时存在于 `predicate_definitions` 表中（与 `category`、`prop_order` 并列）。`maintenance.py` 的 `seed_predicate_definitions()` 在 upsert 一阶谓词时会把 `ontology.py` 的 `PREDICATE_CARDINALITY` 同步写入该表的 `cardinality` 列。运行时 cardinality 仍以 `ontology.py` 为单一真相源，`predicate_definitions` 提供可查询/可审计的镜像并承载高阶谓词元数据。详见第 6 章「DB-backed 本体: predicate_definitions 表」。
+
 ## Coerce 函数
 
 抽取管线的 `coerce_value` 函数将 LLM 输出的原始值约束到词表：
@@ -136,11 +138,21 @@ uv run python -m cortex.interfaces.cli maintenance --action seed-vocab --scope e
 
 预置后，该 scope 的抽取管线会自动约束谓词为 40+ 个预定义值。
 
+> **配套函数**：`maintenance.py` 还提供 `seed_predicate_definitions()`，把 `ontology.py` 的一阶谓词 upsert 到 `predicate_definitions` 表（统一标记 `prop_order=1` 并写入 `category`、`cardinality`）。两者互补：`seed_diagnosis_vocab` 预置抽取期的 closed 词表约束，`seed_predicate_definitions` 则填充可查询的本体元数据。详见第 6 章。
+
 ## API
+
+| 端点 | 说明 |
+|------|------|
+| `POST /v1/vocabularies` | 创建词表（body: `scope`、`name`、`kind`、`values[]`） |
+| `GET /v1/vocabularies?scope=` | 列出某 scope 下所有词表（含 values） |
+| `GET /v1/vocabularies/{name}?scope=` | 取单个词表详情 |
+| `PUT /v1/vocabularies/{name}` | 替换词表内容（body: `scope`、可选 `kind`、`values[]`，整体覆盖 values） |
+| `DELETE /v1/vocabularies/{name}?scope=` | 删除词表 |
 
 ```bash
 # 创建词表（closed，多值）
-curl -X POST /v1/vocab \
+curl -X POST /v1/vocabularies \
   -H "Content-Type: application/json" \
   -d '{
     "scope": "equip:XXX-v1",
@@ -153,7 +165,15 @@ curl -X POST /v1/vocab \
   }'
 
 # 列出词表
-curl /v1/vocab?scope=equip:XXX-v1
+curl "/v1/vocabularies?scope=equip:XXX-v1"
+
+# 替换词表（整体覆盖 values）
+curl -X PUT /v1/vocabularies/failure_mode \
+  -H "Content-Type: application/json" \
+  -d '{"scope":"equip:XXX-v1","kind":"closed","values":[{"canonical":"密封失效","aliases":[]}] }'
+
+# 删除词表
+curl -X DELETE "/v1/vocabularies/failure_mode?scope=equip:XXX-v1"
 ```
 
 ## MCP 工具

@@ -151,16 +151,52 @@ def worker_loop():
             continue
         
         try:
-            if job["job_type"] == "extract":
-                result = extract_event(job["event_id"])
-            elif job["job_type"] == "consolidate":
-                result = consolidate_scope(job["scope"])
+            result = _dispatch(job)
             
             with session_scope() as conn:
                 complete_job(conn, job["job_id"], result)
         except Exception as e:
             with session_scope() as conn:
                 fail_job(conn, job["job_id"], str(e))
+```
+
+### `_dispatch`：8 种 job 类型
+
+`runner.py` 的 `_dispatch` 是 worker 的分派核心，按 `job_type` 路由到对应处理器。共 8 种：
+
+| job_type | 处理函数 | 说明 |
+|----------|----------|------|
+| `extract` | `extract_event(event_id)` | 同步抽取三元组 + 实体 + 索引 |
+| `segment` | `segment_event(event_id)` | 对长文本 event 做分段切片 |
+| `methylation` | `methylation_run(scope)` | 软剪枝长期不召回的 events |
+| `consolidate` | `consolidate_scope(scope)` | 同 S/P/O 重复 facts 去重 |
+| `enrich` | `enrich_scope(scope)` | 补充实体/事实的属性与元数据 |
+| `synthesize` | `synthesize_scope(scope)` | 跨 facts 合成摘要/结论 |
+| `dream` | `dreaming_run(scope)` | 离线巩固：relation_detect + action_plan 两阶段（见下文调度器） |
+| `higher_order` | `higher_order_generate(entity_id, scope)` | 高阶归纳：基于证据摘要生成抽象概念节点 |
+
+```python
+def _dispatch(job):
+    jt = job["job_type"]
+    if jt == "extract":
+        return extract_event(job["event_id"])
+    elif jt == "segment":
+        return segment_event(job["event_id"])
+    elif jt == "methylation":
+        return methylation_run(job["scope"])
+    elif jt == "consolidate":
+        return consolidate_scope(job["scope"])
+    elif jt == "enrich":
+        return enrich_scope(job["scope"])
+    elif jt == "synthesize":
+        return synthesize_scope(job["scope"])
+    elif jt == "dream":
+        return dreaming_run(job["scope"])
+    elif jt == "higher_order":
+        return higher_order_generate(
+            entity_id=job["payload"].get("entity_id"),
+            scope=job["scope"])
+    raise ValueError(f"unknown job_type: {jt}")
 ```
 
 ## 生命周期事件通知
@@ -200,6 +236,83 @@ def wait_for_stage(event_id, target_stage, timeout=30.0):
 ```
 captured(0) → extracted(1) → indexed(2) → consolidated(3)
 ```
+
+## Dreaming 调度器与心跳
+
+Dreaming（离线巩固）是耗时最长的 job 类型——它跑两阶段 LLM 管线（relation_detect + action_plan），单次执行常远超 reap_zombies 的 `visibility_timeout`（300s）。为此 worker 内建两个机制：轻量调度器和心跳续约。
+
+### `_maybe_schedule_dreaming`：in-worker 轻量调度器
+
+worker 主循环每轮调用一次，检查每个 scope 上一次完成的 dreaming 运行是否已超过 `schedule_interval_hours`，若是则入队一个 `dream` job。
+
+**去重守卫**：入队前先查 `jobs` 表，确认该 scope 不存在 `status IN ('queued','running')` 的 dream job，避免重复插入。
+
+```python
+def _maybe_schedule_dreaming(conn):
+    """每个 scope 按 schedule_interval_hours 周期性触发 dream job"""
+    rows = conn.execute(text("""
+        SELECT scope, MAX(completed_at) AS last_done
+        FROM jobs WHERE job_type='dream' AND status='completed'
+        GROUP BY scope
+    """)).fetchall()
+    interval = cfg.dreaming.schedule_interval_hours * 3600
+    for r in rows:
+        last = r.last_done or datetime.min.replace(tzinfo=UTC)
+        if (datetime.now(UTC) - last).total_seconds() < interval:
+            continue
+        # 去重守卫：已有 queued/running 的 dream job 则跳过
+        exists = conn.execute(text("""
+            SELECT 1 FROM jobs
+            WHERE scope=:s AND job_type='dream'
+              AND status IN ('queued','running') LIMIT 1
+        """), {"s": r.scope}).fetchone()
+        if not exists:
+            enqueue_job(conn, job_type="dream", scope=r.scope, payload={})
+```
+
+### `_DreamHeartbeat`：心跳续约线程
+
+Dream job 执行期间，后台线程每 60 秒刷新该 job 的 `jobs.locked_at = now()`，使 `reap_zombies`（visibility_timeout 300s）不会把正在跑的长任务误判为僵尸而重新入队。
+
+心跳通过 context manager 包装 dream 的 dispatch 调用——进入时起线程，退出时停线程：
+
+```python
+class _DreamHeartbeat:
+    """每 60s 刷新 jobs.locked_at，防止 reaper 抢走长跑 dream job"""
+    def __init__(self, conn_factory, job_id, interval_secs=60):
+        self.conn_factory = conn_factory
+        self.job_id = job_id
+        self.interval = interval_secs
+        self._stop = threading.Event()
+        self._thread = None
+
+    def __enter__(self):
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=5)
+
+    def _run(self):
+        while not self._stop.wait(self.interval):
+            try:
+                with self.conn_factory() as c:
+                    c.execute(text("""
+                        UPDATE jobs SET locked_at=now()
+                        WHERE job_id=CAST(:j AS uuid) AND status='running'
+                    """), {"j": self.job_id})
+            except Exception:
+                pass  # 心跳失败不阻断主任务
+
+# 在 _dispatch 的 dream 分支中：
+with _DreamHeartbeat(session_scope, job["job_id"]):
+    result = dreaming_run(job["scope"])
+```
+
+> 设计要点：心跳只续 `locked_at`，不改 status / attempts；任务真正结束仍由 `complete_job` / `fail_job` 处理。心跳线程是 daemon，worker 进程崩溃时不会卡住退出。
 
 ## 启动 Worker
 

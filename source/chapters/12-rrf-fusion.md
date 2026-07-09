@@ -112,6 +112,8 @@ CREATE TABLE recall_packs (
 
 缓存 5 分钟内有效，相同查询直接返回。
 
+> **缓存失效与权重一致性**：Feedback(第22章)改写 `facts.salience` 或关闭 fact、Dreaming(见相关章节)改动 salience 后,会主动失效相关 scope 的 recall_packs 缓存——`DELETE FROM recall_packs WHERE scope=:s`,确保下次召回重新走 RRF + salience 再加权,反映最新权重。否则 5 分钟 TTL 内的缓存命中会返回旧的排序结果。
+
 ## 完整检索流程
 
 ```{mermaid}
@@ -133,7 +135,10 @@ sequenceDiagram
     end
     
     Note over R: RRF 融合 (k=60)
-    
+
+    R->>DB: salience 再加权 (scores * sal + w * ac/10)
+    Note over R: 信号总线加权:见第10章/第21章
+
     R->>LLM: Prism rerank (top-40)
     LLM-->>R: reranked top-20
     
@@ -144,6 +149,16 @@ sequenceDiagram
     
     R-->>C: StratifiedPack
 ```
+
+## salience 再加权(信号总线)
+
+上图流程中,RRF 融合与 Prism rerank 之间还有一步**salience 再加权**,因它与 RRF 的衔接关系而放在本章说明。RRF 输出 `scores` 后,pipeline 按下式改写每个候选 fact 的分数:
+
+```
+scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
+```
+
+其中 `sal = facts.salience`(默认 1.0,由 Feedback 软降权),`ac = max(events.access_count)`(被召回次数)。效果是:RRF 排名并非最终排名——高 salience / 高 access_count 的 fact 在送入 rerank 之前就被向上抬,低 salience 的 fact 被向下压。完整的加权语义、反馈环与 `access_count` 递增细节见 **第10章「信号总线加权」** 与 **第21章 信号总线**。
 
 ## 关键参数
 

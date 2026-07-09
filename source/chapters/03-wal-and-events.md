@@ -126,6 +126,8 @@ CREATE TABLE events (
     access_count        INT NOT NULL DEFAULT 0,
     case_id             TEXT,
     methylated_at       TIMESTAMPTZ,
+    feedback_processed  BOOLEAN NOT NULL DEFAULT false,  -- 反馈是否已被处理入权重
+    last_recalled_at    TIMESTAMPTZ,                     -- 最近一次召回时间
     
     UNIQUE (scope, idempotency_key)
 );
@@ -227,7 +229,23 @@ CREATE TABLE lifecycle_events (
 );
 ```
 
-支持的 lifecycle kinds: `captured`, `extracted`, `entity_linked`, `belief_synthesized`, `import_progress`, `import_complete`。
+支持的 lifecycle kinds:
+
+| Kind | 含义 |
+|------|------|
+| `captured` | Event 已写入 WAL（append 成功） |
+| `extracted` | 抽取管线完成，已产出 facts/entities |
+| `entity_linked` | 实体链接（B over C）完成 |
+| `belief_synthesized` | Belief 聚合完成 |
+| `import_progress` | bulk 导入进度上报 |
+| `import_complete` | bulk 导入全部完成 |
+| `feedback_received` | 收到一条用户反馈（正/负投票、采纳信号），写入 `feedback_signals` |
+| `dreamed` | Dreaming 离线巩固完成一次 run，知识被合并/去重/抽象 |
+| `higher_order_generated` | Higher-Order 模块合成出一条高阶事实（`is_higher_order=true`） |
+| `forgotten` | 记忆被遗忘（salience 长期过低或 methylation 升级为真删前的标记） |
+| `failed` | 某个 job（抽取/归纳/巩固等）最终失败，超 过重试上限 |
+| `indexed` | 向量/全文索引构建完成（embed_status='done'） |
+| `erasure_complete` | GDPR 擦除 4 阶段全部完成，相关引用已真删 |
 
 ## 完整写入流程
 

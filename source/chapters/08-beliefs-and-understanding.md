@@ -216,12 +216,26 @@ sequenceDiagram
 
 **FastAPI**：
 ```
-GET  /v1/layers/beliefs        → 列出 beliefs
-GET  /v1/layers/concepts       → 列出 concepts
-GET  /v1/layers/concepts/{id}  → 单个 concept
-POST /v1/understanding/synthesize → 手动触发合成
-GET  /v1/understanding/coverage   → 覆盖率
+GET  /v1/beliefs                          → 列出 beliefs
+GET  /v1/beliefs/why?belief_id=           → belief 支持图 + LLM narrative
+POST /v1/beliefs/build                    → 手动触发 belief 聚合
+GET  /v1/understanding                    → 列出 concepts
+GET  /v1/understanding/coverage           → 覆盖率
+GET  /v1/understanding/{concept_id}       → 单个 concept
+GET  /v1/understanding/{concept_id}/related?relation&depth&limit → related 图遍历
+POST /v1/understanding/synthesize         → 手动触发合成
 ```
+
+| 端点 | 说明 |
+|------|------|
+| `GET /v1/beliefs` | 列出 beliefs（`scope` 必填，可选 `about` 实体过滤） |
+| `GET /v1/beliefs/why?belief_id=` | 遍历 belief → facts → events 支持图，返回 `support_graph`（nodes/edges）+ LLM 生成的 `narrative` |
+| `POST /v1/beliefs/build` | 手动触发某 `scope` 的 belief 聚合（body: `{"scope": ...}`） |
+| `GET /v1/understanding` | 列出 concepts（`scope` 必填，可选 `topic`、`limit`） |
+| `GET /v1/understanding/{concept_id}` | 取单个 concept |
+| `GET /v1/understanding/{concept_id}/related` | BFS 遍历 related 图，参数 `relation`、`depth`、`limit` |
+| `POST /v1/understanding/synthesize` | 手动触发概念合成（body: `{"scope": ..., "topics": [...]}`） |
+| `GET /v1/understanding/coverage` | 覆盖率审计 |
 
 **MCP 工具**：
 ```

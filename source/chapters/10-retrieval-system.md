@@ -200,8 +200,12 @@ def recall(*, scope, query=None, view="local", top_k=None, as_of=None,
         c_tmp = _chan_temporal_decay(conn, scope, view, top_k, as_of=as_of, include_superseded=include_superseded)
         
         scores = _rrf([c_vec, c_bm25, c_graph, c_ent, c_syn, c_tmp], cfg.retrieval.rrf_k)
+
+        # ── 信号总线加权(见下文专节)──
+        # scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
+
         ranked = sorted(scores, key=lambda fid: scores[fid], reverse=True)[:top_k]
-    
+
     # Phase 2: Rerank
     reranked_rows = _rerank(query, ordered_rows)
     
@@ -209,3 +213,67 @@ def recall(*, scope, query=None, view="local", top_k=None, as_of=None,
     pack = _assemble_pack(conn, scope, view, query, reranked_rows, t, ch_counts)
     return pack
 ```
+
+## 信号总线加权 (salience + access_count)
+
+RRF 融合产出 `scores` 之后、rerank 之前，pipeline 还插入了一步**信号总线再加权**——把记忆的"重要性信号"叠加到 RRF 分数上。这一步只在 `adv.salience_weight > 0` 时触发：
+
+```python
+# pipeline.py:315-329
+if adv.salience_weight > 0 and scores:
+    # H4:批量查询(单条 SQL 取全部候选的 ac+sal),消除 N+1
+    all_fids = list(scores.keys())
+    sig_rows = conn.execute(text("""
+        SELECT f.fact_id::text, coalesce(max(e.access_count),0) AS ac,
+               coalesce(f.salience,1.0) AS sal
+        FROM facts f LEFT JOIN events e ON e.event_id = ANY(f.supports)
+        WHERE f.fact_id = ANY(CAST(:ids AS uuid[]))
+        GROUP BY f.fact_id
+    """), {"ids": "{" + ",".join(all_fids) + "}"}).fetchall()
+    sig = {r[0]: ((r[1] or 0), (r[2] or 1.0)) for r in sig_rows}
+    for fid in all_fids:
+        ac, sal = sig.get(fid, (0, 1.0))
+        scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
+```
+
+加权公式：
+
+```
+scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
+```
+
+两个信号因子：
+
+| 因子 | 来源 | 含义 |
+|------|------|------|
+| `sal` | `facts.salience`（默认 1.0） | Feedback 软降权：正向反馈不改动 salience，负向反馈把 salience 调低（如降到 0.7）。`sal < 1.0` 时压低分数,`sal > 1.0` 时放大分数 |
+| `ac` | `max(events.access_count)` of supporting events | 隐式正反馈：该 fact 被召回的累计次数。除以 10.0 归一化后,乘以 `salience_weight` 作为加分项 |
+
+**排序效果**：
+
+- **高 salience 的 fact**（被正向反馈强化,或天生重要）——RRF 分数被 `sal` 放大,排名更靠前
+- **低 salience 的 fact**（被负向反馈降权,如错误结论/过时推断）——RRF 分数被 `sal < 1.0` 压缩,排名下沉
+- **频繁被召回的 fact**（高 `access_count`）——额外加 `salience_weight * ac/10` 的分,热门记忆自然浮现
+
+这一步把第21章的"信号总线"(`salience` + `access_count`)与第22章的"反馈循环"(Feedback 改写 salience)接入了检索排序——记忆不再是静态召回,而是"被用得越多越强,被否定得越多越弱"的动态权重。详见 **第21章 信号总线** 和 **第22章 反馈系统**。
+
+### recall → access_count 隐式反馈环
+
+Pack 装配成功后,pipeline 还做了一步**隐式正反馈**——对本次命中的 fact 的 supporting events 批量递增 `access_count`：
+
+```python
+# pipeline.py:404-416
+if pack and pack.get("layers", {}).get("facts"):
+    _hit_ids = [f["fact_id"] for f in pack["layers"]["facts"] if f.get("fact_id")]
+    if _hit_ids:
+        with session_scope() as conn:
+            conn.execute(text("""
+                UPDATE events SET access_count = access_count + 1, last_recalled_at = now()
+                WHERE event_id = ANY(SELECT unnest(supports) FROM facts
+                                     WHERE fact_id = ANY(CAST(:ids AS uuid[])))
+            """), {"ids": "{" + ",".join(_hit_ids) + "}"})
+```
+
+注意这步**写在 `recall()` 的返回路径上**——也就是说 **recall 不再是一个纯读操作**：每次成功召回都会写回 `events.access_count` 和 `events.last_recalled_at`,影响下一次 temporal-decay 通道和信号总线加权的分数。被频繁召回的记忆因此进入"越用越好召回"的正循环;长期未被召回的 event 则由 methylation 机制标记 `excluded_from_recall`(详见第21章)。
+
+异常容错:这步递增用 `try/except` 包裹,**信号采集失败不阻塞召回**——读路径的可靠性优先于反馈环的完整性。

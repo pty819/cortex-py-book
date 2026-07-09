@@ -10,7 +10,7 @@ graph TB
         LLM[Agent / LLM]
     end
     
-    subgraph "cortex MCP Server (28 工具)"
+    subgraph "cortex MCP Server (32 工具)"
         T1[memory_store]
         T2[memory_search]
         T3[answer]
@@ -41,7 +41,7 @@ graph TB
     HTTP --> T2
 ```
 
-## 28 工具一览
+## 32 工具一览
 
 | 类别 | 工具 | 说明 |
 |------|------|------|
@@ -71,6 +71,10 @@ graph TB
 | **Admin** | `health_check` | 健康检查 |
 | | `admin_metrics` | 存储指标 |
 | | `export_scope` | 导出 JSONL |
+| **Feedback** | `feedback_submit` | 提交反馈信号（scope, target_layer, target_id, signal_type, signal_durable, reason）。调用时机：agent 拿到 answer 后，根据用户反馈调用此工具修正记忆权重 |
+| | `feedback_list` | 查询反馈信号（scope, target_id） |
+| **Dreaming** | `dreaming_run` | 触发离线巩固（scope, dry_run）。调用时机：低频周期性触发，非实时 |
+| | `higher_order_generate` | 触发高阶归纳（entity_id, scope）。调用时机：extract 后异步触发，通常不需要 agent 显式调用 |
 
 ## 双传输模式
 

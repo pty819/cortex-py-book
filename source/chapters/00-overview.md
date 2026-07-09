@@ -139,6 +139,7 @@ flowchart TD
 | Entity Name | pg_trgm | 模糊实体名匹配 |
 | Synonym | synonyms 表 | 同义词扩展 |
 | Temporal-decay | access_count + 衰减 | 热数据优先 |
+| Salience 软降权 | signal bus（access_count + salience） | 负反馈多的事实按 salience 软降权，避免噪声召回 |
 
 ### 4. 功能模块
 
@@ -147,12 +148,25 @@ flowchart TD
 | **Ontology** | `infra/ontology.py` | 谓词本体（结构/因果/诊断/状态）、图准入规则 |
 | **Prompt 体系** | `infra/prompts.py` | 半导体级诊断 prompts，10+ 实体类型，40+ 谓词 |
 | **Understanding** | `memory/understanding.py` | 概念合成层，related 图遍历 |
-| **Maintenance** | `memory/maintenance.py` | methylation（软剪枝）+ consolidation（去重） |
+| **Maintenance** | `memory/maintenance.py` | methylation（软剪枝）+ consolidation（去重）+ `seed_predicate_definitions` |
 | **Erasures** | `memory/erasures.py` | GDPR 4 阶段引用计数真删 |
 | **Ingest** | `memory/ingest.py` | bulk 写入 + 5 导入器 |
 | **Episodes/Case** | `memory/episodes.py` | 诊断 Case 全生命周期管理 |
 | **Temporal** | `memory/temporal.py` | NL 时间短语解析 |
 | **Schemas** | `interfaces/api/schemas.py` | Pydantic API 契约 |
+| **Feedback** | `memory/feedback.py` | 召反馈信号采集（access_count/正负反馈），写入 `feedback_signals` 表 |
+| **Dreaming** | `memory/dreaming.py` | 离线巩固（Dreaming），周期性归纳 `dreaming_runs` |
+| **Higher-Order** | `memory/higher_order.py` | 高阶事实合成，从一阶 facts 产出抽象结论（`is_higher_order=true`） |
+
+## 记忆自演化（Feedback / Dreaming / Higher-Order）
+
+Cortex-PY 在五层记忆模型之上新增了**自演化能力**，使记忆层不再是一次性写入的静态图，而是会随使用被持续"回炉"的活系统。三条演化链路共享一条**信号总线**（基于 `access_count` 与 `salience` 两个核心信号）：
+
+- **Feedback（反馈）**：用户召回结果时的隐式/显式反馈（点击、采纳、正/负投票）被写入 `feedback_signals` 表，并实时调整相关 fact 与 entity 的 `salience` 与 recall 权重。正向反馈提升召回优先级，负向反馈触发软降权（salience 软衰减，而非立即删除）。
+- **Dreaming（做梦/离线巩固）**：系统在低负载时段运行 `dreaming_runs`，对一段时间内的 facts 做去重、合并、冲突消解与抽象，把零散三元组凝聚成更紧凑的知识结构。这是与在线抽取解耦的"睡眠巩固"。
+- **Higher-Order（高阶合成）**：在抽取触发或定时任务驱动下，对同一实体的多条一阶 facts 调用 LLM 合成**高阶事实**（`is_higher_order=true`，带 `evidence_fact_ids` 指向支撑它的一阶事实），相当于在 Facts 层内开了一个"抽象子层"。
+
+三条链路统一读写 `salience` 与 `access_count`：Feedback 负责采集信号、Dreaming 负责巩固、Higher-Order 负责提升抽象层级。这让检索系统可以通过 salience 软降权机制抑制噪声、放大高价值记忆。详细设计与配置见[第21章 信号总线](21-signal-bus)、[第22章 Feedback 信号](22-feedback)、[第23章 Dreaming 离线巩固](23-dreaming)与[第24章 Higher-Order 高阶事实](24-higher-order)。
 
 ## 代码结构
 
@@ -160,7 +174,7 @@ flowchart TD
 
 ```
 src/cortex/
-├── schema.sql              # 全表 DDL（单一真相源,19 张表）
+├── schema.sql              # 全表 DDL（单一真相源,22 张表）
 ├── infra/                  # 基础设施（9 模块）
 │   ├── config.py           # YAML 配置 + 维度强校验
 │   ├── db.py               # engine / session / schema 初始化
@@ -183,8 +197,8 @@ src/cortex/
 │   ├── extraction/         # 抽取管线 + 实体链接 B over C
 │   └── retrieval/          # 6 通道 + RRF + rerank + StratifiedPack
 └── interfaces/             # 对外入口
-    ├── api/                # FastAPI 全端点（53 个）+ Pydantic schemas
-    ├── mcp_server.py       # MCP server（28 工具，双传输）
+    ├── api/                # FastAPI 全端点（62 个）+ Pydantic schemas
+    ├── mcp_server.py       # MCP server（32 工具，双传输）
     ├── cli.py              # CLI 入口
     ├── smoke.py            # 端到端冒烟
     └── worker/             # Postgres-as-queue worker 循环

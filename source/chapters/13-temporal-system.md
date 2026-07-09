@@ -58,6 +58,43 @@ class RecallRequest(BaseModel):
 
 系统将 NL 短语解析为 ISO 时间范围后，应用到所有检索通道的时态过滤中。
 
+## REST API
+
+除 MCP 工具外，时态短语也通过 REST 端点管理（端点均会先调用 `temporal.seed_defaults()` 确保预置短语就位）：
+
+| 端点 | 说明 |
+|------|------|
+| `POST /v1/temporal/phrases` | 注册一个时间短语，body: `{name, expression, anchor?}` |
+| `GET /v1/temporal/phrases` | 列出所有已注册的时间短语 |
+| `DELETE /v1/temporal/phrases/{name}` | 按名称删除时间短语 |
+
+请求体 schema：
+
+```python
+class TemporalPhraseRequest(BaseModel):
+    name: str
+    expression: str    # dur..dur，例如 -P7D..P0D
+    anchor: Optional[str] = None
+```
+
+```bash
+# 注册自定义短语
+curl -X POST /v1/temporal/phrases \
+  -H "Content-Type: application/json" \
+  -d '{"name":"this_quarter","expression":"-P90D..P0D"}'
+# → {"phrase_id":"...","name":"this_quarter","expression":"-P90D..P0D"}
+
+# 列出短语
+curl /v1/temporal/phrases
+# → {"items":[...]}
+
+# 删除短语
+curl -X DELETE /v1/temporal/phrases/this_quarter
+# → {"deleted":"this_quarter"}
+```
+
+> 注意：MCP 工具 `temporal_register(name, expression)` 当前签名不含 `anchor`；REST 端点通过 `TemporalPhraseRequest` 额外接受可选 `anchor` 字段。
+
 ## MCP 工具
 
 ```bash

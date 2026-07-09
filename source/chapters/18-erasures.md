@@ -132,10 +132,14 @@ def execute_erasure(scope, selector, from_preview_id=None):
 ## 完整 API
 
 ```
-POST /v1/erasures/preview    → 干跑预览
-POST /v1/erasures/execute    → 执行删除
-GET  /v1/erasures/status     → 查询任务状态
+POST /v1/erasures                            → 执行删除（创建 erasure_job）
+POST /v1/erasures/preview                    → 干跑预览，返回 preview_id（不落库改动）
+GET  /v1/erasures/preview/{preview_id}/manifest  → 取预览 manifest（preview 过期返回 409）
+GET  /v1/erasures/{erasure_id}               → 查询 erasure 任务状态
+POST /v1/erasures/{erasure_id}/cancel        → 取消正在运行的 erasure
 ```
+
+> 注意路径形态：执行用 `POST /v1/erasures`（不是 `/execute`），状态查询用 `GET /v1/erasures/{erasure_id}`（不是 `/status/{id}`）。preview 与 execute 是两个独立入口——preview 返回的 `preview_id` 可换 manifest，但 execute 本身可不依赖 preview 直接跑。
 
 MCP 工具：
 ```

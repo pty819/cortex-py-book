@@ -60,6 +60,11 @@ CREATE TABLE events (
     -- 幂等
     idempotency_key   TEXT NOT NULL,
     
+    -- 自演化信号
+    access_count      INT NOT NULL DEFAULT 0,        -- 召回计数(隐式正向反馈)
+    feedback_processed BOOLEAN NOT NULL DEFAULT false, -- 反馈是否已被处理入权重
+    last_recalled_at  TIMESTAMPTZ,                    -- 最近一次召回时间
+    
     -- 修订约束
     UNIQUE (scope, idempotency_key)
 );
@@ -73,6 +78,9 @@ CREATE TABLE events (
 - **`extraction_diagnostics`**：抽取管线诊断信息 JSON
 - **`methylated_at`**：甲基化时间戳（长期不召回的事件被标记）
 - **`case_id`**：关联的诊断案例 ID（诊断场景）
+- **`access_count`**：该事件被召回的次数，作为隐式正向反馈信号（自演化信号总线的一部分）
+- **`feedback_processed`**：标记反馈是否已被处理并入权重，避免重复计算
+- **`last_recalled_at`**：最近一次被召回的时间戳，用于时间衰减与冷热判定
 
 ### 幂等写入
 
@@ -199,6 +207,15 @@ CREATE TABLE facts (
     evidence_span    TEXT,
     supports         UUID[] NOT NULL DEFAULT '{}',      -- → event_id
     extraction_model TEXT,
+    
+    -- 自演化 / 高阶事实
+    salience                 FLOAT NOT NULL DEFAULT 1.0 CHECK (salience BETWEEN 0 AND 2),  -- 显著性权重
+    positive_feedback_count  INT NOT NULL DEFAULT 0,   -- 显式正向反馈数
+    negative_feedback_count  INT NOT NULL DEFAULT 0,   -- 显式负向反馈数
+    is_higher_order          BOOLEAN NOT NULL DEFAULT false,  -- 是否为高阶事实(LLM 合成结论)
+    higher_order_reasoning   TEXT,                      -- 高阶事实的推理过程
+    evidence_fact_ids        UUID[] NOT NULL DEFAULT '{}',  -- → 支撑此高阶事实的一阶 fact_id
+    
     CHECK (object_type = 'entity' AND object_entity_id IS NOT NULL
         OR object_type = 'literal' AND object_value IS NOT NULL)
 );
@@ -265,6 +282,21 @@ has_status, deal_stage
 3. 因果谓词 → 必须 assertion_status = 'confirmed'
 4. 非因果谓词 → assertion_status ∈ {'observed', 'confirmed'}
 ```
+
+### Higher-Order Facts（高阶事实）
+
+Facts 表内部其实分**两层**——这是 Facts 层内的一个抽象子层，而不是一个独立的新层：
+
+| 层级 | `is_higher_order` | 来源 | `evidence_fact_ids` |
+|------|-------------------|------|---------------------|
+| **一阶事实（first-order）** | `false` | 抽取管线从原始 Event 直接抽出的三元组 | 空或指向 event |
+| **高阶事实（higher-order）** | `true` | LLM 对多条一阶事实做归纳/合成得到的抽象结论 | 指向支撑它的一阶 fact_id 列表 |
+
+**一阶事实**就是前面描述的标准三元组：从某个 Event 抽出的 `subject-predicate-object`，`supports` 指向产生它的 Event。它们是知识图谱的基础边。
+
+**高阶事实**是在抽取完成后由 Higher-Order 模块（详见[第24章](24-higher-order)）异步合成的：系统收集同一 `subject_id` 下的多条相关一阶事实，调用 LLM 归纳出更抽象/概括性的结论，再以一条新的 fact 行写入，`is_higher_order=true` 并通过 `evidence_fact_ids` 反向指向支撑它的一阶事实。`higher_order_reasoning` 字段记录 LLM 的推理过程，便于溯源与审计。
+
+这样设计的好处是：高阶结论与一阶事实共用同一张表、同一套检索与图遍历路径，但通过 `is_higher_order` 与 `evidence_fact_ids` 维持了清晰的溯源链——可以随时回到它所依据的一阶证据。检索/图遍历可按需包含或排除高阶事实。
 
 ## 第4层：Beliefs（信念层）
 

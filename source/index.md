@@ -26,6 +26,16 @@ chapters/09-vocabularies
 
 ```{toctree}
 :maxdepth: 2
+:caption: 中篇：记忆自演化——信号总线与三功能
+
+chapters/21-signal-bus
+chapters/22-feedback
+chapters/23-dreaming
+chapters/24-higher-order
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: 下篇：读取路径——精准召回
 
 chapters/10-retrieval-system
@@ -50,6 +60,7 @@ chapters/16-worker-system
 chapters/17-maintenance
 chapters/18-erasures
 chapters/19-architecture-diagrams
+chapters/25-config-and-frontend
 ```
 
 ```{toctree}
@@ -72,7 +83,8 @@ chapters/20-competitive-analysis
 | 知识图谱 | Facts 当图边，递归 CTE 做 2-3 跳 BFS |
 | 6 通道检索 | 向量 + BM25 + 图遍历 + entity-name + synonym + temporal-decay |
 | 实体链接 | B over C 策略：向量召回 + 阈值 + LLM 灰区判定 |
-| MCP | 28 个工具，stdio + streamable-http 双传输 |
+| 记忆自演化 | Feedback 回灌 + Dreaming 离线巩固 + Higher-Order 高阶归纳，共享信号总线 |
+| MCP | 32 个工具，stdio + streamable-http 双传输 |
 
 ### 技术栈
 

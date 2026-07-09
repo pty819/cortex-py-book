@@ -48,6 +48,8 @@ def methylation_run(scope, older_than_days=30):
 
 **可逆操作**：甲基化只设标志，不删数据。手动设回 `excluded_from_recall=false` 即可恢复。
 
+**触发方式的演化**：甲基化最初是纯批处理 job（由 maintenance 定时触发）。现在它**还**会被 Feedback 流程内联触发——`feedback._check_methylation` 在每次反馈提交后检查该 scope 的 `negative_feedback_count`，一旦越过 `demote_threshold` 就立即对该 scope 跑一次 methylation。也就是说甲基化不再只靠人工 maintenance 触发，负反馈累积到阈值会自动软剪枝对应记忆。
+
 ```{mermaid}
 flowchart LR
     A[Events] --> B{access_count > 0?}
@@ -91,6 +93,8 @@ def consolidation_run(scope):
 
 **超替语义**：旧 fact 的 `recorded_to = now()`（认知上已过时），`valid_to` 保持不变（保留历史上为真的时间窗口）。
 
+**与 Dreaming 的关系**：Dreaming 流程的 Phase 0 直接复用 `consolidation_run` 作为前置去重——先跑一遍 consolidation 把同 S/P/O 的重复 live facts 收敛到最新版本，Phase 1/2 才在干净的图上做 relation_detect + action_plan。详见第 23 章。
+
 ## 诊断谓词词表预置
 
 ```python
@@ -117,6 +121,30 @@ def seed_diagnosis_vocab(scope):
     return n
 ```
 
+## 谓词定义预置（seed_predicate_definitions）
+
+第 4 个 maintenance 动作：把 `ontology.py` 中定义的谓词 upsert 到 `predicate_definitions` 表，`prop_order=1`，使本体从纯代码常量升级为 DB 支撑的元数据表（带 category / order 字段），支持运行时查询与约束校验。
+
+```python
+def seed_predicate_definitions(scope=None):
+    """upsert ontology.py 谓词到 predicate_definitions 表（prop_order=1）"""
+    n = 0
+    with session_scope() as conn:
+        for pred in ONTOLOGY_PREDICATES:  # 来自 ontology.py
+            r = conn.execute(text("""
+                INSERT INTO predicate_definitions
+                    (predicate, category, prop_order, description)
+                VALUES (:p, :cat, 1, :d)
+                ON CONFLICT (predicate) DO UPDATE
+                SET category=:cat, prop_order=1, description=:d
+            """), {"p": pred.name, "cat": pred.category,
+                   "d": pred.description})
+            n += r.rowcount or 0
+    return n
+```
+
+**作用**：开启 DB-backed ontology——谓词不再只是代码里的 `Enum`，而是表里带 `category`（因果/观测/诊断/状态…）和 `prop_order` 的可查元数据。extract 环节可据此做闭集校验，未命中的谓词走 quarantine 而非直接入图。
+
 ## 启动命令
 
 ```bash
@@ -132,11 +160,21 @@ uv run python -m cortex.interfaces.cli maintenance --action seed-vocab --scope e
 
 ## API 端点
 
+maintenance 操作统一走单一端点，通过 body.action 区分：
+
 ```
-POST /v1/maintenance/methylation    → 触发甲基化
-POST /v1/maintenance/consolidation  → 触发去重
-POST /v1/maintenance/vocab/seed     → 预置词表
+POST /v1/admin/maintenance
+  body.action ∈ {methylation, consolidation}
+  body.scope  → 目标 scope
 ```
+
+词表预置走专用端点：
+
+```
+POST /v1/admin/maintenance/vocab/seed   → 预置词表（scope）
+```
+
+> 注意：不存在 `/v1/maintenance/methylation`、`/v1/maintenance/consolidation` 这类按动作拆分的路径——旧文档中的写法已废弃，实际实现是单端点 + action 字段。
 
 ## 最佳实践
 

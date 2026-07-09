@@ -210,6 +210,75 @@ PREDICATE_CARDINALITY = {
 }
 ```
 
+## DB-backed 本体: predicate_definitions 表
+
+`ontology.py`（`src/cortex/infra/ontology.py`）**仍然是所有一阶谓词的单一真相源**。在此基础上，cortex 增加了一张 DB 配套表 `predicate_definitions`，承载 `ontology.py` 本身不携带的 `prop_order`（一阶/高阶）和 `category`（类别）元数据，并使本体可查询、可扩展到高阶谓词。
+
+表结构定义在 `schema.sql`：
+
+```sql
+-- 谓词本体表(从 ontology.py 硬编码迁移到 DB 可配,支持 order 标记)
+CREATE TABLE IF NOT EXISTS cortex.predicate_definitions (
+    predicate       TEXT PRIMARY KEY,
+    category        TEXT NOT NULL CHECK (category IN ('structural','causal','diagnostic','state','higher_order')),
+    prop_order      INT NOT NULL DEFAULT 1 CHECK (prop_order IN (1,2)),  -- 1=一阶, 2=高阶
+    description     TEXT,
+    cardinality     TEXT NOT NULL DEFAULT 'multi' CHECK (cardinality IN ('single','multi')),
+    example         TEXT
+);
+```
+
+关键字段：
+
+| 字段 | 说明 |
+|------|------|
+| `predicate` | 主键，谓词名 |
+| `category` | 类别，`CHECK IN ('structural','causal','diagnostic','state','higher_order')`。前四类与 `ontology.py` 的四组谓词一一对应 |
+| `prop_order` | 阶数，`CHECK IN (1,2)`。`1`=一阶谓词，`2`=高阶谓词 |
+| `description` | 谓词的自然语言描述 |
+| `cardinality` | 基数 `'single'`/`'multi'`，与 `ontology.py` 的 `PREDICATE_CARDINALITY` 对齐 |
+| `example` | 示例三元组 |
+
+### seed_predicate_definitions()
+
+`maintenance.py` 的 `seed_predicate_definitions()` 把 `ontology.py` 的一阶谓词按类别 upsert 进 `predicate_definitions`，统一标记为 `prop_order=1`。该函数幂等：
+
+```python
+def seed_predicate_definitions() -> int:
+    """把 ontology.py 的硬编码谓词预置到 predicate_definitions 表(一阶,order=1)。幂等。返回 upsert 数。"""
+    cat_map = {}
+    for p in STRUCTURAL_PREDICATES:    cat_map[p] = "structural"
+    for p in CAUSAL_PREDICATES:        cat_map[p] = "causal"
+    for p in DIAGNOSTIC_PREDICATES:    cat_map[p] = "diagnostic"
+    for p in STATE_PREDICATES:         cat_map[p] = "state"
+    # ...按 PREDICATE_CARDINALITY 写入 cardinality,ON CONFLICT DO UPDATE
+```
+
+### higher_order 类别与高阶归纳
+
+`category='higher_order'` 是 DB 表新引入的类别，**在 `ontology.py` 中没有对应谓词集**。这类谓词必须同时满足 `prop_order=2`，由第 11 章的 **Higher-Order 归纳** 特征消费：
+
+```python
+# higher_order.py
+ho_predicates = conn.execute(text("""
+    SELECT predicate, description, example
+    FROM predicate_definitions WHERE prop_order=2
+""")).fetchall()
+if not ho_predicates:
+    return {"synthesized": 0, "skipped": "no order=2 predicates defined"}
+```
+
+换句话说：一阶谓词的真相仍在 `ontology.py`，而高阶谓词（`prop_order=2`、`category='higher_order'`）只存在于 DB 表中，需要运维人员/管理员通过该表显式注册后才能驱动高阶归纳。
+
+### 真相源分工
+
+| 内容 | 真相源 |
+|------|--------|
+| 一阶谓词集合（structural / causal / diagnostic / state） | `ontology.py` |
+| 一阶谓词的 cardinality | `ontology.py` 的 `PREDICATE_CARDINALITY`（被 `seed_predicate_definitions()` 同步进 DB） |
+| `category`、`prop_order` 元数据 | `predicate_definitions` 表（`ontology.py` 不携带） |
+| 高阶谓词（`category='higher_order'`、`prop_order=2`） | 仅 `predicate_definitions` 表 |
+
 ## 在抽取管线中的应用
 
 抽取管线在写入 facts 前，通过 `coerce_value` 将 LLM 输出的谓词约束到预定义词表（如果 scope 有 predicate 词表），并通过 `_assertion_semantics` 自动设置 polarity 和 assertion_status：

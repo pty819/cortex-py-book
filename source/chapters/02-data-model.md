@@ -14,12 +14,14 @@
 
 ## 完整表清单
 
+cortex schema 共 **22 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分列以 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 增量补加)。下表按逻辑层分组:
+
 | 表 | 角色 | 核心字段 |
 |----|------|----------|
-| `events` | WAL, 唯一真相源 | scope, content, context, idempotency_key |
+| `events` | WAL, 唯一真相源 | scope, content, context, idempotency_key, access_count, feedback_processed, last_recalled_at |
 | `entities` | 实体表, B-over-C 载体 | canonical_name, entity_type, embedding, identity_context |
 | `entity_aliases` | 别名表 | entity_id, alias |
-| `facts` | **双时态三元组 + 图边** | subject_id, predicate, object, 双时态4字段, polarity, assertion_status |
+| `facts` | **双时态三元组 + 图边** | subject_id, predicate, object, 双时态4字段, polarity, assertion_status, salience, 正/负反馈计数, is_higher_order, evidence_fact_ids |
 | `beliefs` | 概率断言 + supports 链 | about_entity_id, claim, confidence, supports |
 | `episodes` | 有界事件序列 + Case | scope, event_ids, case_id, equipment, root_cause |
 | `concepts` | Understanding 概念 | name, topic, summary, supports, related |
@@ -35,6 +37,9 @@
 | `import_jobs` | 导入任务 | source, status, accepted, failed |
 | `erasure_jobs` | 擦除任务 | selector, phase, manifest |
 | `recall_packs` | 检索结果缓存 | pack_id, query_hash, pack_json, expires_at |
+| `feedback_signals` | **反馈信号总线**(反馈回灌) | scope, target_layer, target_id, signal_type, signal_durable, strength, idempotency_key, applied |
+| `dreaming_runs` | **离线巩固运行记录**(Dreaming) | run_id, scope, status, phase0_closed, phase_a_clusters, phase_b_issues, phase_c_actions |
+| `predicate_definitions` | **谓词本体表**(从 ontology.py 迁入 DB) | predicate, category, prop_order, cardinality, example |
 
 ## 实体表 (entities)
 
@@ -123,6 +128,48 @@ CREATE TABLE facts (
 );
 ```
 
+#### 记忆自演化的增量列(ALTER TABLE 增量补加)
+
+以下 6 列在 `schema.sql` 中以 `ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS ...` 形式追加(位于主 `CREATE TABLE` 之后),用于支持 salience 软降权、反馈计数与高阶归纳:
+
+```sql
+-- 信号总线:facts 软降权(salience)+ 反馈计数(冗余加速查询)
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS salience FLOAT NOT NULL DEFAULT 1.0
+    CHECK (salience >= 0 AND salience <= 2);
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS positive_feedback_count INT NOT NULL DEFAULT 0;
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS negative_feedback_count INT NOT NULL DEFAULT 0;
+
+-- Higher-Order 高阶归纳:一阶事实 LLM 归纳高阶结论
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS is_higher_order BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS higher_order_reasoning TEXT;
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS evidence_fact_ids UUID[] NOT NULL DEFAULT '{}';
+```
+
+| 列 | 类型 | 用途 |
+|----|------|------|
+| `salience` | FLOAT ∈ [0,2],默认 1.0 | 信号总线软降权;负反馈累积会把它拉低,影响召回排序 |
+| `positive_feedback_count` | INT,默认 0 | 正反馈计数(冗余加速查询,避免每次聚合 feedback_signals) |
+| `negative_feedback_count` | INT,默认 0 | 负反馈计数 |
+| `is_higher_order` | BOOLEAN,默认 false | 标记该 fact 是由一阶事实经 LLM 归纳出的高阶结论 |
+| `higher_order_reasoning` | TEXT | 高阶归纳的推理过程(可空) |
+| `evidence_fact_ids` | UUID[],默认 '{}' | 支撑本高阶结论的一阶 fact_id 列表 |
+
+### Events 表的增量列
+
+`events` 同样以 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 增量补加了两列,服务于反馈幂等与召回热度追踪:
+
+```sql
+-- 信号总线:events 隐式反馈幂等标记 + 最近被召回时间
+ALTER TABLE cortex.events ADD COLUMN IF NOT EXISTS feedback_processed BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cortex.events ADD COLUMN IF NOT EXISTS last_recalled_at TIMESTAMPTZ;
+```
+
+| 列 | 类型 | 用途 |
+|----|------|------|
+| `access_count` | INT,默认 0 | 已在主 `CREATE TABLE` 中;事件被召回次数,用于 methylation 冷数据扫描(`access_count = 0` 且长期未被召回) |
+| `feedback_processed` | BOOLEAN,默认 false | 隐式反馈已处理标记,避免对同一事件重复应用反馈信号 |
+| `last_recalled_at` | TIMESTAMPTZ | 最近一次被召回的时间戳;配合 `access_count` 判断热度与甲基化 |
+
 ### 断言语义规则
 
 ```python
@@ -164,7 +211,7 @@ flowchart TD
 
 ## Ontology 模块
 
-`cortex/ontology.py` 是**谓词本体的单一真相源**：
+`src/cortex/infra/ontology.py` 是**谓词本体的单一真相源**(其内容由 `predicate_definitions` 表镜像,DB 版本支持 `prop_order`/`cardinality` 可配):
 
 ```python
 STRUCTURAL_PREDICATES = {
@@ -361,6 +408,69 @@ CREATE TABLE erasure_jobs (
 );
 ```
 
+## 记忆自演化三表
+
+这三张表支撑 cortex 的"记忆自演化"能力:反馈信号回灌修正召回、离线 Dreaming 巩固去重归纳、谓词本体从硬编码迁入 DB 可配。
+
+### feedback_signals — 反馈信号总线
+
+用户/系统显式反馈的落地表。`applied`/`applied_at` 跟踪是否已被吸收回 facts 的 salience 与正负反馈计数;`idempotency_key` 唯一保证重复投递幂等。
+
+```sql
+CREATE TABLE IF NOT EXISTS cortex.feedback_signals (
+    feedback_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scope            TEXT NOT NULL,
+    pack_id          TEXT,                          -- 引用 recall_packs.pack_id(可选,溯源哪次召回)
+    target_layer     TEXT NOT NULL CHECK (target_layer IN ('fact','belief','event')),
+    target_id        UUID NOT NULL,
+    signal_type      TEXT NOT NULL CHECK (signal_type IN ('relevant','irrelevant','wrong','partial')),
+    signal_durable   TEXT NOT NULL DEFAULT 'long_term'
+                     CHECK (signal_durable IN ('task_temporary','scenario_specific','long_term')),
+    strength         FLOAT NOT NULL DEFAULT 1.0,
+    reason           TEXT,
+    actor            TEXT,
+    idempotency_key  TEXT,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    applied          BOOLEAN NOT NULL DEFAULT false,
+    applied_at       TIMESTAMPTZ,
+    UNIQUE(idempotency_key)
+);
+```
+
+### dreaming_runs — 离线巩固运行记录
+
+每次离线 Dreaming(巩固)运行写一行,记录各阶段产出量,便于回溯与运营监控:
+
+```sql
+CREATE TABLE IF NOT EXISTS cortex.dreaming_runs (
+    run_id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scope            TEXT NOT NULL,
+    started_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at     TIMESTAMPTZ,
+    status           TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running','completed','failed')),
+    phase0_closed    INT NOT NULL DEFAULT 0,    -- 精确去重关了多少 fact
+    phase_a_clusters INT NOT NULL DEFAULT 0,    -- 发现多少候选簇
+    phase_b_issues   INT NOT NULL DEFAULT 0,    -- LLM 发现多少 issue
+    phase_c_actions  INT NOT NULL DEFAULT 0,    -- 执行多少动作
+    summary          JSONB                       -- 详细统计
+);
+```
+
+### predicate_definitions — 谓词本体表
+
+把原本硬编码在 `src/cortex/infra/ontology.py` 的谓词分类迁入 DB,新增 `prop_order` 区分一阶(1)/高阶(2)谓词,`cardinality` 标记单值超替或多值共存:
+
+```sql
+CREATE TABLE IF NOT EXISTS cortex.predicate_definitions (
+    predicate       TEXT PRIMARY KEY,
+    category        TEXT NOT NULL CHECK (category IN ('structural','causal','diagnostic','state','higher_order')),
+    prop_order      INT NOT NULL DEFAULT 1 CHECK (prop_order IN (1,2)),  -- 1=一阶, 2=高阶
+    description     TEXT,
+    cardinality     TEXT NOT NULL DEFAULT 'multi' CHECK (cardinality IN ('single','multi')),
+    example         TEXT
+);
+```
+
 ## 实体关系全景图
 
 ```{mermaid}
@@ -376,7 +486,13 @@ erDiagram
     VOCABULARIES ||--o{ VOCABULARY_VALUES : contains
     ENTITIES ||--o{ CONCEPTS : related
     BLOBS }o--|| EVENTS : referenced
-    
+    FEEDBACK_SIGNALS }o--o| FACTS : targets
+    FEEDBACK_SIGNALS }o--o| BELIEFS : targets
+    FEEDBACK_SIGNALS }o--o| EVENTS : targets
+    RECALL_PACKS ||--o{ FEEDBACK_SIGNALS : sourced_from
+    SCOPES ||--o{ DREAMING_RUNS : scoped
+    PREDICATE_DEFINITIONS }o..|| FACTS : "predicate 字典"
+
     EVENTS {
         uuid event_id PK
         bigint wal_offset
@@ -386,6 +502,9 @@ erDiagram
         jsonb context
         text idempotency_key
         text case_id
+        int access_count
+        bool feedback_processed
+        timestamptz last_recalled_at
     }
     FACTS {
         uuid fact_id PK
@@ -393,6 +512,11 @@ erDiagram
         text polarity
         text assertion_status
         float confidence
+        float salience
+        int positive_feedback_count
+        int negative_feedback_count
+        bool is_higher_order
+        uuid[] evidence_fact_ids
         uuid[] supports
     }
     ENTITIES {
@@ -405,6 +529,32 @@ erDiagram
     VOCABULARIES {
         text name
         text kind
+        text cardinality
+    }
+    FEEDBACK_SIGNALS {
+        uuid feedback_id PK
+        text scope
+        text target_layer
+        uuid target_id
+        text signal_type
+        text signal_durable
+        float strength
+        text idempotency_key
+        bool applied
+    }
+    DREAMING_RUNS {
+        uuid run_id PK
+        text scope
+        text status
+        int phase0_closed
+        int phase_a_clusters
+        int phase_b_issues
+        int phase_c_actions
+    }
+    PREDICATE_DEFINITIONS {
+        text predicate PK
+        text category
+        int prop_order
         text cardinality
     }
 ```
