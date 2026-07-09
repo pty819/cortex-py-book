@@ -20,9 +20,9 @@
 
 ---
 
-## 19.1 逻辑视图
+## 23.1 逻辑视图
 
-### 19.1.1 功能分层
+### 23.1.1 功能分层
 
 系统按职责分为四层子包,依赖**严格单向向下**,无环:
 
@@ -78,7 +78,7 @@ graph TB
 - 唯一例外:`memory.ingest` 通过**函数内 lazy import** 调 `graph.extraction`(避免循环)
 ```
 
-### 19.1.2 各层职责
+### 23.1.2 各层职责
 
 **infra —— 基础设施(9 模块)**
 
@@ -127,7 +127,7 @@ graph TB
 | `interfaces.smoke` | 端到端冒烟 |
 | `interfaces.worker.runner` | 队列 worker 循环 + reaper |
 
-### 19.1.3 五层记忆模型(领域核心)
+### 23.1.3 五层记忆模型(领域核心)
 
 ```{mermaid}
 graph LR
@@ -143,9 +143,9 @@ graph LR
 
 ---
 
-## 19.2 进程视图
+## 23.2 进程视图
 
-### 19.2.1 进程拓扑
+### 23.2.1 进程拓扑
 
 ```{mermaid}
 graph TB
@@ -169,7 +169,7 @@ graph TB
 
 典型部署 3 类进程:API(1)、MCP HTTP(1)、Worker(1~N)。也可单进程跑 stdio MCP(本地 agent)。所有进程**无共享内存**,完全通过 PostgreSQL 协调。
 
-### 19.2.2 并发与同步模型
+### 23.2.2 并发与同步模型
 
 ```{mermaid}
 sequenceDiagram
@@ -204,11 +204,15 @@ sequenceDiagram
 | **visibility timeout** | `infra.core.reap_zombies` | running 且 `locked_at` 超 300s → 重置 queued |
 | **reaper** | `worker.runner` 每 60s | 扫僵尸 job,防 worker 崩溃后任务卡死 |
 | **退避重试** | `infra.core.fail_job` | 未超 `max_attempts` → queued + 指数退避;超限 → failed 死信 |
+| **Dreaming scheduler** | `worker.runner._maybe_schedule_dreaming` | 内嵌于 worker reaper 周期,按 scope 检查距上次 dreaming 是否超过 `schedule_interval_hours`;有 queued/running dream 时不重复入队 |
+| **Dream heartbeat** | `worker.runner._DreamHeartbeat` | 后台线程每 60s 刷新 dream job 的 `locked_at`,防 reaper 在 300s visibility timeout 内误重排长耗时 dreaming |
+| **Advisory lock** | `memory.dreaming.dream_run` | `pg_try_advisory_xact_lock(hashtext(scope))` 序列化同 scope 并发 dream run |
 | **pg_notify** | `infra.core.emit_lifecycle` | lifecycle 事件推送,`?wait=` 的 LISTEN 立即收到 |
 | **SSE 长连接** | `api.app` stream 端点 | `EventSourceResponse` + `is_disconnected()` 探活 |
 | **幂等 WAL** | `infra.core.append_event` | 同 key + 同 body hash → 返回既有;异 body → 409 |
+| **Feedback 幂等** | `memory.feedback.submit_feedback` | `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING` 原子去重,防并发 TOCTOU race |
 
-### 19.2.3 队列任务类型
+### 23.2.3 队列任务类型
 
 worker 按 `job_type` 分发(`worker.runner._dispatch`):
 
@@ -225,9 +229,9 @@ worker 按 `job_type` 分发(`worker.runner._dispatch`):
 
 ---
 
-## 19.3 开发视图
+## 23.3 开发视图
 
-### 19.3.1 目录结构(4 子包)
+### 23.3.1 目录结构(4 子包)
 
 ```{mermaid}
 graph LR
@@ -270,7 +274,7 @@ src/cortex/
     └── worker/                 # runner.py
 ```
 
-### 19.3.2 分层依赖矩阵(无环)
+### 23.3.2 分层依赖矩阵(无环)
 
 | 依赖方 → | infra | memory | graph | interfaces |
 |----------|:-----:|:------:|:-----:|:----------:|
@@ -281,7 +285,7 @@ src/cortex/
 
 > ✗\* = `memory.ingest` 仅通过函数内 lazy import 调 `graph.extraction`,非 import 顶层依赖。
 
-### 19.3.3 构建入口
+### 23.3.3 构建入口
 
 | 入口 | 命令 | 模块路径 |
 |------|------|---------|
@@ -292,26 +296,31 @@ src/cortex/
 | MCP HTTP | `cortex mcp-http` | `interfaces.mcp_server.main_http` |
 | Worker | `cortex worker` | `interfaces.worker.runner.run_worker` |
 
-### 19.3.4 测试组织(101 测试)
+### 23.3.4 测试组织(145 测试)
 
 测试按被测层级组织,与 4 子包对应:
 
-| 测试文件 | 被测层 |
-|---------|--------|
-| `test_core.py` / `test_wait_for_stage.py` | infra.core |
-| `test_think_stream.py` | infra.think_stream |
-| `test_llm_chat_stream.py` / `test_llm_max_tokens.py` | infra.services |
-| `test_extraction_shape.py` / `test_extraction_retrieval.py` | graph |
-| `test_assertion_semantics.py` | graph + infra.ontology |
-| `test_case_retrieval_operational.py` | memory.episodes + graph |
-| `test_temporal_identity_belief.py` | memory.temporal + 双时态 |
-| `test_api.py` / `test_answer_stream.py` | interfaces.api |
+| 测试文件 | 被测层 | 用例数 |
+|---------|--------|-------|
+| `test_core.py` / `test_wait_for_stage.py` | infra.core | 5 + 2 |
+| `test_think_stream.py` | infra.think_stream | 6 |
+| `test_llm_chat_stream.py` / `test_llm_max_tokens.py` | infra.services | 2 + 4 |
+| `test_extraction_shape.py` / `test_extraction_retrieval.py` | graph | 9 + 7 |
+| `test_assertion_semantics.py` | graph + infra.ontology | 21 |
+| `test_case_retrieval_operational.py` | memory.episodes + graph | 15 |
+| `test_temporal_identity_belief.py` | memory.temporal + 双时态 | 14 |
+| `test_api.py` / `test_answer_stream.py` | interfaces.api | 7 + 3 |
+| `test_signal_bus.py` | 信号总线(access_count + salience) | 6 |
+| `test_feedback.py` | memory.feedback | 11 |
+| `test_dreaming.py` | memory.dreaming | 11 |
+| `test_higher_order.py` | memory.higher_order | 10 |
+| `test_config_api.py` | config/jobs API | 6 |
 
 ---
 
-## 19.4 物理视图
+## 23.4 物理视图
 
-### 19.4.1 部署拓扑
+### 23.4.1 部署拓扑
 
 ```{mermaid}
 graph TB
@@ -329,7 +338,7 @@ graph TB
     end
 
     subgraph client ["客户端"]
-        VUE["Vue 3 :5173"]
+        VUE["Vue 3 :5173<br/>Ingest·Graph·Ask·Browse<br/>Ops·Settings"]
         CC["Claude Code<br/>MCP stdio"]
         RA["远程 Agent<br/>MCP HTTP"]
     end
@@ -358,7 +367,7 @@ graph TB
     PG --> TRGM
 ```
 
-### 19.4.2 端口与配置
+### 23.4.2 端口与配置
 
 | 服务 | 默认端口 | 配置项 |
 |------|---------|--------|
@@ -367,7 +376,7 @@ graph TB
 | Vue 前端 | 5173 | `config.api.cors_origins` |
 | PostgreSQL | 5432 | `config.database.url` |
 
-### 19.4.3 外部依赖与可替换性
+### 23.4.3 外部依赖与可替换性
 
 | 依赖 | 用途 | 可替换 |
 |------|------|--------|
@@ -385,11 +394,11 @@ graph TB
 
 ---
 
-## 19.5 场景视图(Scenarios)
+## 23.5 场景视图(Scenarios)
 
-四个核心场景穿越全部四层,验证架构一致性。
+五个核心场景穿越全部四层,验证架构一致性。
 
-### 19.5.1 场景一:Agent 写入记忆
+### 23.5.1 场景一:Agent 写入记忆
 
 ```{mermaid}
 sequenceDiagram
@@ -420,7 +429,7 @@ sequenceDiagram
 
 **穿越层级**:interfaces → infra → graph → infra.services/core。
 
-### 19.5.2 场景二:Agent 检索 + 流式 answer
+### 23.5.2 场景二:Agent 检索 + 流式 answer
 
 ```{mermaid}
 sequenceDiagram
@@ -432,10 +441,11 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant LLM as LLM
 
-    A->>API: POST /v1/recall {query}
-    API->>RET: recall
+    A->>API: GET /v1/answer/stream (SSE)
+    API->>RET: recall(scope, query)
     RET->>SVC: embed_one(query)
-    par 6 通道并行
+    rect rgb(240,248,255)
+        Note over RET,DB: 6 通道检索(顺序执行)
         RET->>DB: _chan_vector (pgvector)
         RET->>DB: _chan_bm25 (tsvector)
         RET->>DB: _chan_graph (递归 CTE)
@@ -443,12 +453,18 @@ sequenceDiagram
         RET->>DB: _chan_synonym
         RET->>DB: _chan_temporal_decay
     end
-    Note over RET: RRF 融合 (k=60) → top-40
-    RET->>SVC: rerank (top-40 → top-20)
-    RET->>SVC: llm_chat (合成 context_block)
-    RET-->>API: StratifiedPack
+    Note over RET: RRF 融合 (k=60) → 候选集
+    Note over RET,DB: 信号总线加权(salience × scores + access_count 加成)
+    RET->>DB: 批量查 facts.salience + events.access_count
+    RET->>RET: scores[fid] = scores[fid] * sal + w * (ac/10)
+    RET->>SVC: rerank (top-K → top-20)
+    Note over RET,DB: 装配 StratifiedPack
+    RET->>DB: 加载 higher_order 层(is_higher_order=true facts)
+    RET-->>API: StratifiedPack (layers: events/facts/beliefs/higher_order)
+    Note over RET,DB: 隐式反馈环:recall 命中 → access_count += 1(非纯读)
 
-    A->>API: GET /v1/answer/stream (SSE)
+    API-->>A: SSE event: phase(recall_done, pack_id, time_ms)
+    API-->>A: SSE event: phase(llm_start, model)
     API->>SVC: llm_chat_stream (stream=True)
     loop 逐 chunk
         LLM-->>SVC: delta (含 think 标签)
@@ -456,12 +472,17 @@ sequenceDiagram
         TS-->>API: (reasoning|answer, text)
         API-->>A: SSE event: reasoning / answer
     end
+    API-->>A: SSE event: phase(llm_end)
     API-->>A: SSE event: done (citations + pack_id)
 ```
 
 **穿越层级**:interfaces → graph → infra。think 标签在后端状态机解析,前端按 event 类型分别渲染推理过程与回答。
 
-### 19.5.3 场景三:GDPR 遗忘
+**信号总线接入点**:RRF 融合后、rerank 前,recall 读 `facts.salience`(Feedback 软降权)与 `events.access_count`(隐式正反馈),按 `scores[fid] * sal + salience_weight * (ac / 10.0)` 重排候选。recall 返回时还增量写回 `access_count`(隐式反馈环),使频繁召回的记忆获得排序加成。详见第10章(信号总线)和第14章(检索系统)。
+
+**phase 事件**:answer/stream 在 recall 完成、LLM 调用前后分别发出 `recall_done`/`llm_start`/`llm_end` 三个 phase 事件,前端据此构建阶段耗时瀑布图,直观定位召回慢或 LLM 卡住(详见第24章 前端诊断面板)。
+
+### 23.5.3 场景三:GDPR 遗忘
 
 ```{mermaid}
 sequenceDiagram
@@ -492,7 +513,7 @@ sequenceDiagram
 
 **穿越层级**:interfaces → memory → infra.db。
 
-### 19.5.4 场景四:反馈回灌闭环
+### 23.5.4 场景四:反馈回灌闭环
 
 用户/Agent 对某条召回结果打反馈,系统在**共享信号总线**(`access_count` + `salience`)上即时调整,后续召回自然重排;负反馈累积到阈值则触发 `methylation` 级联软剪枝。这条路径是自演化子系统对外可见的主入口。
 
@@ -539,23 +560,60 @@ sequenceDiagram
 
 **穿越层级**:interfaces → memory.feedback → infra.db;副作用经信号总线回流到 graph.retrieval 的排序,并在阈值处触发 memory.maintenance 的级联。
 
-**关键不变量**:所有 fact 写操作带 `recorded_to IS NULL AND valid_to IS NULL` 守卫,不篡改已归档历史;`methylation` 跳过仍被其他活跃 fact 支撑的 event,避免误剪共享 evidence。
+**关键不变量**:所有 fact 写操作带 `recorded_to IS NULL AND valid_to IS NULL` 守卫,不篡改已归档历史;`methylation` 跳过仍被其他活跃 fact 支撑的 event,避免误剪共享 evidence。反馈幂等通过 `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING` 原子保证,防并发重复提交。
+
+### 23.5.5 场景五:配置热更新与运维监控
+
+运维人员通过前端 Settings/Ops 页面管理功能开关、上游 API 配置,并监控 worker 队列状态。这条路径覆盖了配置热更新(config 白名单深合并)和任务队列运维(jobs 明细查询)两个新管理面。
+
+```{mermaid}
+sequenceDiagram
+    participant O as 运维人员
+    participant VUE as SettingsView/OpsView
+    participant API as interfaces.api
+    participant CFG as infra.config
+    participant DB as PostgreSQL
+
+    Note over O,VUE: 配置热更新(Settings 页)
+    O->>VUE: 切换 dreaming.enabled = true
+    VUE->>API: GET /v1/admin/config
+    API->>CFG: load_config().model_dump() → 脱敏(api_key→***)
+    API-->>VUE: RuntimeConfig(脱敏)
+    VUE-->>O: 展示当前配置(4 tab)
+    O->>VUE: 保存
+    VUE->>API: POST /v1/admin/config {dreaming:{enabled:true}}
+    API->>CFG: apply_config_patch(白名单深合并,原地改 _CACHE)
+    Note over CFG: 即时生效:下次 dream_run 读到 enabled=true
+    API-->>VUE: 更新后的脱敏配置
+
+    Note over O,VUE: 运维监控(Ops 页,5s 刷新)
+    VUE->>API: GET /v1/admin/metrics
+    API->>DB: count events/facts/beliefs + jobs_by_status
+    API-->>VUE: 统计卡片
+    VUE->>API: GET /v1/admin/jobs?status=running
+    API->>DB: SELECT job_type,locked_by,started_at... FROM jobs
+    API-->>VUE: 任务队列表(worker + 耗时 + 错误)
+    VUE-->>O: 活跃 worker + 队列状态
+```
+
+**穿越层级**:interfaces → infra.config(热更新);interfaces → infra.db(jobs 查询)。配置改动通过白名单深合并原地修改单例 `_CACHE`,即时生效无需重启;`admin_auth` 保护 mutation 端点。详见第24章(运行配置与前端运维)。
 
 ---
-
-## 19.6 架构决策记录(关键 ADR 摘要)
 
 | 决策 | 选择 | 理由 |
 |------|------|------|
 | 队列实现 | Postgres-as-queue(`SKIP LOCKED`) | 不引入 Redis,小团队运维简单;PG 已是必选依赖 |
 | LLM think | 强制开启 + 后端状态机解析 | 推理准确度依赖 think;状态机跨 chunk 缓冲保证标签完整 |
-| 流式 answer 传输 | GET + EventSource(SSE) | query 短;dev 态无 auth;浏览器原生;agent 用 MCP 同步接口 |
+| 流式 answer 传输 | GET + EventSource(SSE) + phase 事件 | query 短;dev 态无 auth;浏览器原生;agent 用 MCP 同步接口;phase 事件供前端诊断瀑布图 |
 | 实体链接 | B over C(向量召回 + 阈值 + LLM 灰区) | 图谱质量命门;纯向量误并,纯 LLM 太贵 |
 | 双时态 | 4 字段(valid/recorded × from/to) | 同时支持"现在什么是真的"和"当时我们怎么以为" |
 | 分层 | 4 子包(infra/memory/graph/interfaces) | 职责清晰;依赖单向无环;便于维护演进 |
 | 信号总线 | `access_count` + `salience` 作为共享信号层 | 单一信号层耦合 Feedback/Dreaming/Higher-Order,避免 MindMemOS 把三功能解耦成互不知情的孤岛;反馈即时回流召回排序 |
+| Dreaming 并发 | advisory lock + heartbeat + SAVEPOINT 隔离 | `pg_try_advisory_xact_lock` 序列化同 scope;heartbeat 续命防 reaper;每 action 独立 SAVEPOINT 防单个坏 LLM 输出拖垮整轮 |
+| Feedback 幂等 | `ON CONFLICT` 原子去重 + `FOR UPDATE` 串行 | 防 TOCTOU race(并发同 key → 第二个 500);行锁序列化同 fact 反馈,防 salience/count 读改写竞态 |
+| 配置热更新 | 白名单深合并(原地改 _CACHE) | 开关即时生效无需重启;白名单禁改 database/embedding.dimension;不替换实例避免 auth 绑定失效 |
 
 ```{admonition} 与重构前的差异
 :class: important
-重构前(commit `347afb1` 之前)为 30 个 py 文件平铺在 `src/cortex/` 根下。重构后按职责归入 4 子包,依赖关系从隐式变为显式分层,便于维护与演进。旧路径(如 `cortex.infra.core`、`cortex.infra.db`)已**不再可用**,全部迁移到新路径(如 `cortex.infra.core`)。
+重构前(commit `347afb1` 之前)为 30 个 py 文件平铺在 `src/cortex/` 根下(如 `cortex/core.py`、`cortex/db.py`、`cortex/services.py`)。重构后按职责归入 4 子包,依赖关系从隐式变为显式分层,便于维护与演进。旧平铺路径已**不再可用**,全部迁移到子包路径(如 `cortex.infra.core`、`cortex.infra.db`、`cortex.infra.services`)。
 ```
