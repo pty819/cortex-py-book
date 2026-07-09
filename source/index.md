@@ -28,46 +28,46 @@ chapters/09-vocabularies
 :maxdepth: 2
 :caption: 中篇：记忆自演化——信号总线与三功能
 
-chapters/21-signal-bus
-chapters/22-feedback
-chapters/23-dreaming
-chapters/24-higher-order
+chapters/10-signal-bus
+chapters/11-feedback
+chapters/12-dreaming
+chapters/13-higher-order
 ```
 
 ```{toctree}
 :maxdepth: 2
 :caption: 下篇：读取路径——精准召回
 
-chapters/10-retrieval-system
-chapters/11-retrieval-channels
-chapters/12-rrf-fusion
-chapters/13-temporal-system
+chapters/14-retrieval-system
+chapters/15-retrieval-channels
+chapters/16-rrf-fusion
+chapters/17-temporal-system
 ```
 
 ```{toctree}
 :maxdepth: 2
 :caption: 接口篇
 
-chapters/14-api-reference
-chapters/15-mcp-server
+chapters/18-api-reference
+chapters/19-mcp-server
 ```
 
 ```{toctree}
 :maxdepth: 2
 :caption: 运维篇
 
-chapters/16-worker-system
-chapters/17-maintenance
-chapters/18-erasures
-chapters/19-architecture-diagrams
-chapters/25-config-and-frontend
+chapters/20-worker-system
+chapters/21-maintenance
+chapters/22-erasures
+chapters/23-architecture-diagrams
+chapters/24-config-and-frontend
 ```
 
 ```{toctree}
 :maxdepth: 2
 :caption: 对比篇
 
-chapters/20-competitive-analysis
+chapters/25-competitive-analysis
 ```
 
 ## 项目概览

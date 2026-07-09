@@ -482,7 +482,7 @@ flowchart LR
 
 ## Higher-Order 异步触发
 
-抽取完成（`embed_status='done'`）后，若 `cfg.higher_order.enabled` 开启，系统会遍历本次新写入 facts 涉及的每个 `subject_id`，分别为其 enqueue 一个 `higher_order` 归纳任务。Worker 后续消费这些任务时，收集该实体下相关的一阶事实，调用 LLM 合成高阶结论并写回 facts 表（`is_higher_order=true`，`evidence_fact_ids` 指向支撑它的一阶事实）。这是 Higher-Order 合成的异步入口，与在线抽取解耦，不会阻塞抽取主流程的返回。详见[第24章](24-higher-order)。
+抽取完成（`embed_status='done'`）后，若 `cfg.higher_order.enabled` 开启，系统会遍历本次新写入 facts 涉及的每个 `subject_id`，分别为其 enqueue 一个 `higher_order` 归纳任务。Worker 后续消费这些任务时，收集该实体下相关的一阶事实，调用 LLM 合成高阶结论并写回 facts 表（`is_higher_order=true`，`evidence_fact_ids` 指向支撑它的一阶事实）。这是 Higher-Order 合成的异步入口，与在线抽取解耦，不会阻塞抽取主流程的返回。详见[第13章](13-higher-order)。
 
 ```python
 # extraction/pipeline.py - extract_event 收尾阶段(pseudo)

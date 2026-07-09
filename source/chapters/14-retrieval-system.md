@@ -1,4 +1,4 @@
-# 第10章 检索系统概述
+# 第14章 检索系统概述
 
 ## 设计目标
 
@@ -255,7 +255,7 @@ scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
 - **低 salience 的 fact**（被负向反馈降权,如错误结论/过时推断）——RRF 分数被 `sal < 1.0` 压缩,排名下沉
 - **频繁被召回的 fact**（高 `access_count`）——额外加 `salience_weight * ac/10` 的分,热门记忆自然浮现
 
-这一步把第21章的"信号总线"(`salience` + `access_count`)与第22章的"反馈循环"(Feedback 改写 salience)接入了检索排序——记忆不再是静态召回,而是"被用得越多越强,被否定得越多越弱"的动态权重。详见 **第21章 信号总线** 和 **第22章 反馈系统**。
+这一步把第10章的"信号总线"(`salience` + `access_count`)与第11章的"反馈循环"(Feedback 改写 salience)接入了检索排序——记忆不再是静态召回,而是"被用得越多越强,被否定得越多越弱"的动态权重。详见 **第10章 信号总线** 和 **第11章 反馈系统**。
 
 ### recall → access_count 隐式反馈环
 
@@ -274,6 +274,6 @@ if pack and pack.get("layers", {}).get("facts"):
             """), {"ids": "{" + ",".join(_hit_ids) + "}"})
 ```
 
-注意这步**写在 `recall()` 的返回路径上**——也就是说 **recall 不再是一个纯读操作**：每次成功召回都会写回 `events.access_count` 和 `events.last_recalled_at`,影响下一次 temporal-decay 通道和信号总线加权的分数。被频繁召回的记忆因此进入"越用越好召回"的正循环;长期未被召回的 event 则由 methylation 机制标记 `excluded_from_recall`(详见第21章)。
+注意这步**写在 `recall()` 的返回路径上**——也就是说 **recall 不再是一个纯读操作**：每次成功召回都会写回 `events.access_count` 和 `events.last_recalled_at`,影响下一次 temporal-decay 通道和信号总线加权的分数。被频繁召回的记忆因此进入"越用越好召回"的正循环;长期未被召回的 event 则由 methylation 机制标记 `excluded_from_recall`(详见第10章)。
 
 异常容错:这步递增用 `try/except` 包裹,**信号采集失败不阻塞召回**——读路径的可靠性优先于反馈环的完整性。

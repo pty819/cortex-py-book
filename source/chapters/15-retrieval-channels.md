@@ -1,4 +1,4 @@
-# 第11章 检索通道详解
+# 第15章 检索通道详解
 
 ## 概述
 
@@ -192,7 +192,7 @@ CREATE TABLE synonyms (
 
 该通道使用 `events.access_count` 字段统计每个 event 被召回次数。access_count=0 且超过阈值的 events 会被 methylation 标记为 `excluded_from_recall`。
 
-> **信号总线加权补充**：除上述 6 通道融合外,RRF 后还有一步**信号总线加权**(salience + access_count),详见第10章和第21章。temporal-decay 通道的 `access_count` 因子与信号总线的 `access_count` 是**同一字段**——召回频率高的记忆在 temporal-decay 通道得分更高(通道内排序),同时又在信号总线加权阶段叠加 `salience_weight * ac/10.0`(融合后加权),形成**双重加权**效应,使这类记忆在最终排序中更靠前。
+> **信号总线加权补充**：除上述 6 通道融合外,RRF 后还有一步**信号总线加权**(salience + access_count),详见第14章和第10章。temporal-decay 通道的 `access_count` 因子与信号总线的 `access_count` 是**同一字段**——召回频率高的记忆在 temporal-decay 通道得分更高(通道内排序),同时又在信号总线加权阶段叠加 `salience_weight * ac/10.0`(融合后加权),形成**双重加权**效应,使这类记忆在最终排序中更靠前。
 
 ## HyDE 假设性文档嵌入
 

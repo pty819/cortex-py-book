@@ -293,7 +293,7 @@ def coerce_value(conn, scope, vocab_name, raw):
     return raw if row.kind == "open" else None
 ```
 
-详见第17章 词表系统详解。
+详见第21章 词表系统详解。
 
 ## Synonyms 同义词表
 

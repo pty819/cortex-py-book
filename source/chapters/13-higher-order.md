@@ -1,4 +1,4 @@
-# 第24章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论
+# 第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论
 
 ## 24.1 概述
 
@@ -6,7 +6,7 @@ Dreaming 与 Higher-Order 是记忆自演化的两条互补热路径：
 
 | 机制 | 方向 | 操作 | 典型产物 |
 |------|------|------|----------|
-| Dreaming（第23章） | 减法 | 去重 / 合并 / 归档 | 三元组收敛、冷数据下沉 |
+| Dreaming（第12章） | 减法 | 去重 / 合并 / 归档 | 三元组收敛、冷数据下沉 |
 | **Higher-Order** | **加法** | **归纳 / 抽象** | **从一阶事实合成高阶结论** |
 
 Dreaming 做的是"压缩"——把语义重复的三元组合并；Higher-Order 做的是"升华"——把零散的一阶观察（first-order facts）抽象成行为模式、故障规律、性格特质等高阶结论。设计借鉴自 MindMemOS 的 `_schema_higher_order.py`：以 evidence-driven LLM summarization 为核心，用一阶事实作为证据，让 LLM 归纳出 `order=2` 谓词描述的抽象断言。
@@ -245,7 +245,7 @@ for upd in updates:
     n += 1
 ```
 
-`update` 动作会把旧高阶 fact 的 `recorded_to=now()` 软关闭（recension 层关闭），再 INSERT 一条新版本——保留完整的高阶结论演化轨迹，可回溯任何时刻的结论版本。这与 Facts 表的双时态语义完全一致（见第13章）。
+`update` 动作会把旧高阶 fact 的 `recorded_to=now()` 软关闭（recension 层关闭），再 INSERT 一条新版本——保留完整的高阶结论演化轨迹，可回溯任何时刻的结论版本。这与 Facts 表的双时态语义完全一致（见第17章）。
 
 成功归纳后 `emit_lifecycle(kind="higher_order_generated", ...)` 发生命周期事件（`higher_order.py:132-133`）。
 
@@ -305,7 +305,7 @@ if jt == "higher_order" and scope:
     return generate_higher_order(payload.get("entity_id", ""), new_fact_id=payload.get("new_fact_id"))
 ```
 
-Worker 系统详见第16章。
+Worker 系统详见第20章。
 
 ## 24.6 召回集成：higher_order 层
 
@@ -438,7 +438,7 @@ def higher_order_generate(entity_id: str,
     return generate_higher_order(entity_id)
 ```
 
-MCP 工具语义与 admin API 的 `entity_id` 路径一致，供 agent 主动触发归纳。MCP server 详见第15章。
+MCP 工具语义与 admin API 的 `entity_id` 路径一致，供 agent 主动触发归纳。MCP server 详见第19章。
 
 ## 24.9 配置
 
@@ -481,4 +481,4 @@ higher_order:
 
 ---
 
-至此，记忆自演化的"减法"（Dreaming，第23章）与"加法"（Higher-Order，本章）闭环完成。前者收敛冗余、后者升华抽象，两者共同维护一个既精简又富有洞察力的知识图谱。
+至此，记忆自演化的"减法"（Dreaming，第12章）与"加法"（Higher-Order，本章）闭环完成。前者收敛冗余、后者升华抽象，两者共同维护一个既精简又富有洞察力的知识图谱。

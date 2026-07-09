@@ -1,4 +1,4 @@
-# 第25章 运行配置与前端运维
+# 第24章 运行配置与前端运维
 
 ## 1. 概述
 
@@ -474,5 +474,5 @@ const navItems = [
 Ingest / Knowledge Graph / Ask / Browse 是数据面,Ops / Settings 是控制面。两者分离让普通用户只接触数据面,运维才进 Ops/Settings —— 后者受 `admin_auth` 保护。
 
 ```{seealso}
-配置项的语义与默认值见 `src/cortex/infra/config.py` 的 Pydantic 模型定义(`RetrievalCfg` / `DreamingCfg` / `HigherOrderCfg` 等)。API 端点完整列表见第14章。
+配置项的语义与默认值见 `src/cortex/infra/config.py` 的 Pydantic 模型定义(`RetrievalCfg` / `DreamingCfg` / `HigherOrderCfg` 等)。API 端点完整列表见第18章。
 ```

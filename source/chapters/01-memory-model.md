@@ -294,7 +294,7 @@ Facts 表内部其实分**两层**——这是 Facts 层内的一个抽象子层
 
 **一阶事实**就是前面描述的标准三元组：从某个 Event 抽出的 `subject-predicate-object`，`supports` 指向产生它的 Event。它们是知识图谱的基础边。
 
-**高阶事实**是在抽取完成后由 Higher-Order 模块（详见[第24章](24-higher-order)）异步合成的：系统收集同一 `subject_id` 下的多条相关一阶事实，调用 LLM 归纳出更抽象/概括性的结论，再以一条新的 fact 行写入，`is_higher_order=true` 并通过 `evidence_fact_ids` 反向指向支撑它的一阶事实。`higher_order_reasoning` 字段记录 LLM 的推理过程，便于溯源与审计。
+**高阶事实**是在抽取完成后由 Higher-Order 模块（详见[第13章](13-higher-order)）异步合成的：系统收集同一 `subject_id` 下的多条相关一阶事实，调用 LLM 归纳出更抽象/概括性的结论，再以一条新的 fact 行写入，`is_higher_order=true` 并通过 `evidence_fact_ids` 反向指向支撑它的一阶事实。`higher_order_reasoning` 字段记录 LLM 的推理过程，便于溯源与审计。
 
 这样设计的好处是：高阶结论与一阶事实共用同一张表、同一套检索与图遍历路径，但通过 `is_higher_order` 与 `evidence_fact_ids` 维持了清晰的溯源链——可以随时回到它所依据的一阶证据。检索/图遍历可按需包含或排除高阶事实。
 

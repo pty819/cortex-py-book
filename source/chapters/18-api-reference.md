@@ -1,4 +1,4 @@
-# 第14章 API 参考
+# 第18章 API 参考
 
 本章是 cortex-py HTTP API 的完整参考,直接对应 `src/cortex/interfaces/api/app.py` 中注册的全部路由(不含 MCP 工具)。仅作为速查手册,具体用法与示例请查阅对应专题章节。
 

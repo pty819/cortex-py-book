@@ -1,4 +1,4 @@
-# 第19章 架构视图(4+1 视图模型)
+# 第23章 架构视图(4+1 视图模型)
 
 > 本章用 Kruchten 的 4+1 视图模型完整描述 cortex-py 的架构:逻辑视图(Logical)、进程视图(Process)、开发视图(Development)、物理视图(Physical),加上贯穿它们的场景视图(Scenarios)。
 >

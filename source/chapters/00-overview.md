@@ -166,11 +166,11 @@ Cortex-PY 在五层记忆模型之上新增了**自演化能力**，使记忆层
 - **Dreaming（做梦/离线巩固）**：系统在低负载时段运行 `dreaming_runs`，对一段时间内的 facts 做去重、合并、冲突消解与抽象，把零散三元组凝聚成更紧凑的知识结构。这是与在线抽取解耦的"睡眠巩固"。
 - **Higher-Order（高阶合成）**：在抽取触发或定时任务驱动下，对同一实体的多条一阶 facts 调用 LLM 合成**高阶事实**（`is_higher_order=true`，带 `evidence_fact_ids` 指向支撑它的一阶事实），相当于在 Facts 层内开了一个"抽象子层"。
 
-三条链路统一读写 `salience` 与 `access_count`：Feedback 负责采集信号、Dreaming 负责巩固、Higher-Order 负责提升抽象层级。这让检索系统可以通过 salience 软降权机制抑制噪声、放大高价值记忆。详细设计与配置见[第21章 信号总线](21-signal-bus)、[第22章 Feedback 信号](22-feedback)、[第23章 Dreaming 离线巩固](23-dreaming)与[第24章 Higher-Order 高阶事实](24-higher-order)。
+三条链路统一读写 `salience` 与 `access_count`：Feedback 负责采集信号、Dreaming 负责巩固、Higher-Order 负责提升抽象层级。这让检索系统可以通过 salience 软降权机制抑制噪声、放大高价值记忆。详细设计与配置见[第10章 信号总线](10-signal-bus)、[第11章 Feedback 信号](11-feedback)、[第12章 Dreaming 离线巩固](12-dreaming)与[第13章 Higher-Order 高阶事实](13-higher-order)。
 
 ## 代码结构
 
-> 4 子包分层（`infra` → `memory` → `graph` → `interfaces`，依赖单向无环）。完整架构说明见[第19章 架构视图](19-architecture-diagrams)。
+> 4 子包分层（`infra` → `memory` → `graph` → `interfaces`，依赖单向无环）。完整架构说明见[第23章 架构视图](23-architecture-diagrams)。
 
 ```
 src/cortex/

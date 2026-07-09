@@ -1,4 +1,4 @@
-# 第21章 信号总线 — 记忆自演化的基础设施
+# 第10章 信号总线 — 记忆自演化的基础设施
 
 ## 1. 概述
 
@@ -235,7 +235,7 @@ class AdvancedRetrievalCfg(BaseModel):
 | `0.3`(默认) | 轻量提升高频记忆。单次召回贡献约 `0.03` 分,10 次召回才抵得上一个 `salience_weight` 量级。 |
 | `>0.3` | 放大信号影响。需谨慎:过大会让 `access_count` 高的老记忆压制新但相关的记忆,产生"富者愈富"的马太效应。 |
 
-`salience_weight` 与 Feedback 的 `positive_weight` / `negative_weight` / `salience_floor` / `salience_ceiling`(见 `FeedbackCfg`)是配套的:前者控制信号对排序的影响强度,后者控制信号本身的产生速率与边界。两者共同决定了总线的"增益曲线"。完整的运行配置(含环境变量覆盖、热更新白名单)见{doc}`25-config-and-frontend`。
+`salience_weight` 与 Feedback 的 `positive_weight` / `negative_weight` / `salience_floor` / `salience_ceiling`(见 `FeedbackCfg`)是配套的:前者控制信号对排序的影响强度,后者控制信号本身的产生速率与边界。两者共同决定了总线的"增益曲线"。完整的运行配置(含环境变量覆盖、热更新白名单)见{doc}`24-config-and-frontend`。
 
 值得注意:`salience_weight` 在运行时配置热更新的白名单内(`_CONFIG_PATCH_WHITELIST` 含 `retrieval`),因此可以在不重启服务的前提下动态调整信号总线增益——例如在反馈洪峰期临时调高 `salience_weight` 加速信号生效,或在冷启动期置 0 避免少量早期反馈过度影响排序。
 
