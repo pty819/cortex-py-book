@@ -1,6 +1,6 @@
 # 第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论
 
-## 24.1 概述
+## 13.1 概述
 
 Dreaming 与 Higher-Order 是记忆自演化的两条互补热路径：
 
@@ -38,7 +38,7 @@ graph LR
     F3 -.evidence.-> H
 ```
 
-## 24.2 一阶 vs 高阶事实
+## 13.2 一阶 vs 高阶事实
 
 `facts` 表通过三列扩展实现**同表两级结构**（`schema.sql:431-435`）：
 
@@ -57,7 +57,7 @@ ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS evidence_fact_ids UUID[] NOT N
 | `extraction_model` | LLM 模型名 | `'higher-order'`（固定标记，标识由高阶归纳产生） |
 | `predicate` | `order=1` 谓词（`caused_by`、`located_in` …） | `order=2` 谓词（`failure_mode`、`behavior_pattern` …） |
 
-高阶事实的写入见 `higher_order.py` 的 generate_higher_order 写入段的 INSERT 语句——`confidence=0.7`、`assertion_status='confirmed'`、`object_type='literal'`，并显式填入 `is_higher_order=true`、`higher_order_reasoning`、`evidence_fact_ids`。版本化更新时，旧高阶 fact 不会被 DELETE，而是 `recorded_to=now()` 软关闭，新版本 INSERT，保留完整演化历史（见 24.4）。
+高阶事实的写入见 `higher_order.py` 的 generate_higher_order 写入段的 INSERT 语句——`confidence=0.7`、`assertion_status='confirmed'`、`object_type='literal'`，并显式填入 `is_higher_order=true`、`higher_order_reasoning`、`evidence_fact_ids`。版本化更新时，旧高阶 fact 不会被 DELETE，而是 `recorded_to=now()` 软关闭，新版本 INSERT，保留完整演化历史（见 13.4）。
 
 为加速热路径检索，`schema.sql:448-450` 专门建了部分索引：
 
@@ -66,7 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_facts_higher_order
     ON cortex.facts (scope, subject_id) WHERE is_higher_order = true AND recorded_to IS NULL;
 ```
 
-## 24.3 predicate_definitions 表
+## 13.3 predicate_definitions 表
 
 高阶归纳需要一个**谓词本体**告诉 LLM"哪些是 `order=2` 的高阶谓词、它们的语义和示例"。这个本体从 `ontology.py` 的硬编码迁移到了 DB 可配表（`schema.sql:437-445`）：
 
@@ -115,7 +115,7 @@ def seed_predicate_definitions() -> int:
 
 注意：seed 只预置 **`prop_order=1`** 的一阶谓词。`order=2` 的高阶谓词（`failure_mode`、`behavior_pattern`、`personality_trait` 等）需要管理员手动 INSERT 或后续迁移脚本补入。这是有意为之——高阶谓词代表"系统想抽象出什么样的结论"，属于业务语义决策，不应与抽取本体自动绑定。
 
-## 24.4 generate_higher_order 流程
+## 13.4 generate_higher_order 流程
 
 `higher_order.py:29-134` 的 `generate_higher_order(entity_id, *, new_fact_id=None)` 是整个机制的核心。它接受一个实体 ID（可选传入触发本次归纳的新 `fact_id`），返回 `{"synthesized": n, ...}` 或带 `skipped` 原因。
 
@@ -147,7 +147,7 @@ flowchart TD
     M -- no --> O
 ```
 
-### 24.4.1 检查门序列（gate ordering）
+### 13.4.1 检查门序列（gate ordering）
 
 设计上的关键细节是**检查顺序**——所有 DB 检查先于 LLM key 检查（`higher_order.py` 的门控序列）：
 
@@ -159,7 +159,7 @@ if not services.llm_configured(cfg.higher_order.llm_tier):
 
 理由：LLM key 检查涉及配置/网络，应放在最便宜的 DB 检查之后，避免每次 cold-start skip 都无谓地触碰 LLM 配置层。
 
-### 24.4.2 证据窗加载（evidence window）
+### 13.4.2 证据窗加载（evidence window）
 
 `higher_order.py` 加载该实体的一阶 live facts 作为 evidence：
 
@@ -180,10 +180,10 @@ first_order = conn.execute(text(f"""SELECT fact_id::text, predicate,
 
 两个要点：
 
-1. **`access_count` 来自信号总线**——通过子查询 `SELECT max(e.access_count) FROM events e WHERE e.event_id = ANY(f.supports)` 聚合该 fact 支撑事件的最大访问计数。高访问计数意味着该事实在召回中被反复命中，是"值得归纳的高价值事实"。这让高阶归纳与召回热度联动（详见 24.7 冷启动保护）。
+1. **`access_count` 来自信号总线**——通过子查询 `SELECT max(e.access_count) FROM events e WHERE e.event_id = ANY(f.supports)` 聚合该 fact 支撑事件的最大访问计数。高访问计数意味着该事实在召回中被反复命中，是"值得归纳的高价值事实"。这让高阶归纳与召回热度联动（详见 13.7 冷启动保护）。
 2. **M4 fix：`new_fact_id` 强制进证据窗首位**——刚抽取触发本次归纳的新事实 `access_count=0`，正常排序会排在末尾甚至被 `LIMIT` 截掉。`(f.fact_id = CAST(:nf AS uuid)) DESC` 把它强制顶到首位，保证"触发源"一定进入 LLM 视野。这修正了早期版本"新事实触发归纳却没参与归纳"的 bug。
 
-### 24.4.3 冷启动双重门槛
+### 13.4.3 冷启动双重门槛
 
 ```python
 if len(first_order) < cfg.higher_order.min_evidence_count:      # 默认 2
@@ -195,7 +195,7 @@ if total_ac < cfg.higher_order.min_access_count:                 # 默认 2
 
 两道门槛缺一不可：**证据数量**（至少 2 条一阶事实）+ **证据热度**（累计访问计数至少 2）。后者对齐信号总线——只有被召回系统真正"用过"的事实才有资格被抽象。
 
-### 24.4.4 LLM synthesis
+### 13.4.4 LLM synthesis
 
 通过所有门后，构造 `material` JSON（实体信息 + evidence + 已有高阶值 + `order=2` 谓词定义）调用 `HIGHER_ORDER_SYNTHESIZE` prompt（`prompts.py:633-663`）。Prompt 核心规则：
 
@@ -219,7 +219,7 @@ if total_ac < cfg.higher_order.min_access_count:                 # 默认 2
 }
 ```
 
-### 24.4.5 版本化 apply updates
+### 13.4.5 版本化 apply updates
 
 `higher_order.py` 遍历 updates 写库，采用**软关 + 新版本**策略（而非 in-place UPDATE）：
 
@@ -249,11 +249,11 @@ for upd in updates:
 
 成功归纳后 `emit_lifecycle(kind="higher_order_generated", ...)` 发生命周期事件（`higher_order.py` 收尾段）。
 
-## 24.5 触发机制：extract 后异步 enqueue
+## 13.5 触发机制：extract 后异步 enqueue
 
 Higher-Order 不由用户同步调用触发，而是**抽取管线 extract 完成后异步 enqueue** 一个 `higher_order` job。抽取管线有两条路径，都内置了这个触发点：
 
-### 24.5.1 LLM 抽取路径（`extraction/pipeline.py` 的 `extract_event` 收尾阶段）
+### 13.5.1 LLM 抽取路径（`extraction/pipeline.py` 的 `extract_event` 收尾阶段）
 
 ```python
 # ── Higher-Order 异步触发:extract 后对该 event 涉及的实体 enqueue 高阶归纳 ──
@@ -270,9 +270,9 @@ if cfg.higher_order.enabled and fact_ids:
         pass
 ```
 
-发生在 `embed_status='done'` 之后（`extraction/pipeline.py` 的 `extract_event` 收尾）。对本次抽取产生的每个 `subject_id` 各 enqueue 一个 job，payload 携带 `entity_id` 和 `new_fact_id`（首个新 fact，用于 24.4.2 的 M4 强制进证据窗）。
+发生在 `embed_status='done'` 之后（`extraction/pipeline.py` 的 `extract_event` 收尾）。对本次抽取产生的每个 `subject_id` 各 enqueue 一个 job，payload 携带 `entity_id` 和 `new_fact_id`（首个新 fact，用于 13.4.2 的 M4 强制进证据窗）。
 
-### 24.5.2 三元组直写路径（`extraction/pipeline.py` 的 `_direct_write_triple`）
+### 13.5.2 三元组直写路径（`extraction/pipeline.py` 的 `_direct_write_triple`）
 
 ```python
 # Higher-Order 异步触发(triple 直写路径)
@@ -292,7 +292,7 @@ if cfg.higher_order.enabled and res.get("fact_ids"):
 
 逻辑与 LLM 路径完全对称，只是触发点在 `emit_lifecycle(..., model="triple-direct")` 之后。
 
-### 24.5.3 为什么用 inline INSERT 而非 enqueue_job
+### 13.5.3 为什么用 inline INSERT 而非 enqueue_job
 
 两处都用 `INSERT INTO jobs ... VALUES ('higher_order', :s, -1, ...)` 而非调 `enqueue_job()`——因为 extract 本身已在一个 `session_scope` 内，直接同事务写 job 表避免嵌套事务开销，且 extract 失败回滚时 job 也一起回滚（不会留下"无对应 extract 的孤儿高阶 job"）。`priority=-1` 表示低优先级，不与用户路径的 extract/erase job 抢资源。
 
@@ -307,7 +307,7 @@ if jt == "higher_order" and scope:
 
 Worker 系统详见第20章。
 
-## 24.6 召回集成：higher_order 层
+## 13.6 召回集成：higher_order 层
 
 `retrieval/pipeline.py` 的 `_assemble_pack` 在 `StratifiedPack` 里新增了 `higher_order` 层，与 `events`/`facts`/`beliefs` 并列：
 
@@ -352,7 +352,7 @@ if subj_ids:
 
 召回系统的分层结构与 RRF 融合详见第10-12章。
 
-## 24.7 冷启动保护
+## 13.7 冷启动保护
 
 Higher-Order 默认**禁用**（`HigherOrderCfg.enabled=False`），并由 `min_access_count` 门禁。原因在于 evidence 的质量依赖信号总线的成熟度：
 
@@ -363,9 +363,9 @@ Higher-Order 默认**禁用**（`HigherOrderCfg.enabled=False`），并由 `min_
 
 因此启用顺序通常是：先跑系统积累召回数据 → 观察 `events.access_count` 分布 → 确认有足够热度后 `higher_order.enabled=true` + 手动 INSERT 几条 `order=2` 谓词定义 → 让抽取管线开始 enqueue 高阶 job。
 
-## 24.8 API 与 MCP
+## 13.8 API 与 MCP
 
-### 24.8.1 管理接口 `POST /v1/admin/higher-order`
+### 13.8.1 管理接口 `POST /v1/admin/higher-order`
 
 `app.py` 的 higher-order admin 端点，需要 `admin_auth`，承担两种职责：
 
@@ -405,7 +405,7 @@ curl -X POST http://localhost:8000/v1/admin/higher-order \
 # {"synthesized":1,"entity_id":"...","entity_name":"device_X"}
 ```
 
-### 24.8.2 查询接口 `GET /v1/higher-order`
+### 13.8.2 查询接口 `GET /v1/higher-order`
 
 `app.py` 的 higher-order 查询端点，普通 `auth` 即可，委托 `list_higher_order_facts`（`higher_order.py`）：
 
@@ -419,7 +419,7 @@ def higher_order_list(scope: str, entity_id: Optional[str] = Query(None),
 
 可选按 `entity_id` 过滤，返回该实体或全 scope 的高阶事实（含 `reasoning` 和 `evidence_fact_ids`，便于追溯归纳依据）。
 
-### 24.8.3 MCP 工具 `higher_order_generate`
+### 13.8.3 MCP 工具 `higher_order_generate`
 
 `mcp_server.py` 的 higher-order MCP 工具：
 
@@ -440,7 +440,7 @@ def higher_order_generate(entity_id: str,
 
 MCP 工具语义与 admin API 的 `entity_id` 路径一致，供 agent 主动触发归纳。MCP server 详见第19章。
 
-## 24.9 配置
+## 13.9 配置
 
 `HigherOrderCfg`（`config.py:146-152`）：
 

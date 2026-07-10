@@ -108,7 +108,7 @@ WHERE event_id = ANY(SELECT unnest(supports) FROM facts
 - **写放大**:每次召回至少多一次写事务。在高 QPS 场景下,`events` 表的写压力会随召回量线性增长。
 - **隐式信号**:无需用户显式点赞/踩,系统就能从"被召回的频率"中推断出记忆的价值。这是 MindMemOS 完全缺失的一环——它只有显式反馈通道,而真实用户极少主动反馈。
 
-这个取舍是值得的:隐式信号的数据量比显式反馈大几个数量级,且不受用户惰性影响。Dreaming 和 Higher-Order 的门控阈值(见 §6、第 23 章)都建立在 `access_count` 稳定增长的前提上。
+这个取舍是值得的:隐式信号的数据量比显式反馈大几个数量级,且不受用户惰性影响。Dreaming 和 Higher-Order 的门控阈值(见 §6、第 12 章和第 13 章)都建立在 `access_count` 稳定增长的前提上。
 
 ## 4. salience 再加权:RRF 后的信号注入
 
@@ -171,7 +171,7 @@ sequenceDiagram
 
 ## 5. 缓存失效
 
-召回结果会被缓存到 `recall_packs` 表(默认 60 秒 TTL,见第 10 章)。一旦 Feedback 或 Dreaming 修改了 `salience` / `access_count` / `excluded_from_recall`,这些缓存就变成了脏数据——如果不失效,用户下次召回会拿到基于旧信号的排序。
+召回结果会被缓存到 `recall_packs` 表(默认 60 秒 TTL,详见第14章检索系统)。一旦 Feedback 或 Dreaming 修改了 `salience` / `access_count` / `excluded_from_recall`,这些缓存就变成了脏数据——如果不失效,用户下次召回会拿到基于旧信号的排序。
 
 Feedback 的失效逻辑在 `src/cortex/memory/feedback.py`(信号写入后):
 
@@ -251,4 +251,4 @@ class AdvancedRetrievalCfg(BaseModel):
 4. **部分索引限定热子集。** `idx_facts_higher_order` 和 `idx_events_methylation` 用 `WHERE` 谓词把索引体积压到最小,同时精确匹配两种热查询模式。
 5. **缓存按 scope 粗粒度失效。** Feedback 和 Dreaming 都用 `DELETE FROM recall_packs WHERE scope=:s`,宁可多删不可漏删。
 
-信号总线是记忆系统的"神经系统":recall 是感觉输入,access_count 是神经冲动,salience 是突触权重,Feedback 是意识层面的修正,Dreaming 是睡眠期的巩固,Higher-Order 是抽象推理。没有这套共享状态,这些功能各自为政;有了它,记忆才从静态存储变成一个自调整、自演化的系统。后续三章(第 22 章 Feedback、第 23 章 Dreaming、第 24 章 Higher-Order)都建立在本章描述的信号字段与数据流之上。
+信号总线是记忆系统的"神经系统":recall 是感觉输入,access_count 是神经冲动,salience 是突触权重,Feedback 是意识层面的修正,Dreaming 是睡眠期的巩固,Higher-Order 是抽象推理。没有这套共享状态,这些功能各自为政;有了它,记忆才从静态存储变成一个自调整、自演化的系统。后续三章(第 11 章 Feedback、第 12 章 Dreaming、第 13 章 Higher-Order)都建立在本章描述的信号字段与数据流之上。

@@ -2,7 +2,7 @@
 
 ## 概述
 
-cortex 的检索系统由 **6 个并行通道** 组成，每个通道从不同角度召回相关 facts，然后通过 RRF 融合。每个通道返回 fact_id 列表，统一时态过滤。
+cortex 的检索系统由 **6 个通道** 组成，每个通道从不同角度召回相关 facts，然后通过 RRF 融合。每个通道返回 fact_id 列表，统一时态过滤。6 个通道在同一个 `session_scope()` 内**串行执行**(都是 DB 查询,无 HTTP I/O,并行化收益有限)。
 
 ```{mermaid}
 flowchart TB

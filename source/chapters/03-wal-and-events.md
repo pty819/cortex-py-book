@@ -33,14 +33,14 @@ sequenceDiagram
     C->>API: POST /experience (key=abc, body=X)
     API->>DB: INSERT event (key=abc, body=X)
     DB-->>API: event_id=123
-    API-->>C: 202 {event_id: 123}
-    
+    API-->>C: 200 {event_id: 123}
+
     Note over C,API: 重试相同请求
-    
+
     C->>API: POST /experience (key=abc, body=X)
     API->>DB: SELECT WHERE key=abc
     DB-->>API: event_id=123, body=X
-    API-->>C: 200 {event_id: 123} (幂等返回)
+    API-->>C: 200 {event_id: 123} (幂等返回,同 status)
     
     Note over C,API: 不同 body 的请求
     
@@ -260,7 +260,7 @@ sequenceDiagram
     API->>DB: INSERT event
     API->>DB: INSERT job (extract)
     DB-->>API: event_id, job_id
-    API-->>C: 202 Accepted
+    API-->>C: 200 {event_id, status}
     
     loop Worker Loop
         W->>DB: SKIP LOCKED claim

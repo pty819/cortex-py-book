@@ -97,7 +97,7 @@ class StratifiedPack(BaseModel):
     diagnostics: Diagnostics  # 时间 + 通道统计
 ```
 
-**pack_id** 是 `md5(scope + query + view)` 的哈希，用于缓存：
+**pack_id** 是 `"pack_" + uuid4().hex[:24]`（随机 UUID），**query_hash** 是 `sha256(scope + layers_json)[:16]`，用于缓存命中：
 
 ```sql
 CREATE TABLE recall_packs (
@@ -110,9 +110,9 @@ CREATE TABLE recall_packs (
 );
 ```
 
-缓存 5 分钟内有效，相同查询直接返回。
+缓存 60 秒内有效，相同查询直接返回。
 
-> **缓存失效与权重一致性**：Feedback(第11章)改写 `facts.salience` 或关闭 fact、Dreaming(见相关章节)改动 salience 后,会主动失效相关 scope 的 recall_packs 缓存——`DELETE FROM recall_packs WHERE scope=:s`,确保下次召回重新走 RRF + salience 再加权,反映最新权重。否则 5 分钟 TTL 内的缓存命中会返回旧的排序结果。
+> **缓存失效与权重一致性**：Feedback(第11章)改写 `facts.salience` 或关闭 fact、Dreaming(见相关章节)改动 salience 后,会主动失效相关 scope 的 recall_packs 缓存——`DELETE FROM recall_packs WHERE scope=:s`,确保下次召回重新走 RRF + salience 再加权,反映最新权重。否则 60 秒 TTL 内的缓存命中会返回旧的排序结果。
 
 ## 完整检索流程
 
@@ -125,7 +125,8 @@ sequenceDiagram
     
     C->>R: recall(scope, query)
     
-    par 6 通道并行
+    rect rgb(240,248,255)
+        Note over R,DB: 6 通道串行查询(同一 session_scope 内)
         R->>DB: _chan_vector (pgvector HNSW)
         R->>DB: _chan_bm25 (tsvector)
         R->>DB: _chan_graph (递归 CTE)
@@ -167,4 +168,4 @@ scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
 | `rrf_k` | 60 | RRF 融合常数 |
 | `rerank_top_n` | 40 | 送入 rerank 的文档数 |
 | `top_k` | 20 | 最终返回的文档数 |
-| `pack_ttl` | 300s | 缓存有效期 |
+| `pack_ttl` | 60s | 缓存有效期 |

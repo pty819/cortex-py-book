@@ -93,7 +93,7 @@ def consolidation_run(scope):
 
 **超替语义**：旧 fact 的 `recorded_to = now()`（认知上已过时），`valid_to` 保持不变（保留历史上为真的时间窗口）。
 
-**与 Dreaming 的关系**：Dreaming 流程的 Phase 0 直接复用 `consolidation_run` 作为前置去重——先跑一遍 consolidation 把同 S/P/O 的重复 live facts 收敛到最新版本，Phase 1/2 才在干净的图上做 relation_detect + action_plan。详见第 23 章。
+**与 Dreaming 的关系**：Dreaming 流程的 Phase 0 直接复用 `consolidation_run` 作为前置去重——先跑一遍 consolidation 把同 S/P/O 的重复 live facts 收敛到最新版本，Phase 1/2 才在干净的图上做 relation_detect + action_plan。详见第 12 章。
 
 ## 诊断谓词词表预置
 

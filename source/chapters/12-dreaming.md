@@ -42,7 +42,7 @@ graph TB
 
 ## Phase 0: 精确去重
 
-Phase 0 直接复用第 22 章介绍的 `consolidation_run`,但有一个关键参数差异:
+Phase 0 直接复用第 21 章介绍的 `consolidation_run`,但有一个关键参数差异:
 
 ```python
 # dreaming.py 第 63-70 行

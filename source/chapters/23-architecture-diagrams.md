@@ -297,11 +297,11 @@ src/cortex/
 | MCP HTTP | `cortex mcp-http` | `interfaces.mcp_server.main_http` |
 | Worker | `cortex worker` | `interfaces.worker.runner.run_worker` |
 
-### 23.3.4 测试组织(145 测试)
+### 23.3.4 测试组织
 
-测试按被测层级组织,与 4 子包对应:
+测试按被测层级组织,与 4 子包对应(下表为编写时快照,实际用例数随迭代增长,运行 `pytest --co -q` 查看当前总数):
 
-| 测试文件 | 被测层 | 用例数 |
+| 测试文件 | 被测层 | 用例数(编写时) |
 |---------|--------|-------|
 | `test_core.py` / `test_wait_for_stage.py` | infra.core | 5 + 2 |
 | `test_think_stream.py` | infra.think_stream | 6 |

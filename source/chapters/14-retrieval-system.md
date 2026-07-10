@@ -287,7 +287,7 @@ scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
 
 | 因子 | 来源 | 含义 |
 |------|------|------|
-| `sal` | `facts.salience`（默认 1.0） | Feedback 软降权：正向反馈不改动 salience，负向反馈把 salience 调低（如降到 0.7）。`sal < 1.0` 时压低分数,`sal > 1.0` 时放大分数 |
+| `sal` | `facts.salience`（默认 1.0） | Feedback 双向调整：正向反馈提升 salience（`salience += positive_weight`，上限 `salience_ceiling`），负向反馈降低 salience（如降到 0.7）。`sal < 1.0` 时压低分数,`sal > 1.0` 时放大分数 |
 | `ac` | `max(events.access_count)` of supporting events | 隐式正反馈：该 fact 被召回的累计次数。除以 10.0 归一化后,乘以 `salience_weight` 作为加分项 |
 
 **排序效果**：
