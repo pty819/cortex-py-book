@@ -99,43 +99,45 @@ CREATE TABLE concepts (
 
 ### 概念合成
 
-`synthesize_scope` 对 scope 内所有 beliefs 做 LLM 合成：
+`synthesize_scope` 对 scope 内所有 beliefs 做 LLM 合成。合成采用**三阶段**结构——把 N 个 topic 的 LLM 调用从单个 session 内串行改为 session 外并行，避免持着 DB 连接等 HTTP 响应：
 
 ```python
 def synthesize_scope(scope, topics=None):
+    # Step 1: 加载 beliefs(短事务,读完即关 session)
     with session_scope() as conn:
-        # 取该 scope 的 beliefs
         beliefs = conn.execute(text("""
             SELECT b.claim, b.confidence, e.canonical_name FROM beliefs b
             JOIN entities e ON e.entity_id=b.about_entity_id
-            WHERE b.scope=:s AND b.valid_to IS NULL AND b.recorded_to IS NULL
+            WHERE b.scope=:s AND b.valid_to IS NULL AND b.recorded_to IS NULL LIMIT 20
         """), {"s": scope}).fetchall()
-        
-        # 自动分 topic
-        if not topics:
-            topics = sorted({b.canonical_name for b in beliefs})[:5]
-        
-        for topic in topics:
-            relevant = [b for b in beliefs if b.canonical_name == topic]
-            material = json.dumps({"topic": topic, "beliefs": [...]})
-            
-            # LLM 合成
-            if services.llm_configured("synthesis"):
-                raw = services.llm_chat("synthesis", 
-                    UNDERSTANDING_SYNTHESIZE, material)
-                data = services.parse_llm_json(raw)
-            else:
-                data = {"name": topic, "summary": "mock", 
-                        "confidence": 0.6, "related": []}
-            
-            # 写入 concepts 表
+    if not beliefs:
+        return {"synthesized": 0, "topics": []}
+    if not topics:
+        topics = sorted({b.canonical_name for b in beliefs})[:5]
+
+    # Step 2: 并发跑所有 topic 的 LLM 合成(session 外,纯 HTTP I/O)
+    from cortex.infra.concurrency import parallel_map
+    def _synth_one(args):
+        topic, material = args
+        raw = services.llm_chat("synthesis", UNDERSTANDING_SYNTHESIZE, material)
+        return services.parse_llm_json(raw)
+    materials = [(t, json.dumps({"topic": t, "beliefs": [...]})) for t in topics]
+    synth_results = parallel_map(_synth_one, materials)  # N 路并发,保序
+
+    # Step 3: 串行写 DB(短事务,与 LLM 结果解耦)
+    with session_scope() as conn:
+        for topic, data in zip(topics, synth_results):
+            # supports 取该 topic 实体的 live facts
+            # related 解析 LLM 输出 + _RELATIONS 校验
             conn.execute(text("""
-                INSERT INTO concepts (scope, name, topic, summary, 
+                INSERT INTO concepts (scope, name, topic, summary,
                     supports, related, confidence)
-                VALUES (:s, :n, :t, :sum, CAST(:sup AS uuid[]), 
+                VALUES (:s, :n, :t, :sum, CAST(:sup AS uuid[]),
                         CAST(:rel AS jsonb), :c)
             """), {...})
 ```
+
+三阶段的关键：Step 2 的 `parallel_map` 在 `session_scope()` 外执行，N 个 topic 的 LLM 调用并发跑（基于 `ThreadPoolExecutor`，GIL 在网络 `recv()` 处释放，实现真并行）。Step 1 和 Step 3 各自是只读/写入的短事务，连接持有时间降到毫秒级。
 
 ### Related 图
 
@@ -166,22 +168,25 @@ graph TB
 def related_concepts(concept_id, relation=None, depth=2, limit=20):
     """BFS 遍历 related 图"""
     with session_scope() as conn:
+        base = _get_concept_row(conn, concept_id)  # 复用外层 conn,不新开 session
+        if not base:
+            return []
         visited = {concept_id}
         result = []
         frontier = [concept_id]
-        
+
         for _ in range(depth):
             nxt = []
             for cid in frontier:
-                c = get_concept(cid)
+                c = _get_concept_row(conn, cid)  # 内部 helper,复用同一 conn
                 for rel in (c["related"] or []):
                     row = conn.execute(text("""
-                        SELECT concept_id::text FROM concepts 
+                        SELECT concept_id::text FROM concepts
                         WHERE scope=:s AND name=:n LIMIT 1
                     """), {"s": c["scope"], "n": rel["name"]}).fetchone()
                     if row and row[0] not in visited:
                         visited.add(row[0])
-                        full = get_concept(row[0])
+                        full = _get_concept_row(conn, row[0])
                         if full:
                             result.append(full)
                             nxt.append(row[0])
@@ -190,6 +195,8 @@ def related_concepts(concept_id, relation=None, depth=2, limit=20):
                 break
     return result
 ```
+
+> `_get_concept_row(conn, concept_id)` 是内部 helper，复用调用方的 `conn` 而非新开 `session_scope()`。BFS 遍历中每跳都查 concept 行，若每次都开新 session 会导致嵌套连接（在 QueuePool 下可能 pool_timeout）。统一复用外层 conn 是关键修复。
 
 ## Beliefs → Understanding 的完整流程
 

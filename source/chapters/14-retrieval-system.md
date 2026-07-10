@@ -107,15 +107,20 @@ def _graph_eligible_sql(alias="f"):
 
 ## 检索主流程
 
+Phase 0 的 Embedding + HyDE + Multihop 采用**两波并行**——第一波 `parallel_call` 同时跑 query embed + N×HyDE LLM + multihop LLM，第二波 `parallel_map` 对 HyDE 文本并行 embed。全部在 DB session 之外执行（纯 HTTP I/O）。
+
 ```{mermaid}
 flowchart TB
-    Q[用户查询] --> P0[Phase 0: Embedding]
-    P0 --> P0a[HyDE 假设性文本?]
-    P0a -->|yes| LLM1[LLM 生成假设文本]
-    LLM1 --> EMB[embed_one]
-    P0a -->|no| EMB
-    EMB --> P1[Phase 1: 6通道]
-    
+    Q[用户查询] --> W1[第一波 parallel_call 会话外]
+    W1 --> EMB[embed_one query]
+    W1 --> H1[llm_chat HyDE x N]
+    W1 --> M1[llm_chat Multihop]
+    H1 --> W2[第二波 parallel_map 会话外]
+    W2 --> HE[embed_one 每段 HyDE]
+    EMB --> P1[Phase 1: 6通道 session_scope]
+    HE --> P1
+    M1 --> P1
+
     subgraph Phase 1
         V[Vector]
         B[BM25]
@@ -124,11 +129,13 @@ flowchart TB
         S[Synonym]
         T[Temporal]
     end
-    
-    P1 --> RRF[RRF Fusion]
-    RRF --> P2[Phase 2: Rerank]
-    P2 --> P3[Phase 3: Pack 装配]
-    P3 --> CACHE[Cache to recall_packs]
+
+    P1 --> RRF[RRF Fusion 会话内]
+    RRF --> SIG[信号总线加权 会话内]
+    SIG --> P2[Phase 2: Rerank 会话外]
+    P2 --> P3[Phase 3: _assemble_pack 独立短事务 x3 重试]
+    P3 --> CB[context_block LLM 会话外]
+    CB --> CACHE[access_count 递增 + Cache 独立短事务]
     CACHE --> OUT[StratifiedPack]
 ```
 
@@ -146,23 +153,49 @@ def _question_type(query):
 
 ## HyDE (Hypothetical Document Embedding)
 
+HyDE 的 N 次 LLM 调用与 query embed、multihop LLM 一起由 Phase 0 的第一波 `parallel_call` 并行发起；随后第二波 `parallel_map` 对清洗后的 HyDE 文本并行 embed：
+
 ```python
+from cortex.infra.concurrency import parallel_call, parallel_map
+
+# 第一波:embed query + N×HyDE LLM + multihop LLM 同时跑(会话外)
+first_wave = [
+    (services.embed_one, (query, "query"), {}),
+]
 if adv.hyde_enabled and services.llm_configured("synthesis"):
-    for _ in range(adv.hyde_passages):
-        raw = services.llm_chat("synthesis",
-            "写一段假设性回答(假设记忆里有答案),纯文本无前缀。", query)
-        extra_embs.append(services.embed_one(services.strip_think(raw)))
+    first_wave += [
+        (services.llm_chat, ("synthesis", HYDE_SYSTEM, query), {})
+        for _ in range(adv.hyde_passages)
+    ]
+if adv.multihop_enabled and services.llm_configured("synthesis"):
+    first_wave.append((services.llm_chat, ("synthesis", MULTIHOP_SYSTEM,
+        json.dumps({"query": query, "n": adv.multihop_count})), {}))
+first_results = parallel_call(*first_wave)  # 一次性并发
+
+q_emb = first_results[0]
+hyde_raws = first_results[1 : 1 + adv.hyde_passages]
+multihop_raw = first_results[-1] if adv.multihop_enabled else None
+
+# 第二波:HyDE 文本并行 embed(会话外)
+hyde_texts = [services.strip_think(r) for r in hyde_raws if r]
+hyde_embs = parallel_map(lambda txt: services.embed_one(txt, role="query"), hyde_texts)
+extra_embs = [e for e in hyde_embs if e]
 ```
+
+两波之间有数据依赖（第二波需要第一波产出的 HyDE 文本），但第一波内部的三类调用、第二波内部的 N 个 embed 各自完全独立，所以分别用 `parallel_call`（异构函数并行）和 `parallel_map`（同构保序）并发。
 
 ## Multihop 子问题分解
 
+Multihop 的 LLM 调用已并入 Phase 0 第一波 `parallel_call`（见上节），与 HyDE 同时发起。解析出的子查询在 Phase 1 的 BM25 通道内追加检索：
+
 ```python
-if adv.multihop_enabled and services.llm_configured("synthesis"):
-    raw = services.llm_chat("synthesis", MULTIHOP_SYSTEM,
-        json.dumps({"query": query, "n": adv.multihop_count}))
-    subs = services.parse_llm_json(raw)
+# Phase 0 第一波已并发拿到 multihop_raw(见 HyDE 节)
+if multihop_raw:
+    subs = services.parse_llm_json(multihop_raw)
+    # Phase 1 session 内:子查询追加到 BM25 候选
     for sq in (subs.get("queries") or [])[:adv.multihop_count]:
-        c_bm25 = list(dict.fromkeys(c_bm25 + _chan_bm25(conn, scope, view, sq, top_k, ...)))
+        c_bm25 = list(dict.fromkeys(
+            c_bm25 + _chan_bm25(conn, scope, view, sq, top_k, ...)))
 ```
 
 ## StratifiedPack 缓存
@@ -178,48 +211,56 @@ def _cache_pack(conn, pack):
 
 ## 完整 recall 调用
 
+`recall()` 的 session 边界经过精心设计：Phase 0 在 session 外（纯 HTTP）；Phase 1 用一个 session 跑 6 通道 + RRF + 信号总线加权；rerank 在 session 外；`_assemble_pack` 在独立短事务里（带 3 次重试）；`context_block` 的 LLM 调用在 session 外。
+
 ```python
-def recall(*, scope, query=None, view="local", top_k=None, as_of=None,
-           valid_during=None, recorded_during=None, include_superseded=False,
-           budgets=None, citation_mode="inline_with_markers",
-           exclude_content=False) -> Dict[str, Any]:
-    """混合检索主入口"""
+def recall(*, scope, query=None, view="local", top_k=None, as_of=None, ...):
     cfg = load_config()
-    top_k = top_k or cfg.retrieval.top_k
-    
-    # Phase 0: Embedding
-    q_emb = services.embed_one(query)
-    
-    # Phase 1: 6通道 + RRF
+
+    # Phase 0: 两波并行(会话外,纯 HTTP)
+    #   第一波 parallel_call: embed query + N×HyDE + multihop
+    #   第二波 parallel_map: HyDE 文本并行 embed
+    # → 产出 q_emb + extra_embs + multihop 子查询
+
+    # Phase 1: 6通道 + RRF + 信号总线加权(单个 session_scope)
     with session_scope() as conn:
-        c_vec = _chan_vector(conn, scope, view, q_emb, top_k, as_of, include_superseded)
-        c_bm25 = _chan_bm25(conn, scope, view, query, top_k, as_of, include_superseded)
-        c_graph = _chan_graph(conn, scope, view, q_emb, cfg.retrieval.graph_max_hops, top_k, as_of, include_superseded)
-        c_ent = _chan_entity_name(conn, scope, view, query, top_k, as_of, include_superseded)
-        c_syn = _expand_synonyms(conn, scope, query, as_of, include_superseded)
-        c_tmp = _chan_temporal_decay(conn, scope, view, top_k, as_of=as_of, include_superseded=include_superseded)
-        
-        scores = _rrf([c_vec, c_bm25, c_graph, c_ent, c_syn, c_tmp], cfg.retrieval.rrf_k)
-
-        # ── 信号总线加权(见下文专节)──
-        # scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
-
+        c_vec = _chan_vector(conn, ...)
+        c_bm25 = _chan_bm25(conn, ...)
+        c_graph = _chan_graph(conn, ...)
+        c_ent = _chan_entity_name(conn, ...)
+        c_syn = _expand_synonyms(conn, ...)
+        c_tmp = _chan_temporal_decay(conn, ...)
+        scores = _rrf([...], cfg.retrieval.rrf_k)
+        # 信号总线加权(见下文专节)
         ranked = sorted(scores, key=lambda fid: scores[fid], reverse=True)[:top_k]
+    # ← session 关闭——下面 rerank 不持有 DB 连接
 
-    # Phase 2: Rerank
+    # Phase 2: Rerank(会话外,纯 HTTP)
     reranked_rows = _rerank(query, ordered_rows)
-    
-    # Phase 3: Pack 装配
-    pack = _assemble_pack(conn, scope, view, query, reranked_rows, t, ch_counts)
+
+    # Phase 3: Pack 装配(独立短事务,3 次重试)
+    pack = None
+    for _attempt in range(3):
+        try:
+            with session_scope() as conn:
+                pack = _assemble_pack(conn, scope, view, query, reranked_rows, ...)
+            break
+        except Exception:
+            if _attempt < 2:
+                time.sleep(0.3)
+    # context_block 的 LLM 调用在 session 外(不再占住连接等 HTTP 返回)
+    pack["context_block"] = _context_block(query, pack["layers"]["facts"], ...)
     return pack
 ```
+
+Rerank 与 Pack 装配均移出主 `session_scope`，避免 LLM/rerank HTTP 调用占用 DB 连接。`_assemble_pack` 在独立短事务里执行，失败重试 3 次；三次全失败则兜底构造最小 pack。
 
 ## 信号总线加权 (salience + access_count)
 
 RRF 融合产出 `scores` 之后、rerank 之前，pipeline 还插入了一步**信号总线再加权**——把记忆的"重要性信号"叠加到 RRF 分数上。这一步只在 `adv.salience_weight > 0` 时触发：
 
 ```python
-# pipeline.py:315-329
+# retrieval/pipeline.py — Phase 1 session 内,RRF 之后
 if adv.salience_weight > 0 and scores:
     # H4:批量查询(单条 SQL 取全部候选的 ac+sal),消除 N+1
     all_fids = list(scores.keys())
@@ -262,7 +303,7 @@ scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
 Pack 装配成功后,pipeline 还做了一步**隐式正反馈**——对本次命中的 fact 的 supporting events 批量递增 `access_count`：
 
 ```python
-# pipeline.py:404-416
+# retrieval/pipeline.py — recall() 返回路径,Pack 装配成功后
 if pack and pack.get("layers", {}).get("facts"):
     _hit_ids = [f["fact_id"] for f in pack["layers"]["facts"] if f.get("fact_id")]
     if _hit_ids:

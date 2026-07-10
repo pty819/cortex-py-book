@@ -69,7 +69,7 @@ ALTER TABLE cortex.events ADD COLUMN IF NOT EXISTS last_recalled_at TIMESTAMPTZ;
 
 ## 3. 隐式反馈环:recall → access_count
 
-信号总线的写入端不止 Feedback。recall 本身在每次成功返回 pack 后,会对其命中的 fact 所依赖的 events 批量递增 `access_count`。代码在 `src/cortex/graph/retrieval/pipeline.py:412-424`:
+信号总线的写入端不止 Feedback。recall 本身在每次成功返回 pack 后,会对其命中的 fact 所依赖的 events 批量递增 `access_count`。代码在 `src/cortex/graph/retrieval/pipeline.py` 的 `recall()` 返回路径(Pack 装配成功后):
 
 ```python
 # 信号总线:recall 命中递增 access_count(隐式正反馈)
@@ -112,7 +112,7 @@ WHERE event_id = ANY(SELECT unnest(supports) FROM facts
 
 ## 4. salience 再加权:RRF 后的信号注入
 
-信号总线的读取端最关键的一环,是检索 pipeline 在 RRF 融合之后、rerank 之前,把 `salience` 与 `access_count` 注入到候选分数里。代码在 `src/cortex/graph/retrieval/pipeline.py:315-329`:
+信号总线的读取端最关键的一环,是检索 pipeline 在 RRF 融合之后、rerank 之前,把 `salience` 与 `access_count` 注入到候选分数里。代码在 `src/cortex/graph/retrieval/pipeline.py` 的 Phase 1 session 内(RRF 之后):
 
 ```python
 scores = _rrf([c_vec, c_bm25, c_graph, c_ent, c_syn, c_tmp], cfg.retrieval.rrf_k)
@@ -173,7 +173,7 @@ sequenceDiagram
 
 召回结果会被缓存到 `recall_packs` 表(默认 60 秒 TTL,见第 10 章)。一旦 Feedback 或 Dreaming 修改了 `salience` / `access_count` / `excluded_from_recall`,这些缓存就变成了脏数据——如果不失效,用户下次召回会拿到基于旧信号的排序。
 
-Feedback 的失效逻辑在 `src/cortex/memory/feedback.py:91-93`:
+Feedback 的失效逻辑在 `src/cortex/memory/feedback.py`(信号写入后):
 
 ```python
 # 失效 recall_packs 缓存(反馈应立即反映到下次召回)
@@ -182,7 +182,7 @@ if cfg.feedback.cache_invalidate:
     actions.append("cache_invalidated")
 ```
 
-Dreaming 执行动作后做同样的失效(`src/cortex/memory/dreaming.py:124` 与 `:370`):
+Dreaming 执行动作后做同样的失效(`src/cortex/memory/dreaming.py` 的 `_execute_actions` 和收尾阶段):
 
 ```python
 conn.execute(text("DELETE FROM recall_packs WHERE scope=:s"), {"s": scope})
@@ -214,7 +214,7 @@ CREATE INDEX IF NOT EXISTS idx_events_methylation
 
 ## 7. 配置
 
-信号总线的总开关是 `AdvancedRetrievalCfg.salience_weight`(`src/cortex/infra/config.py:109`):
+信号总线的总开关是 `AdvancedRetrievalCfg.salience_weight`(`src/cortex/infra/config.py` 的 `AdvancedRetrievalCfg`):
 
 ```python
 class AdvancedRetrievalCfg(BaseModel):

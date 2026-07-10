@@ -57,7 +57,7 @@ ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS evidence_fact_ids UUID[] NOT N
 | `extraction_model` | LLM 模型名 | `'higher-order'`（固定标记，标识由高阶归纳产生） |
 | `predicate` | `order=1` 谓词（`caused_by`、`located_in` …） | `order=2` 谓词（`failure_mode`、`behavior_pattern` …） |
 
-高阶事实的写入见 `higher_order.py:118-128` 的 INSERT 语句——`confidence=0.7`、`assertion_status='confirmed'`、`object_type='literal'`，并显式填入 `is_higher_order=true`、`higher_order_reasoning`、`evidence_fact_ids`。版本化更新时，旧高阶 fact 不会被 DELETE，而是 `recorded_to=now()` 软关闭，新版本 INSERT，保留完整演化历史（见 24.4）。
+高阶事实的写入见 `higher_order.py` 的 generate_higher_order 写入段的 INSERT 语句——`confidence=0.7`、`assertion_status='confirmed'`、`object_type='literal'`，并显式填入 `is_higher_order=true`、`higher_order_reasoning`、`evidence_fact_ids`。版本化更新时，旧高阶 fact 不会被 DELETE，而是 `recorded_to=now()` 软关闭，新版本 INSERT，保留完整演化历史（见 24.4）。
 
 为加速热路径检索，`schema.sql:448-450` 专门建了部分索引：
 
@@ -83,14 +83,14 @@ CREATE TABLE IF NOT EXISTS cortex.predicate_definitions (
 
 关键列：
 
-- **`prop_order`**：`1` = 一阶谓词（从事件/文档直接抽取），`2` = 高阶谓词（只能由 Higher-Order 归纳产生）。`generate_higher_order` 第一步就查 `WHERE prop_order=2` 决定 LLM 能用哪些谓词（`higher_order.py:64-65`）。
+- **`prop_order`**：`1` = 一阶谓词（从事件/文档直接抽取），`2` = 高阶谓词（只能由 Higher-Order 归纳产生）。`generate_higher_order` 第一步就查 `WHERE prop_order=2` 决定 LLM 能用哪些谓词（`higher_order.py` 的谓词加载段）。
 - **`category`**：谓词类别枚举。一阶侧覆盖 `structural`/`causal`/`diagnostic`/`state`，高阶侧用 `higher_order`。这是多维度本体分类，不与 `prop_order` 冗余——一个 `order=2` 谓词的 `category` 既可以是 `higher_order` 也可以归到 `causal` 表示它是关于因果规律的抽象。
 - **`cardinality`**：`single`（单值，如 `failure_mode` 一个实体一个主导模式）或 `multi`（多值）。
 - **`description` / `example`**：注入 LLM prompt，让模型理解谓词语义。
 
 ### seed_predicate_definitions()
 
-`maintenance.py:86-108` 的 `seed_predicate_definitions()` 把 `ontology.py` 硬编码谓词**幂等 upsert** 到该表：
+`maintenance.py` 的 `seed_predicate_definitions()` 把 `ontology.py` 硬编码谓词**幂等 upsert** 到该表：
 
 ```python
 def seed_predicate_definitions() -> int:
@@ -149,7 +149,7 @@ flowchart TD
 
 ### 24.4.1 检查门序列（gate ordering）
 
-设计上的关键细节是**检查顺序**——所有 DB 检查先于 LLM key 检查（`higher_order.py:69-71`）：
+设计上的关键细节是**检查顺序**——所有 DB 检查先于 LLM key 检查（`higher_order.py` 的门控序列）：
 
 ```python
 # LLM key 检查放在最后(DB 检查之后)
@@ -161,7 +161,7 @@ if not services.llm_configured(cfg.higher_order.llm_tier):
 
 ### 24.4.2 证据窗加载（evidence window）
 
-`higher_order.py:44-56` 加载该实体的一阶 live facts 作为 evidence：
+`higher_order.py` 加载该实体的一阶 live facts 作为 evidence：
 
 ```python
 # 取该实体的一阶 live facts(按 access_count + valid_from DESC,信号总线:高频优先)
@@ -221,7 +221,7 @@ if total_ac < cfg.higher_order.min_access_count:                 # 默认 2
 
 ### 24.4.5 版本化 apply updates
 
-`higher_order.py:101-129` 遍历 updates 写库，采用**软关 + 新版本**策略（而非 in-place UPDATE）：
+`higher_order.py` 遍历 updates 写库，采用**软关 + 新版本**策略（而非 in-place UPDATE）：
 
 ```python
 for upd in updates:
@@ -247,13 +247,13 @@ for upd in updates:
 
 `update` 动作会把旧高阶 fact 的 `recorded_to=now()` 软关闭（recension 层关闭），再 INSERT 一条新版本——保留完整的高阶结论演化轨迹，可回溯任何时刻的结论版本。这与 Facts 表的双时态语义完全一致（见第17章）。
 
-成功归纳后 `emit_lifecycle(kind="higher_order_generated", ...)` 发生命周期事件（`higher_order.py:132-133`）。
+成功归纳后 `emit_lifecycle(kind="higher_order_generated", ...)` 发生命周期事件（`higher_order.py` 收尾段）。
 
 ## 24.5 触发机制：extract 后异步 enqueue
 
 Higher-Order 不由用户同步调用触发，而是**抽取管线 extract 完成后异步 enqueue** 一个 `higher_order` job。抽取管线有两条路径，都内置了这个触发点：
 
-### 24.5.1 LLM 抽取路径（`extraction/pipeline.py:507-518`）
+### 24.5.1 LLM 抽取路径（`extraction/pipeline.py` 的 `extract_event` 收尾阶段）
 
 ```python
 # ── Higher-Order 异步触发:extract 后对该 event 涉及的实体 enqueue 高阶归纳 ──
@@ -270,9 +270,9 @@ if cfg.higher_order.enabled and fact_ids:
         pass
 ```
 
-发生在 `embed_status='done'` 之后（`pipeline.py:505`）。对本次抽取产生的每个 `subject_id` 各 enqueue 一个 job，payload 携带 `entity_id` 和 `new_fact_id`（首个新 fact，用于 24.4.2 的 M4 强制进证据窗）。
+发生在 `embed_status='done'` 之后（`extraction/pipeline.py` 的 `extract_event` 收尾）。对本次抽取产生的每个 `subject_id` 各 enqueue 一个 job，payload 携带 `entity_id` 和 `new_fact_id`（首个新 fact，用于 24.4.2 的 M4 强制进证据窗）。
 
-### 24.5.2 三元组直写路径（`extraction/pipeline.py:380-392`）
+### 24.5.2 三元组直写路径（`extraction/pipeline.py` 的 `_direct_write_triple`）
 
 ```python
 # Higher-Order 异步触发(triple 直写路径)
@@ -296,7 +296,7 @@ if cfg.higher_order.enabled and res.get("fact_ids"):
 
 两处都用 `INSERT INTO jobs ... VALUES ('higher_order', :s, -1, ...)` 而非调 `enqueue_job()`——因为 extract 本身已在一个 `session_scope` 内，直接同事务写 job 表避免嵌套事务开销，且 extract 失败回滚时 job 也一起回滚（不会留下"无对应 extract 的孤儿高阶 job"）。`priority=-1` 表示低优先级，不与用户路径的 extract/erase job 抢资源。
 
-Worker 端（`worker/runner.py:145-148`）处理 `higher_order` job：
+Worker 端（`worker/runner.py` 的 `_dispatch` higher_order 分支）处理 `higher_order` job：
 
 ```python
 if jt == "higher_order" and scope:
@@ -309,7 +309,7 @@ Worker 系统详见第20章。
 
 ## 24.6 召回集成：higher_order 层
 
-`retrieval/pipeline.py:488-511` 在 `StratifiedPack` 里新增了 `higher_order` 层，与 `events`/`facts`/`beliefs` 并列：
+`retrieval/pipeline.py` 的 `_assemble_pack` 在 `StratifiedPack` 里新增了 `higher_order` 层，与 `events`/`facts`/`beliefs` 并列：
 
 ```python
 # higher_order 层:命中实体的 is_higher_order=true facts(归纳性结论 + 证据链)
@@ -367,7 +367,7 @@ Higher-Order 默认**禁用**（`HigherOrderCfg.enabled=False`），并由 `min_
 
 ### 24.8.1 管理接口 `POST /v1/admin/higher-order`
 
-`app.py:834-847`，需要 `admin_auth`，承担两种职责：
+`app.py` 的 higher-order admin 端点，需要 `admin_auth`，承担两种职责：
 
 ```python
 @app.post("/v1/admin/higher-order")
@@ -407,7 +407,7 @@ curl -X POST http://localhost:8000/v1/admin/higher-order \
 
 ### 24.8.2 查询接口 `GET /v1/higher-order`
 
-`app.py:850-854`，普通 `auth` 即可，委托 `list_higher_order_facts`（`higher_order.py:137-153`）：
+`app.py` 的 higher-order 查询端点，普通 `auth` 即可，委托 `list_higher_order_facts`（`higher_order.py`）：
 
 ```python
 @app.get("/v1/higher-order")
@@ -421,7 +421,7 @@ def higher_order_list(scope: str, entity_id: Optional[str] = Query(None),
 
 ### 24.8.3 MCP 工具 `higher_order_generate`
 
-`mcp_server.py:401-412`：
+`mcp_server.py` 的 higher-order MCP 工具：
 
 ```python
 @mcp.tool()

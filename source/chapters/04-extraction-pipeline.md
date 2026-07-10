@@ -347,36 +347,49 @@ def _identity_context_for_type(context, entity_type):
 
 ## B-over-C 实体链接调用
 
-抽取管线的实体链接阶段，调用 `_resolve_or_create` 函数实现 B-over-C 三层策略（详见第5章）：
+抽取管线的实体链接阶段实现了 B-over-C 三层策略（详见[第5章](05-entity-linking)）。为了支持灰区 LLM 裁决的并行化，`_resolve_or_create` 已拆分为**查询阶段**和**写入阶段**两个函数：
 
 ```python
 # extraction/pipeline.py
-def _resolve_or_create(conn, scope, name, etype, description, thresholds,
-                       model, context_text="", identity_context=None):
+def _resolve_lookup(conn, scope, name, etype, description, thresholds,
+                    identity_context=None, precomputed_emb=None):
+    """DB 查询阶段(只读):别名精确匹配 + 向量召回 + 阈值分类。
+
+    返回三态之一:
+      ("resolved", entity_id)  — 别名精确命中或高分直接合并,无需 LLM
+      ("grey", candidates)     — 灰区(cos ∈ [new_thr, merge_thr)),需 LLM 判定
+      ("new", None)            — 低分或无候选,直接新建
+    """
     # A层：别名精确命中
     # C层：向量召回 top-5
     # 阈值判断：merge_thr(0.85)直接合并 / new_thr(0.30)灰区LLM / 以下新建
     # 身份敏感匹配：传感器/部件编号必须一致
-    # 灰区走 LLM 判定
+
+def _resolve_write(conn, scope, name, etype, description, emb, identity_context=None):
+    """写入阶段:新建 entity + alias,返回 entity_id。仅在 Phase 3 调用。"""
 ```
+
+`_resolve_or_create` 仍保留，内部调 `_resolve_lookup` + `_resolve_write`，供 triple 直写等**单步路径**复用。`extract_event` 主流程不走它——而是走下面的三阶段并行路径。
 
 ```{mermaid}
 sequenceDiagram
     participant E as Event
     participant LLM as LLM 抽取
-    participant L as 实体链接
-    participant DB as 数据库
-    
+    participant DB as 数据库(会话内)
+    participant PL as parallel_map(会话外)
+
     E->>LLM: 文本内容
     LLM->>LLM: 按 intent 选 prompt
-    LLM->>LLM: 结构化输出 JSON
-    LLM-->>L: entities + facts
-    
-    Note over L: 实体链接 B-over-C<br/>A层别名→C层向量→阈值/LLM
-    
-    L->>DB: 插入 facts
-    L->>DB: 超替闭合
-    L->>DB: Belief 聚合
+    LLM-->>LLM: 结构化输出 JSON
+
+    Note over DB: Phase 1 — lookup(只读短事务)<br/>逐 entity 跑 _resolve_lookup<br/>分类:resolved / grey / new
+    DB->>DB: A层别名 + C层向量召回
+
+    Note over PL: Phase 2 — 灰区 LLM 并行(会话外)<br/>N 个 grey entity 并发调 _llm_entity_link
+    PL->>PL: parallel_map(_decide_grey)
+
+    Note over DB: Phase 3 — write(写入短事务)<br/>_resolve_write + 插入 facts<br/>超替闭合 + Belief 聚合
+    DB->>DB: 落库 entity + facts + beliefs
 ```
 
 ## 主流程：extract_event
@@ -413,7 +426,7 @@ flowchart TD
 # extraction/pipeline.py - 主入口
 def extract_event(event_id: str) -> Dict[str, Any]:
     cfg = load_config()
-    thresholds = (cfg.extraction.link_thresholds.merge, 
+    thresholds = (cfg.extraction.link_thresholds.merge,
                   cfg.extraction.link_thresholds.new)
 
     # Step 1: 加载 event（短事务）
@@ -424,23 +437,30 @@ def extract_event(event_id: str) -> Dict[str, Any]:
         """), {"e": event_id}).fetchone()
         if not ev:
             return {"error": "event not found"}
-        
+
         # triple 直写：不经 LLM
         if ev.content.get("kind") == "triple":
             return _direct_write_triple(conn, ...)
-    
+
     # Step 2: LLM 抽取（无 DB session，防超时断连）
     extraction = _llm_extract(text_body, is_diagnosis=is_diagnosis, intent=intent)
-    
-    # Step 3: 实体链接 + facts + belief（短事务）
+
+    # Step 3a: 谓词校验（短事务）— quarantine 不合格谓词,确定 accepted facts
     with session_scope() as conn:
-        for raw_fact in extraction["facts"]:
-            pred = coerce_value(conn, scope, "predicate", raw_fact["predicate"])
-            if pred is None:
-                _quarantine(conn, event_id, raw_fact["predicate"], ...)
-                continue
-            # 实体链接 + 插入 fact + 超替 + belief 聚合
+        accepted = [f for f in extraction["facts"]
+                    if coerce_value(conn, scope, "predicate", f["predicate"]) is not None]
+
+    # Step 3b: 预计算 entity embedding（session 外,纯 HTTP 批量）
+    # 只为 accepted facts 引用的 entity 算 embedding(quarantined 的不创建)
+    ent_embeddings = services.embed_texts([format_embedding_text(e) for e in ents_to_resolve])
+
+    # Step 3c: 三阶段实体链接 + 建 facts + belief 聚合
+    # Phase 1: lookup(会话内,只读)→ 分类 resolved/grey/new
+    # Phase 2: 灰区 LLM 并发(会话外)→ parallel_map(_decide_grey)
+    # Phase 3: write(会话内,短事务)→ _resolve_write + facts + belief
 ```
+
+Step 3c 的三阶段是并行化的核心——把灰区 LLM 裁决从 session 内串行改为 session 外并行，详见[第5章](05-entity-linking)。
 
 ## 完整抽取流程图
 
@@ -457,8 +477,12 @@ flowchart LR
         E --> F{kind=triple?}
         F -->|是| G[direct_write_triple]
         F -->|否| H[LLM_extract]
-        H --> I[resolve_or_create]
-        I --> J[insert_fact]
+        H --> P1[Phase1: _resolve_lookup<br/>会话内只读分类]
+        P1 --> P2{有 grey entity?}
+        P2 -->|是| P2L[Phase2: parallel_map LLM<br/>会话外并发]
+        P2 -->|否| P3
+        P2L --> P3[Phase3: _resolve_write<br/>+ facts + belief]
+        P3 --> J[insert_fact]
         J --> K[close_superseded]
         K --> L[aggregate_belief]
         G --> M[complete_job]
@@ -497,13 +521,15 @@ if cfg.higher_order.enabled:
 
 | 函数 | 位置 | 职责 |
 |------|------|------|
-| `extract_event` | pipeline.py:354 | 主入口，编排整个抽取流程 |
-| `_llm_extract` | pipeline.py:774 | LLM 调用 + R1 fallback 链 |
-| `_resolve_or_create` | pipeline.py:147 | B-over-C 实体链接 |
-| `_insert_fact` | pipeline.py:312 | 插入事实三元组 |
-| `_close_superseded` | pipeline.py:269 | 单值谓词超替闭合 |
-| `_assertion_semantics` | pipeline.py:80 | 断言语义规则 |
-| `coerce_value` | pipeline.py:131 | 词表约束 |
-| `_aggregate_belief` | pipeline.py:627 | Belief 聚合 |
-| `_direct_write_triple` | pipeline.py:734 | 三元组直写（不经 LLM） |
-| `_quarantine` | pipeline.py:499 | 不合格数据隔离 |
+| `extract_event` | `extraction/pipeline.py` | 主入口，编排整个抽取流程(含三阶段实体链接) |
+| `_llm_extract` | `extraction/pipeline.py` | LLM 调用 + R1 fallback 链 |
+| `_resolve_lookup` | `extraction/pipeline.py` | B-over-C 实体链接·查询阶段(只读,返回三态) |
+| `_resolve_write` | `extraction/pipeline.py` | B-over-C 实体链接·写入阶段(新建 entity+alias) |
+| `_resolve_or_create` | `extraction/pipeline.py` | 单步兼容包装(lookup+write),供 triple 直写路径 |
+| `_insert_fact` | `extraction/pipeline.py` | 插入事实三元组 |
+| `_close_superseded` | `extraction/pipeline.py` | 单值谓词超替闭合 |
+| `_assertion_semantics` | `extraction/pipeline.py` | 断言语义规则 |
+| `coerce_value` | `extraction/pipeline.py` | 词表约束 |
+| `_aggregate_belief` | `extraction/pipeline.py` | Belief 聚合 |
+| `_direct_write_triple` | `extraction/pipeline.py` | 三元组直写（不经 LLM） |
+| `_quarantine` | `extraction/pipeline.py` | 不合格数据隔离 |

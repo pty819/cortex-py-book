@@ -102,23 +102,39 @@ if sim is not None and sim >= threshold:
 
 聚簇完成后,`_load_facts_detail()`(`dreaming.py` 第 201-218 行)加载每条 fact 的详情(predicate、object_text、effective_time、assertion_status、salience、access_count),供后续 LLM 阶段使用。其中 `effective_time` 已在 SQL 里预计算为 `coalesce(valid_from, extracted_at)`,供 Phase C 的 latest-wins 仲裁直接取用。
 
-## Phase B+C: 两阶段 LLM
+## Phase B+C: 两阶段 LLM（跨簇并发）
 
-对每个聚簇,Phase B 与 Phase C 串行执行两次 LLM 调用。这种分离设计的核心收益是**职责单一、约束可校验**:Phase B 只负责分类,输出是受控的 7 选 1 枚举;Phase C 只负责规划,输入是已分类的 issue + 相关 fact,输出是受约束的 5 种动作。两次调用各自可以独立做异常处理与降级。
+Phase B 与 Phase C 各是一次 LLM 调用，簇间互相独立。Phase B 对所有簇**并发**跑关系检测，收集全部 issue 后，Phase C 对所有 (cluster, issue) 对**并发**跑行动规划，最后串行执行写入（事务安全）。这种分离设计的核心收益是**职责单一、约束可校验**:Phase B 只负责分类,输出是受控的 7 选 1 枚举;Phase C 只负责规划,输入是已分类的 issue + 相关 fact,输出是受约束的 5 种动作。两次调用各自可以独立做异常处理与降级。
 
 ```python
-# dreaming.py 第 88-102 行
-for cluster in clusters[:max_clusters]:
-    if len(cluster["facts"]) < min_cluster_size:
-        continue
-    issues = _relation_detect(cluster["facts"])        # Phase B
-    total_issues += len(issues)
-    for issue in issues:
-        actions = _action_plan(cluster["facts"], issue)  # Phase C
-        if not dry_run:
+from cortex.infra.concurrency import parallel_map
+
+valid_clusters = [c for c in clusters[:max_clusters] if len(c["facts"]) >= min_cluster_size]
+
+# Phase B:所有簇的 relation_detect 并发(N 簇 → N 路 LLM 同时跑)
+phase_b_results = parallel_map(
+    lambda c: _relation_detect(c["facts"]), valid_clusters
+)
+# 收集 (cluster, issue) 对,跨簇跨 issue 全部独立
+issue_pairs = []
+for cluster, issues in zip(valid_clusters, phase_b_results):
+    if issues:
+        for issue in issues:
+            issue_pairs.append((cluster, issue))
+
+# Phase C:所有 (cluster, issue) 的 action_plan 并发(M 对 → M 路 LLM 同时跑)
+phase_c_results = parallel_map(
+    lambda pair: _action_plan(pair[0]["facts"], pair[1]), issue_pairs
+) if issue_pairs else []
+
+# 写入串行执行(事务安全 + advisory lock 语义)
+if not dry_run:
+    for (cluster, _issue), actions in zip(issue_pairs, phase_c_results):
+        if actions:
             _execute_actions(scope, actions, cluster["facts"])
-        total_actions += len(actions)
 ```
+
+`parallel_map` 基于 `ThreadPoolExecutor`，GIL 在网络 `recv()` 处释放，N 个簇的 LLM 调用实现真并行。结果保序，单项异常返回 None 不阻断其余。写入（`_execute_actions`）保持串行以保证事务顺序和 advisory lock 语义。这把 N 个簇的串行 LLM 延迟从 O(N) 降到 O(N / max_workers)。
 
 ### Phase B: 关系检测(LLM #1)
 

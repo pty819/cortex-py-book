@@ -206,6 +206,8 @@ HYDE_SYSTEM = """【本次任务：查询 → 假设性文本（用于向量检�
 200-500字。纯文本，不输出 JSON/think。"""
 ```
 
+> **并行化**：HyDE 的 N 次 LLM 调用已由检索 Phase 0 的第一波 `parallel_call` 与 query embed、multihop LLM 同时发起；第二波 `parallel_map` 对生成的 HyDE 文本并行 embed。详见[第14章 检索系统概述](14-retrieval-system)。
+
 ## Multihop 子问题分解
 
 将复杂查询拆解为多个子查询，分别检索后融合结果：
@@ -218,6 +220,8 @@ MULTIHOP_SYSTEM = """【本次任务：查询 → 多个子查询（用于多跳
 工艺参数/级联影响/历史案例/相关性分析/排除项。
 输出 JSON {"queries": ["子查询1", ...]}"""
 ```
+
+> **并行化**：Multihop 的 LLM 调用已并入检索 Phase 0 的第一波 `parallel_call`（与 HyDE 同时发起），不再串行。解析出的子查询在 Phase 1 的 BM25 通道内追加检索。详见[第14章](14-retrieval-system)。
 
 ## scope 过滤视图
 

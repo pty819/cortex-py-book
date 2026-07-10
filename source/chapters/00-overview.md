@@ -157,6 +157,22 @@ flowchart TD
 | **Feedback** | `memory/feedback.py` | 召反馈信号采集（access_count/正负反馈），写入 `feedback_signals` 表 |
 | **Dreaming** | `memory/dreaming.py` | 离线巩固（Dreaming），周期性归纳 `dreaming_runs` |
 | **Higher-Order** | `memory/higher_order.py` | 高阶事实合成，从一阶 facts 产出抽象结论（`is_higher_order=true`） |
+| **Concurrency** | `infra/concurrency.py` | ThreadPoolExecutor 并行 I/O 工具:`parallel_map`(保序、异常→None)、`parallel_call`(异构函数并行)、`get_executor`(惰性单例) |
+
+## 并行 I/O 优化
+
+cortex-py 的 LLM/embed/rerank 调用都是 HTTP I/O。Python 的 GIL 在网络 `recv()` 处释放，因此用 `ThreadPoolExecutor` 能实现真正的并行。`infra/concurrency.py` 提供 `parallel_map`（保序、异常返回 None 不阻断）和 `parallel_call`（异构函数并行）两个工具，已应用于 6 处串行 I/O 等待点：
+
+| 位置 | 并行内容 | 效果 |
+|------|----------|------|
+| 检索 Phase 0 | query embed + N×HyDE LLM + multihop LLM（第一波）；N×HyDE 文本 embed（第二波） | 从串行 `Σ` 降到并行 `max` |
+| 抽取 Step 3c | 灰区 entity link 的 N 路 LLM 裁决 | N 个灰区实体并发判定 |
+| 抽取 Step 3b | entity embedding 批量化 | N 逐条 → 1 batch |
+| Dreaming Phase B/C | 跨 cluster 的 relation_detect + action_plan | N cluster 并发 |
+| Understanding 合成 | 跨 topic 的 synthesis LLM | N topic 并发 |
+| Worker enrich | 缺 embedding 实体的批量补算 | batch embed 会话外 |
+
+所有并行 LLM 调用都在 `session_scope()` 外执行——持着 DB 连接等 HTTP 响应会浪费连接（QueuePool 下可能 pool_timeout）。模式统一为：session 内只做短事务读写，HTTP I/O 在 session 外并行。
 
 ## 记忆自演化（Feedback / Dreaming / Higher-Order）
 
@@ -175,11 +191,12 @@ Cortex-PY 在五层记忆模型之上新增了**自演化能力**，使记忆层
 ```
 src/cortex/
 ├── schema.sql              # 全表 DDL（单一真相源,22 张表）
-├── infra/                  # 基础设施（9 模块）
+├── infra/                  # 基础设施（10 模块）
 │   ├── config.py           # YAML 配置 + 维度强校验
-│   ├── db.py               # engine / session / schema 初始化
-│   ├── core.py             # WAL append(幂等) + 队列 + lifecycle + ?wait=
+│   ├── db.py               # engine / session / schema 初始化（QueuePool 连接池）
+│   ├── core.py             # WAL append(幂等) + 队列 + lifecycle + ?wait=(psycopg3)
 │   ├── services.py         # embedding / rerank / LLM + think 剥离 + 流式
+│   ├── concurrency.py      # parallel_map / parallel_call(ThreadPoolExecutor 并行 I/O)
 │   ├── prompts.py          # 半导体级诊断 prompts（10+ 实体, 40+ 谓词）
 │   ├── ontology.py         # 谓词本体（结构/因果/诊断/状态）
 │   ├── chunking.py         # 长文档分块

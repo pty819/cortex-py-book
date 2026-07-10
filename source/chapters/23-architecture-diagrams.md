@@ -80,14 +80,15 @@ graph TB
 
 ### 23.1.2 各层职责
 
-**infra —— 基础设施(9 模块)**
+**infra —— 基础设施(10 模块)**
 
 | 模块 | 职责 | 核心抽象 |
 |------|------|---------|
 | `config` | YAML 配置 + 维度强校验 | `load_config()` · `llm_configured()` |
-| `db` | engine / session / schema 初始化 | `session_scope()` · `init_schema()` |
-| `core` | WAL(幂等) + 队列 + lifecycle + `?wait=` | `append_event()` · `claim_next_job()` · `wait_for_stage()` |
+| `db` | engine / session / schema 初始化（QueuePool 连接池） | `session_scope()` · `init_schema()` |
+| `core` | WAL(幂等) + 队列 + lifecycle + `?wait=`(psycopg3) | `append_event()` · `claim_next_job()` · `wait_for_stage()` |
 | `services` | embedding / rerank / LLM + think 剥离 + 流式 | `embed_one()` · `llm_chat()` · `llm_chat_stream()` |
+| `concurrency` | ThreadPoolExecutor 并行 I/O 工具 | `parallel_map()` · `parallel_call()` · `get_executor()` |
 | `prompts` | 全部 LLM prompt 常量 | `EXTRACTION_SYSTEM_*` · `ANSWER_SYSTEM` |
 | `ontology` | 谓词本体单一真相源 + 图准入规则 | `CAUSAL_PREDICATES` · `graph_eligible()` |
 | `chunking` | 长文档按标题分块 | `chunk_document()` |
@@ -236,7 +237,7 @@ worker 按 `job_type` 分发(`worker.runner._dispatch`):
 ```{mermaid}
 graph LR
     subgraph src ["src/cortex/"]
-        INFRA["infra/<br/>config·db·core<br/>services·prompts·ontology<br/>chunking·token_budget·think_stream"]
+        INFRA["infra/<br/>config·db·core·concurrency<br/>services·prompts·ontology<br/>chunking·token_budget·think_stream"]
         MEM["memory/<br/>ingest·episodes·erasures<br/>temporal·export_data<br/>maintenance·understanding<br/>feedback·dreaming·higher_order"]
         GRAPH["graph/<br/>extraction/<br/>retrieval/"]
         IF["interfaces/<br/>api/·mcp_server<br/>cli·smoke·worker/"]
@@ -254,8 +255,8 @@ src/cortex/
 ├── __init__.py                 # __version__
 ├── schema.sql                  # 全表 DDL(22 张表,单一真相源)
 │
-├── infra/                      # 基础设施(9 模块)
-│   ├── config.py  db.py  core.py  services.py
+├── infra/                      # 基础设施(10 模块)
+│   ├── config.py  db.py  core.py  services.py  concurrency.py
 │   ├── prompts.py  ontology.py  chunking.py
 │   └── token_budget.py  think_stream.py
 │
@@ -419,10 +420,13 @@ sequenceDiagram
 
     WK->>DB: claim_next_job (SKIP LOCKED)
     WK->>EXT: extract_event
-    EXT->>SVC: llm_chat (抽取三元组)
+    EXT->>SVC: llm_chat (抽取三元组, 会话外)
     SVC-->>EXT: entities + facts
-    EXT->>DB: 实体链接 B over C (向量→阈值→LLM灰区)
-    EXT->>DB: 写 facts + beliefs (双时态)
+    EXT->>SVC: embed_texts (批量 entity embed, 会话外)
+    Note over EXT,DB: 三阶段实体链接
+    EXT->>DB: Phase 1 _resolve_lookup (只读分类: resolved/grey/new)
+    EXT->>SVC: Phase 2 parallel_map 灰区 LLM 并发 (会话外)
+    EXT->>DB: Phase 3 _resolve_write + facts + beliefs (双时态, 短事务)
     EXT->>DB: emit_lifecycle(extracted/indexed)
     DB-->>API: pg_notify (若 ?wait= 在等)
 ```
@@ -443,9 +447,16 @@ sequenceDiagram
 
     A->>API: GET /v1/answer/stream (SSE)
     API->>RET: recall(scope, query)
-    RET->>SVC: embed_one(query)
+    Note over RET,SVC: Phase 0 两波并行(会话外)
     rect rgb(240,248,255)
-        Note over RET,DB: 6 通道检索(顺序执行)
+        Note over RET,SVC: 第一波 parallel_call
+        RET->>SVC: embed_one(query)
+        RET->>SVC: llm_chat HyDE × N
+        RET->>SVC: llm_chat Multihop
+    end
+    RET->>SVC: 第二波 parallel_map (HyDE 文本并行 embed)
+    rect rgb(240,248,255)
+        Note over RET,DB: Phase 1: 6 通道检索(session 内)
         RET->>DB: _chan_vector (pgvector)
         RET->>DB: _chan_bm25 (tsvector)
         RET->>DB: _chan_graph (递归 CTE)
@@ -457,11 +468,12 @@ sequenceDiagram
     Note over RET,DB: 信号总线加权(salience × scores + access_count 加成)
     RET->>DB: 批量查 facts.salience + events.access_count
     RET->>RET: scores[fid] = scores[fid] * sal + w * (ac/10)
-    RET->>SVC: rerank (top-K → top-20)
-    Note over RET,DB: 装配 StratifiedPack
+    RET->>SVC: rerank (top-K → top-20, 会话外)
+    Note over RET,DB: Phase 3: _assemble_pack(独立短事务 ×3 重试)
     RET->>DB: 加载 higher_order 层(is_higher_order=true facts)
+    RET->>SVC: context_block LLM (会话外)
     RET-->>API: StratifiedPack (layers: events/facts/beliefs/higher_order)
-    Note over RET,DB: 隐式反馈环:recall 命中 → access_count += 1(非纯读)
+    Note over RET,DB: 隐式反馈环:recall 命中 → access_count += 1(独立短事务, 非纯读)
 
     API-->>A: SSE event: phase(recall_done, pack_id, time_ms)
     API-->>A: SSE event: phase(llm_start, model)

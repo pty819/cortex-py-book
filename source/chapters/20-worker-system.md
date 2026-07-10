@@ -170,7 +170,7 @@ def worker_loop():
 | `segment` | `segment_event(event_id)` | 对长文本 event 做分段切片 |
 | `methylation` | `methylation_run(scope)` | 软剪枝长期不召回的 events |
 | `consolidate` | `consolidate_scope(scope)` | 同 S/P/O 重复 facts 去重 |
-| `enrich` | `enrich_scope(scope)` | 补充实体/事实的属性与元数据 |
+| `enrich` | 内联三段短事务 | 扫无 embedding 实体 → 会话外批量 `embed_texts` → 写回短事务 |
 | `synthesize` | `synthesize_scope(scope)` | 跨 facts 合成摘要/结论 |
 | `dream` | `dreaming_run(scope)` | 离线巩固：relation_detect + action_plan 两阶段（见下文调度器） |
 | `higher_order` | `higher_order_generate(entity_id, scope)` | 高阶归纳：基于证据摘要生成抽象概念节点 |
@@ -213,24 +213,47 @@ def emit_lifecycle(conn, *, kind, scope, event_id=None, job_id=None, ...):
 
 ### ?wait= 同步等待
 
-API 支持 `?wait=indexed` 参数，阻塞直到该 event 的抽取完成：
+API 支持 `?wait=indexed` 参数，阻塞直到该 event 的抽取完成。`wait_for_stage` 用独立连接 LISTEN/NOTIFY，cortex 已从 psycopg2 迁移到 psycopg3——后者提供原生的 `conn.notifies(timeout=1.0)` 生成器，替代了 psycopg2 时代的手动 `select.select` + `conn.poll()` + `notifies.pop()` 轮询：
 
 ```python
+import psycopg  # psycopg3(不再是 psycopg2)
+
 def wait_for_stage(event_id, target_stage, timeout=30.0):
-    """LISTEN pg_notify + 轮询，等待目标 stage"""
-    conn = psycopg2.connect(cfg.database.url)
-    conn.autocommit = True
-    conn.execute("LISTEN cortex_lc")
-    while time.time() - t0 < timeout:
-        # 查表（通知可能已积压）
-        # 等 notify（最多 1s）
-        select.select([conn], [], [], 1.0)
-        conn.poll()
-        # 检查通知内容
-        if payload matches target_stage:
+    """LISTEN + 轮询,等待目标 stage。用独立连接绕过 SQLAlchemy 池。"""
+    # 先查已有(可能已处理完)
+    with session_scope() as c:
+        done = [r[0] for r in c.execute(text(
+            "SELECT kind FROM lifecycle_events WHERE event_id=CAST(:e AS uuid) ORDER BY ts"),
+            {"e": event_id}).fetchall()]
+        if _stage_reached(done, target_stage):
             return {"reached": True, ...}
-    return {"reached": False, "note": "timeout, downgraded to async"}
+
+    # LISTEN 独立连接(autocommit,绕过 SQLAlchemy 池)
+    # URL 需从 SQLAlchemy 格式(postgresql+psycopg://)剥成裸串(postgresql://),
+    # psycopg3 直连接受裸 libpq 连接串。
+    raw_url = cfg.database.url.replace("+psycopg", "")
+    conn = psycopg.connect(raw_url, autocommit=True)
+    try:
+        conn.execute("LISTEN cortex_lc")
+        remaining = timeout - (time.time() - t0)
+        while remaining > 0:
+            # psycopg3 的 notifies() 是 generator,自带 timeout 参数
+            for notify in conn.notifies(timeout=1.0):
+                if notify.payload and "|" in notify.payload:
+                    kind, eid = notify.payload.split("|", 1)
+                    if eid == event_id and _stage_reached([kind], target_stage):
+                        return {"reached": True, ...}
+                break  # notifies timeout=1.0 到时也会退出 for
+            # 超时后也查一次表(notify 可能丢失或积压)
+            with session_scope() as c:
+                ...
+            remaining = timeout - (time.time() - t0)
+        return {"reached": False, "note": "timeout, downgraded to async"}
+    finally:
+        conn.close()
 ```
+
+psycopg3 的优势：`notifies(timeout=1.0)` 是阻塞式 generator，超时自动返回，不需要手动管理文件描述符的 select/poll。配合 `autocommit=True` 绕过 SQLAlchemy 连接池（LISTEN 需要长持连接，不适合池化复用）。
 
 **stage 顺序**：
 ```
@@ -248,69 +271,74 @@ worker 主循环每轮调用一次，检查每个 scope 上一次完成的 dream
 **去重守卫**：入队前先查 `jobs` 表，确认该 scope 不存在 `status IN ('queued','running')` 的 dream job，避免重复插入。
 
 ```python
-def _maybe_schedule_dreaming(conn):
-    """每个 scope 按 schedule_interval_hours 周期性触发 dream job"""
-    rows = conn.execute(text("""
-        SELECT scope, MAX(completed_at) AS last_done
-        FROM jobs WHERE job_type='dream' AND status='completed'
-        GROUP BY scope
-    """)).fetchall()
+def _maybe_schedule_dreaming(conn, cfg, last_check, now):
+    """每个 scope 按 schedule_interval_hours 周期性触发 dream job。
+    查 dreaming_runs 表(不是 jobs 表)获取上次完成时间——dreaming 有独立运行记录表。"""
+    if not cfg.dreaming.enabled:
+        return last_check
     interval = cfg.dreaming.schedule_interval_hours * 3600
-    for r in rows:
-        last = r.last_done or datetime.min.replace(tzinfo=UTC)
-        if (datetime.now(UTC) - last).total_seconds() < interval:
-            continue
-        # 去重守卫：已有 queued/running 的 dream job 则跳过
-        exists = conn.execute(text("""
-            SELECT 1 FROM jobs
-            WHERE scope=:s AND job_type='dream'
-              AND status IN ('queued','running') LIMIT 1
-        """), {"s": r.scope}).fetchone()
-        if not exists:
-            enqueue_job(conn, job_type="dream", scope=r.scope, payload={})
+    if now - last_check < interval:
+        return last_check
+    scopes = conn.execute(text(
+        "SELECT DISTINCT scope FROM facts WHERE recorded_to IS NULL")).fetchall()
+    for (sc,) in scopes:
+        last = conn.execute(text(
+            "SELECT completed_at FROM dreaming_runs WHERE scope=:s AND status='completed' "
+            "ORDER BY started_at DESC LIMIT 1"), {"s": sc}).fetchone()
+        should_enqueue = (not last or not last[0]) or (now - last[0].timestamp() > interval)
+        if should_enqueue:
+            # 去重守卫:已有 queued/running 的 dream job 则跳过
+            already = conn.execute(text(
+                "SELECT 1 FROM jobs WHERE job_type='dream' AND scope=:s "
+                "AND status IN ('queued','running') LIMIT 1"), {"s": sc}).fetchone()
+            if not already:
+                # 内联 INSERT(此时已在 session 内,enqueue_job 会另开 session)
+                conn.execute(text("""INSERT INTO jobs (job_type, scope, priority, payload)
+                    VALUES ('dream', :s, -1, '{"min_age_hours": 0}'::jsonb)"""), {"s": sc})
+    return now
 ```
+
+> 查 `dreaming_runs` 而非 `jobs`——dreaming 有独立的运行记录表（含 `started_at`/`completed_at`/`status`），比从 `jobs` 表推断更准确。入队用内联 `INSERT INTO jobs` 而非 `enqueue_job()`，因为此处已在 `session_scope` 内，`enqueue_job` 内部会另开 session 导致嵌套。
 
 ### `_DreamHeartbeat`：心跳续约线程
 
 Dream job 执行期间，后台线程每 60 秒刷新该 job 的 `jobs.locked_at = now()`，使 `reap_zombies`（visibility_timeout 300s）不会把正在跑的长任务误判为僵尸而重新入队。
 
-心跳通过 context manager 包装 dream 的 dispatch 调用——进入时起线程，退出时停线程：
+心跳通过 `@contextmanager` 包装 dream 的 dispatch 调用——进入时起线程，退出时停线程：
 
 ```python
-class _DreamHeartbeat:
-    """每 60s 刷新 jobs.locked_at，防止 reaper 抢走长跑 dream job"""
-    def __init__(self, conn_factory, job_id, interval_secs=60):
-        self.conn_factory = conn_factory
-        self.job_id = job_id
-        self.interval = interval_secs
-        self._stop = threading.Event()
-        self._thread = None
+from contextlib import contextmanager
 
-    def __enter__(self):
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-        return self
+@contextmanager
+def _DreamHeartbeat(job_id: str, interval: float = 60.0):
+    """每 interval 秒在独立连接里刷新 jobs.locked_at,防止 reaper 抢走长跑 dream job。
+    心跳内部自行 session_scope(),不需要外部传入 conn_factory。"""
+    stop = threading.Event()
 
-    def __exit__(self, *exc):
-        self._stop.set()
-        if self._thread:
-            self._thread.join(timeout=5)
-
-    def _run(self):
-        while not self._stop.wait(self.interval):
+    def _beat():
+        while not stop.wait(interval):
             try:
-                with self.conn_factory() as c:
+                with session_scope() as c:
                     c.execute(text("""
                         UPDATE jobs SET locked_at=now()
                         WHERE job_id=CAST(:j AS uuid) AND status='running'
-                    """), {"j": self.job_id})
+                    """), {"j": job_id})
             except Exception:
                 pass  # 心跳失败不阻断主任务
 
+    t = threading.Thread(target=_beat, daemon=True)
+    t.start()
+    try:
+        yield
+    finally:
+        stop.set()
+
 # 在 _dispatch 的 dream 分支中：
-with _DreamHeartbeat(session_scope, job["job_id"]):
-    result = dreaming_run(job["scope"])
+with _DreamHeartbeat(job["job_id"]):
+    result = dream_run(job["scope"])
 ```
+
+> `@contextmanager` 比手写 `__enter__`/`__exit__` class 更简洁。心跳内部自行 `session_scope()`，不需要调用方传入 `conn_factory`——这避免了调用方需要知道 session 来源的耦合。
 
 > 设计要点：心跳只续 `locked_at`，不改 status / attempts；任务真正结束仍由 `complete_job` / `fail_job` 处理。心跳线程是 daemon，worker 进程崩溃时不会卡住退出。
 
