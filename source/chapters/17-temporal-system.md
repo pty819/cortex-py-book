@@ -9,7 +9,7 @@ cortex 的时态系统支持自然语言时间短语解析，让检索可以按�
 ```sql
 CREATE TABLE temporal_phrases (
     phrase_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name         TEXT NOT NULL UNIQUE,           -- "recent_week"
+    name         TEXT NOT NULL UNIQUE,           -- "last week"
     anchor       TIMESTAMPTZ NOT NULL DEFAULT now(),
     expression   TEXT NOT NULL,                  -- "-P7D..P0D" (ISO 8601 duration)
     is_default   BOOLEAN NOT NULL DEFAULT false,
@@ -55,7 +55,7 @@ recall 请求支持 `temporal` 参数：
 ```python
 class RecallRequest(BaseModel):
     query: str
-    temporal: Optional[Dict] = None  # {natural: "recent_week", reference_date: "2026-06-01"}
+    temporal: Optional[Dict] = None  # {natural: "last week", reference_date: "2026-06-01"}
 ```
 
 系统将 NL 短语解析为 ISO 时间范围后，应用到所有检索通道的时态过滤中。
