@@ -453,47 +453,47 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant LLM as LLM
 
-    A->>API: GET /v1/answer/stream (SSE)
-    API->>RET: recall(scope, query)
-    Note over RET,SVC: Phase 0 两波并行(会话外)
+    A->>API: GET answer stream SSE
+    API->>RET: recall scope query
+    Note over RET,SVC: Phase 0 两波并行 会话外
     rect rgb(240,248,255)
         Note over RET,SVC: 第一波 parallel_call
-        RET->>SVC: embed_one(query)
-        RET->>SVC: llm_chat HyDE × N
+        RET->>SVC: embed_one query
+        RET->>SVC: llm_chat HyDE 多次
         RET->>SVC: llm_chat Multihop
     end
-    RET->>SVC: 第二波 parallel_map (HyDE 文本并行 embed)
+    RET->>SVC: 第二波 parallel_map HyDE 文本并行 embed
     rect rgb(240,248,255)
-        Note over RET,DB: Phase 1: 6 通道检索(session 内)
-        RET->>DB: _chan_vector (pgvector)
-        RET->>DB: _chan_bm25 (tsvector)
-        RET->>DB: _chan_graph (递归 CTE)
-        RET->>DB: _chan_entity_name (pg_trgm)
-        RET->>DB: _chan_synonym
-        RET->>DB: _chan_temporal_decay
+        Note over RET,DB: Phase 1 六通道检索 session 内
+        RET->>DB: chan_vector pgvector
+        RET->>DB: chan_bm25 tsvector
+        RET->>DB: chan_graph 递归 CTE
+        RET->>DB: chan_entity_name pg_trgm
+        RET->>DB: chan_synonym
+        RET->>DB: chan_temporal_decay
     end
-    Note over RET: 融合(rrf/weighted_rrf/priority)→ 候选集
-    Note over RET,DB: 信号总线加权(四信号独立:salience/usage/usefulness/exploration)
-    RET->>DB: 批量查 facts.salience + retrieval_count + retrieval_usefulness
-    RET->>RET: 四信号加权 scores 重排 + explore/exploit 分配
-    RET->>SVC: rerank (top-K → top-20, 会话外)
-    Note over RET,DB: Phase 3: _assemble_pack(独立短事务 ×3 重试)
-    RET->>DB: 加载 higher_order 层(is_higher_order=true facts)
-    RET->>SVC: context_block LLM (会话外)
-    RET-->>API: StratifiedPack (layers: events/facts/beliefs/higher_order)
-    Note over RET,DB: 隐式反馈环 recall 命中写回 retrieval_count(track_usage=true)
+    Note over RET: 融合 rrf 或 weighted_rrf 或 priority 产候选集
+    Note over RET,DB: 信号总线加权 四信号独立
+    RET->>DB: 批量查 facts 三信号列
+    RET->>RET: 四信号加权 scores 重排 explore exploit 分配
+    RET->>SVC: rerank top-K 到 top-20 会话外
+    Note over RET,DB: Phase 3 assemble_pack 独立短事务 三次重试
+    RET->>DB: 加载 higher_order 层
+    RET->>SVC: context_block LLM 会话外
+    RET-->>API: StratifiedPack events facts beliefs higher_order
+    Note over RET,DB: 隐式反馈环 recall 命中写回 retrieval_count track_usage true
 
-    API-->>A: SSE event: phase(recall_done, pack_id, time_ms)
-    API-->>A: SSE event: phase(llm_start, model)
-    API->>SVC: llm_chat_stream (stream=True)
+    API-->>A: SSE phase recall_done pack_id time_ms
+    API-->>A: SSE phase llm_start model
+    API->>SVC: llm_chat_stream stream True
     loop 逐 chunk
-        LLM-->>SVC: delta (含 think 标签)
+        LLM-->>SVC: delta 含 think 标签
         SVC-->>TS: chunk
-        TS-->>API: (reasoning|answer, text)
-        API-->>A: SSE event: reasoning / answer
+        TS-->>API: reasoning 或 answer text
+        API-->>A: SSE event reasoning 或 answer
     end
-    API-->>A: SSE event: phase(llm_end)
-    API-->>A: SSE event: done (citations + pack_id)
+    API-->>A: SSE phase llm_end
+    API-->>A: SSE done citations pack_id
 ```
 
 **穿越层级**:interfaces → graph → infra。think 标签在后端状态机解析,前端按 event 类型分别渲染推理过程与回答。
