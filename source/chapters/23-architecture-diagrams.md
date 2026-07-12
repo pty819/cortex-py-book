@@ -29,7 +29,7 @@
 ```{mermaid}
 graph TB
     subgraph interfaces ["interfaces · 对外入口"]
-        API["FastAPI 端点(62)"]
+        API["FastAPI 端点(70)"]
         MCP["MCP Server(32 工具)"]
         CLI["CLI"]
         WK["Worker 循环"]
@@ -44,15 +44,18 @@ graph TB
         ERASE["erasures · GDPR 真删"]
         MAINT["maintenance · 演化"]
         UNDER["understanding · 概念合成"]
+        EVD["evidence · 外部证据目录"]
         FB["feedback · 反馈回灌"]
         DREAM["dreaming · 离线巩固"]
         HO["higher_order · 高阶归纳"]
+        EVO["evolution · 人工审批门"]
     end
     subgraph infra ["infra · 基础设施"]
         CFG["config"]
-        DB["db"]
+        DB["db<br/>psycopg3+QueuePool"]
         CORE["core<br/>WAL/队列/lifecycle"]
         SVC["services<br/>LLM/embed/rerank"]
+        CONC["concurrency<br/>并行 I/O 线程池"]
         PROMPT["prompts"]
         ONTO["ontology"]
     end
@@ -84,18 +87,18 @@ graph TB
 
 | 模块 | 职责 | 核心抽象 |
 |------|------|---------|
-| `config` | YAML 配置 + 维度强校验 | `load_config()` · `llm_configured()` |
-| `db` | engine / session / schema 初始化（QueuePool 连接池） | `session_scope()` · `init_schema()` |
-| `core` | WAL(幂等) + 队列 + lifecycle + `?wait=`(psycopg3) | `append_event()` · `claim_next_job()` · `wait_for_stage()` |
+| `config` | YAML 配置 + 维度强校验 + 热更新白名单 | `load_config()` · `llm_configured()` · `apply_config_patch()` |
+| `db` | engine / session / schema 初始化（psycopg3 + QueuePool 连接池） | `session_scope()` · `init_schema()` |
+| `core` | WAL(幂等) + 队列 + lifecycle + `?wait=` | `append_event()` · `claim_next_job()` · `wait_for_stage()` |
 | `services` | embedding / rerank / LLM + think 剥离 + 流式 | `embed_one()` · `llm_chat()` · `llm_chat_stream()` |
-| `concurrency` | ThreadPoolExecutor 并行 I/O 工具 | `parallel_map()` · `parallel_call()` · `get_executor()` |
+| `concurrency` | ThreadPoolExecutor 并行化外部 I/O(LLM/embed/rerank HTTP 调用) | `parallel_map()` · `parallel_call()` · `get_executor()` |
 | `prompts` | 全部 LLM prompt 常量 | `EXTRACTION_SYSTEM_*` · `ANSWER_SYSTEM` |
 | `ontology` | 谓词本体单一真相源 + 图准入规则 | `CAUSAL_PREDICATES` · `graph_eligible()` |
 | `chunking` | 长文档按标题分块 | `chunk_document()` |
 | `token_budget` | token 预算估算 + 裁剪 | `fit_to_budget()` |
 | `think_stream` | think 标签边界状态机(跨 chunk 缓冲) | `split_think_stream()` |
 
-**memory —— 记忆写入与生命周期(10 模块)**
+**memory —— 记忆写入与生命周期(12 模块)**
 
 | 模块 | 职责 |
 |------|------|
@@ -104,8 +107,10 @@ graph TB
 | `erasures` | GDPR 4 阶段引用计数真删(enumerate→refcount→delete→cleanup) |
 | `temporal` | NL 时间短语注册 + 解析(`last_week` → `-P7D..P0D`) |
 | `export_data` | 导出 JSONL(可回灌) |
-| `maintenance` | methylation(软剪枝)+ consolidation(去重) |
+| `maintenance` | methylation(软剪枝)+ consolidation(去重) + `seed_predicate_definitions` |
 | `understanding` | 概念合成(per topic)+ related 图 + coverage |
+| `evidence` | 外部证据目录(URI/source_record_id/hash/query/version/quality),payload 留在权威系统 |
+| `evolution` | Dreaming/Higher-Order 人工审批门(`evolution_candidates` 候选列表 + review) |
 | `feedback` | 反馈回灌(双轨:软降权 `salience` + 硬归档 `recorded_to`),正反馈递增 `access_count` |
 | `dreaming` | 离线巩固(两阶段 LLM:`relation_detect` → `action_plan`),scheduler 定时触发 + heartbeat 续命 |
 | `higher_order` | 高阶归纳(evidence-driven LLM 归纳 `order=2` 谓词),extract 后异步触发 |
@@ -121,7 +126,7 @@ graph TB
 
 | 模块 | 职责 |
 |------|------|
-| `interfaces.api.app` | FastAPI 全端点(62 个) |
+| `interfaces.api.app` | FastAPI 全端点(70 个) |
 | `interfaces.api.schemas` | Pydantic 请求/响应契约 |
 | `interfaces.mcp_server` | MCP server(32 工具,双传输) |
 | `interfaces.cli` | CLI 入口(db/worker/serve/probe-llm/smoke/mcp) |
@@ -237,8 +242,8 @@ worker 按 `job_type` 分发(`worker.runner._dispatch`):
 ```{mermaid}
 graph LR
     subgraph src ["src/cortex/"]
-        INFRA["infra/<br/>config·db·core·concurrency<br/>services·prompts·ontology<br/>chunking·token_budget·think_stream"]
-        MEM["memory/<br/>ingest·episodes·erasures<br/>temporal·export_data<br/>maintenance·understanding<br/>feedback·dreaming·higher_order"]
+        INFRA["infra/<br/>config·db·core<br/>services·concurrency·prompts<br/>ontology·chunking<br/>token_budget·think_stream"]
+        MEM["memory/<br/>ingest·episodes·erasures<br/>temporal·export_data<br/>maintenance·understanding<br/>evidence·evolution<br/>feedback·dreaming·higher_order"]
         GRAPH["graph/<br/>extraction/<br/>retrieval/"]
         IF["interfaces/<br/>api/·mcp_server<br/>cli·smoke·worker/"]
     end
@@ -253,16 +258,19 @@ graph LR
 ```
 src/cortex/
 ├── __init__.py                 # __version__
-├── schema.sql                  # 全表 DDL(22 张表,单一真相源)
+├── schema.sql                  # 全表 DDL(27 张表,单一真相源)
 │
 ├── infra/                      # 基础设施(10 模块)
-│   ├── config.py  db.py  core.py  services.py  concurrency.py
+│   ├── config.py  db.py  core.py  services.py
+│   ├── concurrency.py          # 并行 I/O 线程池(新增)
 │   ├── prompts.py  ontology.py  chunking.py
 │   └── token_budget.py  think_stream.py
 │
-├── memory/                     # 记忆写入与生命周期(10 模块)
+├── memory/                     # 记忆写入与生命周期(12 模块)
 │   ├── ingest.py  episodes.py  erasures.py  temporal.py
 │   ├── export_data.py  maintenance.py  understanding.py
+│   ├── evidence.py             # 外部证据目录(新增)
+│   ├── evolution.py            # 人工审批门(新增)
 │   └── feedback.py  dreaming.py  higher_order.py    # 自演化子系统
 │
 ├── graph/                      # 知识图谱

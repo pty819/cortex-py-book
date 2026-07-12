@@ -190,11 +190,11 @@ Cortex-PY 在五层记忆模型之上新增了**自演化能力**，使记忆层
 
 ```
 src/cortex/
-├── schema.sql              # 全表 DDL（单一真相源,22 张表）
+├── schema.sql              # 全表 DDL（单一真相源,27 张表）
 ├── infra/                  # 基础设施（10 模块）
-│   ├── config.py           # YAML 配置 + 维度强校验
-│   ├── db.py               # engine / session / schema 初始化（QueuePool 连接池）
-│   ├── core.py             # WAL append(幂等) + 队列 + lifecycle + ?wait=(psycopg3)
+│   ├── config.py           # YAML 配置 + 维度强校验 + 热更新白名单
+│   ├── db.py               # engine / session / schema 初始化（psycopg3 + QueuePool 连接池）
+│   ├── core.py             # WAL append(幂等) + 队列 + lifecycle + ?wait=
 │   ├── services.py         # embedding / rerank / LLM + think 剥离 + 流式
 │   ├── concurrency.py      # parallel_map / parallel_call(ThreadPoolExecutor 并行 I/O)
 │   ├── prompts.py          # 半导体级诊断 prompts（10+ 实体, 40+ 谓词）
@@ -202,20 +202,25 @@ src/cortex/
 │   ├── chunking.py         # 长文档分块
 │   ├── token_budget.py     # token 预算估算
 │   └── think_stream.py     # think 标签边界状态机
-├── memory/                 # 记忆写入与生命周期（7 模块）
+├── memory/                 # 记忆写入与生命周期(12 模块)
 │   ├── ingest.py           # 批量 + 5 导入器
 │   ├── episodes.py         # Episodes + 诊断 Case 管理
 │   ├── erasures.py         # GDPR 引用计数真删（4 阶段）
 │   ├── temporal.py         # NL 时间短语解析
 │   ├── export_data.py      # 导出 JSONL
-│   ├── maintenance.py      # methylation / consolidation
-│   └── understanding.py    # 概念合成层
+│   ├── maintenance.py      # methylation / consolidation / seed_predicate_definitions
+│   ├── understanding.py    # 概念合成层
+│   ├── evidence.py         # 外部证据目录(URI/hash/query/version/quality)
+│   ├── evolution.py        # Dreaming/Higher-Order 人工审批门(evolution_candidates)
+│   ├── feedback.py         # Feedback 回灌(双轨软降权+硬归档)
+│   ├── dreaming.py         # Dreaming proposal 生成(不直接改 verified graph)
+│   └── higher_order.py     # Higher-Order candidate 生成
 ├── graph/                  # 知识图谱
-│   ├── extraction/         # 抽取管线 + 实体链接 B over C
+│   ├── extraction/         # 抽取管线 + 实体链接 B over C(三阶段并行)
 │   └── retrieval/          # 6 通道 + RRF + rerank + StratifiedPack
 └── interfaces/             # 对外入口
-    ├── api/                # FastAPI 全端点（62 个）+ Pydantic schemas
-    ├── mcp_server.py       # MCP server（32 工具，双传输）
+    ├── api/                # FastAPI 全端点(70 个)+ Pydantic schemas
+    ├── mcp_server.py       # MCP server(32 工具,双传输)
     ├── cli.py              # CLI 入口
     ├── smoke.py            # 端到端冒烟
     └── worker/             # Postgres-as-queue worker 循环

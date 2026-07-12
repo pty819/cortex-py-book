@@ -14,7 +14,7 @@
 
 ## 完整表清单
 
-cortex schema 共 **22 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分列以 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 增量补加)。下表按逻辑层分组:
+cortex schema 共 **27 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分列以 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 增量补加)。下表按逻辑层分组:
 
 | 表 | 角色 | 核心字段 |
 |----|------|----------|
@@ -25,6 +25,10 @@ cortex schema 共 **22 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分
 | `beliefs` | 概率断言 + supports 链 | about_entity_id, claim, confidence, supports |
 | `episodes` | 有界事件序列 + Case | scope, event_ids, case_id, equipment, root_cause |
 | `concepts` | Understanding 概念 | name, topic, summary, supports, related |
+| `evidence_artifacts` | **外部证据目录**(payload 留权威系统) | evidence_kind, uri/source_record_id, content_hash, source_system, observed_from/to, query_spec, quality |
+| `claim_evidence` | fact ↔ evidence 引用 | fact_id, evidence_id, role(supports/refutes), weight, span |
+| `assertion_case_links` | fact ↔ Case 关联 | fact_id, episode_id, relation(hypothesis/counter/regime) |
+| `episode_evidence` | Case ↔ evidence 关联 | episode_id, evidence_id, role(regression) |
 | `jobs` | Postgres-as-queue | job_type, status, payload |
 | `scopes` | scope 注册表 | scope_path, parent_path, policies |
 | `lifecycle_events` | 生命周期事件 | kind, scope, event_id, payload |
@@ -39,6 +43,7 @@ cortex schema 共 **22 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分
 | `recall_packs` | 检索结果缓存 | pack_id, query_hash, pack_json, expires_at |
 | `feedback_signals` | **反馈信号总线**(反馈回灌) | scope, target_layer, target_id, signal_type, signal_durable, strength, idempotency_key, applied |
 | `dreaming_runs` | **离线巩固运行记录**(Dreaming) | run_id, scope, status, phase0_closed, phase_a_clusters, phase_b_issues, phase_c_actions |
+| `evolution_candidates` | **人工审批门**(Dreaming/Higher-Order 候选) | source_type, proposed_action, subject_id, payload, source_fact_ids, status(pending/approved/rejected), reviewer, reasoning |
 | `predicate_definitions` | **谓词本体表**(从 ontology.py 迁入 DB) | predicate, category, prop_order, cardinality, example |
 
 ## 实体表 (entities)
@@ -408,9 +413,9 @@ CREATE TABLE erasure_jobs (
 );
 ```
 
-## 记忆自演化三表
+## 记忆自演化四表
 
-这三张表支撑 cortex 的"记忆自演化"能力:反馈信号回灌修正召回、离线 Dreaming 巩固去重归纳、谓词本体从硬编码迁入 DB 可配。
+这四张表支撑 cortex 的"记忆自演化"能力:反馈信号回灌修正召回、离线 Dreaming 巩固去重归纳、Dreaming/Higher-Order 候选的人工审批门、谓词本体从硬编码迁入 DB 可配。
 
 ### feedback_signals — 反馈信号总线
 
@@ -470,6 +475,31 @@ CREATE TABLE IF NOT EXISTS cortex.predicate_definitions (
     example         TEXT
 );
 ```
+
+### evolution_candidates — 人工审批门
+
+Dreaming 和 Higher-Order 都**不直接改 verified graph**:它们先在此表落一条 `status=pending` 的候选,等人工(或规则)审批后才执行变更。`source_type` 标记来源,`proposed_action` 是受控动作集,`source_fact_ids` 指向支撑该候选的一阶事实:
+
+```sql
+CREATE TABLE IF NOT EXISTS cortex.evolution_candidates (
+    candidate_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scope              TEXT NOT NULL,
+    source_type        TEXT NOT NULL CHECK (source_type IN ('dreaming','higher_order')),
+    proposed_action    TEXT NOT NULL CHECK (proposed_action IN ('archive','merge','create','update_quality','promote')),
+    subject_id         UUID REFERENCES cortex.entities(entity_id),
+    predicate          TEXT,
+    payload            JSONB NOT NULL DEFAULT '{}',
+    source_fact_ids    UUID[] NOT NULL DEFAULT '{}',
+    status             TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','applied','failed')),
+    proposed_confidence FLOAT CHECK (proposed_confidence IS NULL OR (proposed_confidence >= 0 AND proposed_confidence <= 1)),
+    reasoning          TEXT,
+    reviewer           TEXT,
+    reviewed_at        TIMESTAMPTZ,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+审批走 `POST /v1/admin/evolution-candidates/{id}/review`(`memory.evolution.review_candidate`),`decision=approve` 后才落地为真实图变更,`reject` 则标注 `reviewer`+`reasoning` 留痕。这是自演化子系统"不污染 verified graph"的关键护栏。
 
 ## 实体关系全景图
 

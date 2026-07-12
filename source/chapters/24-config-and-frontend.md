@@ -278,7 +278,104 @@ data: {"model_used":"gpt-4o-mini","pack_id":"pk_abc","citations":[...]}
 
 前端用浏览器收到每个 `phase` 事件时的 `Date.now()` 时间戳,减去请求开始时间,即可算出 recall 与 LLM 两段的墙钟耗时,无需依赖后端时钟。这是分布式可观测性的常见技巧 —— 避免客户端/服务端时钟漂移。
 
-## 6. 前端:SettingsView 配置中心
+## 6. 前端:控制平面架构
+
+````{admonition} 重构背景
+:class: important
+前端曾是扁平的 demo 导航(Ingest/Graph/Ask/Browse/Ops/Settings 六个平级链接),且 API 客户端硬编码 `dev-key` / `user:alice`。随着后端能力扩展到 Cases、诊断召回、证据、演化审批、词表、时间短语、Understanding、导入导出、维护、Higher-Order,扁平导航不再能覆盖。重构(commit `e2645de`,PR #13)把前端升级为**控制平面**:左侧持久化分组导航 + 连接凭据 store + 认证头注入 + 12 个视图。
+````
+
+### 6.1 信息架构:左侧分组导航
+
+`frontend/src/App.vue` 用固定左侧栏(`.control-rail`)把全部能力按职责分四组,上下文标题栏(`.context-bar`)显示当前页标题与健康状态:
+
+| 分组 | 路由 | 视图 |
+|------|------|------|
+| **Observe** | `/overview` `/ops` | Overview(健康/版本/存储/队列/特性概览)、Operations(jobs/worker/Dreaming/Higher-Order) |
+| **Operate** | `/ingest` `/data` `/cases` `/qa` | Ingest、Data operations(文档/批量/导入导出/Evidence)、Cases & Diagnosis、Ask |
+| **Inspect** | `/graph` `/browse` `/understanding` | Knowledge Graph、Memory Browser、Understanding |
+| **Govern** | `/governance` `/api-console` `/settings` | Governance(演化审批/反馈/词表/时间短语/Erasure)、API Console、Settings |
+
+默认落地页从 `/ingest` 改为 `/overview`。移动端(`@media max-width: 980px`)左侧栏折叠为抽屉,由上下文栏的 ☰ 按钮唤出。
+
+### 6.2 连接凭据 store
+
+`frontend/src/stores/connection.ts`(Pinia)把原来硬编码的凭据改成**运行时可配置 + localStorage 持久化**:
+
+```typescript
+const TOKEN_KEY = 'cortex.connection.token'
+const ACTOR_KEY = 'cortex.connection.actor'
+
+export const useConnectionStore = defineStore('connection', () => {
+  const token = ref(stored(TOKEN_KEY, 'dev-key'))   // localStorage 回退到 dev-key
+  const actor  = ref(stored(ACTOR_KEY, 'user:alice'))
+  // …save() 写回 localStorage
+})
+
+export function connectionHeaders(): Record<string, string> {
+  // 任意模块(非 setup 上下文)都能读当前凭据
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(actor ? { 'X-Cortex-Actor': actor } : {}),
+  }
+}
+```
+
+要点:
+
+- **默认值兜底**:`stored()` 在 `localStorage` 无值时回退到 `dev-key` / `user:alice`,与开发态后端 `api.key=""` 一致,首次使用无需配置。
+- **`connectionHeaders()` 是纯函数**而非 store getter —— 这样 axios 拦截器、SSE `fetch` 等非组件上下文也能拿到当前头。
+- **配置入口**:`ConnectionPanel.vue` 模态框,可改 actor / token / admin-key,保存即写 localStorage,立即对所有后续请求生效。
+
+### 6.3 认证头注入:SSE 从 EventSource 改为 fetch
+
+原 SSE 订阅用 `EventSource`,但 `EventSource` **无法附加自定义请求头**,因此流式端点在带鉴权时无法直连。重构把 SSE 改为 `fetch` + `AbortController` + 手写 SSE 帧解析(通用 `subscribeApiStream`),复用同一套 `connectionHeaders()`:
+
+```typescript
+// frontend/src/api/index.ts
+http.interceptors.request.use((request) => {
+  Object.assign(request.headers, connectionHeaders())  // axios 走这里
+  return request
+})
+
+export function subscribeApiStream(path, onFrame, onError): () => void {
+  const controller = new AbortController()
+  // fetch 能带任意头,EventSource 不能
+  fetch(`/v1${path}`, { headers: { ...connectionHeaders(), Accept: 'text/event-stream' },
+                        signal: controller.signal })
+    .then(/* reader.read() 循环 + 按 \n\n 切块 + parseSseBlock */ )
+  return () => controller.abort()   // 返回 unsubscribe
+}
+```
+
+`subscribeLifecycle` 等老封装改为内部调 `subscribeApiStream`,对外 API 不变。返回值仍是"取消订阅"函数,组件 unmount 时调用即可中断流。
+
+### 6.4 全量端点封装
+
+`api/index.ts` 从只覆盖点状需求扩展到**完整后端能力面**,统一走 `requestApi<T>(method, path, {params, data})`:
+
+| 领域 | 函数 |
+|------|------|
+| 健康 | `getHealth` |
+| 文档/批量/导入导出 | `ingestDocument` `bulkExperience` `runImport` `getImportStatus` `exportScope` |
+| 证据 | `registerEvidence` `attachEvidenceClaim` |
+| Cases/诊断 | `listCases` `getCase` `createCase` `updateCase` `addCaseEvent` `getCaseWorkspace` `promoteCaseFacts` `diagnosisRecall` |
+| 演化审批/反馈 | `listEvolutionCandidates` `reviewEvolutionCandidate` `listFeedback` `submitFeedback` |
+| 词表/时间短语 | `listVocabularies` `createVocabulary` `deleteVocabulary` `listTemporalPhrases` `createTemporalPhrase` `deleteTemporalPhrase` |
+| Erasure | `previewErasure` `executeErasure` |
+| Understanding | `listUnderstanding` `understandingCoverage` `synthesizeUnderstanding` `getUnderstanding` |
+| 维护/高阶 | `runMaintenance` `runHigherOrder` `listHigherOrder` |
+
+### 6.5 复用组件
+
+| 组件 | 作用 |
+|------|------|
+| `PageHeader.vue` | 页内标题 + 说明 + 操作槽,统一各视图顶部样式 |
+| `JsonResult.vue` | 深色 `<pre>` 渲染任意 JSON 响应,API Console / 调试视图复用 |
+| `ConnectionPanel.vue` | 连接凭据配置模态(actor/token/admin-key) |
+| `ScopeSelector.vue` | 全局 scope 选择(已存在,接入上下文栏) |
+
+## 7. 前端:SettingsView 配置中心
 
 `frontend/src/views/SettingsView.vue` 是 4 个 Tab 的配置编辑器。核心设计:
 
@@ -287,14 +384,14 @@ data: {"model_used":"gpt-4o-mini","pack_id":"pk_abc","citations":[...]}
 - `buildPatch()` 只发变更字段,最小化补丁体积。
 - 保存调 `patchConfig(patch, persist)`,返回值覆盖 `original`,完成闭环。
 
-### 6.1 Tab 1:功能开关
+### 7.1 Tab 1:功能开关
 
 三个 `NCard`:Feedback / Dreaming / Higher-Order。每张卡片:
 
 - 头部一个 `NSwitch` 绑定 `working.<feat>.enabled`,即时切换状态徽标(已启用/已停用)。
 - 折叠面板内是该功能的数值参数,用 `NSlider`(连续值,如 `positive_weight`、`similarity_threshold`)或 `NInputNumber`(整数,如 `lookback_days`、`min_cluster_size`)。
 
-### 6.2 Tab 2:上游 API
+### 7.2 Tab 2:上游 API
 
 4 张 `NCard`:Extraction / Answer / Synthesis LLM + Rerank。每张:
 
@@ -303,7 +400,7 @@ data: {"model_used":"gpt-4o-mini","pack_id":"pk_abc","citations":[...]}
 - API Key 是 `type="password"` 输入,placeholder 显示 `*** (已配置)` 或 `输入新的 API Key`;输入值进入 `newApiKeys[tier]`,不在 `working` 里。
 - 头部徽标根据 `has_key` 显示绿色「已配置」或红色「未配置」。
 
-### 6.3 Tab 3:检索调参
+### 7.3 Tab 3:检索调参
 
 一个 `NCard` 内的 `NForm`,扁平检索参数与 `advanced` 子对象:
 
@@ -313,13 +410,13 @@ data: {"model_used":"gpt-4o-mini","pack_id":"pk_abc","citations":[...]}
 
 读写通过 `getRetrievalNumber` / `getRetrievalAdvanced` / `setRetrievalField` 等辅助函数,绕过 Vue 对动态键的可选链限制。
 
-### 6.4 Tab 4:系统
+### 7.4 Tab 4:系统
 
 - **版本信息**:Cortex 版本、schema 表数量(由独立的 `getVersion()` 拉取,不随 config 重置)、数据库 schema、数据库 URL(脱敏)。
 - **Worker 配置**:`visibility_timeout_secs` / `reaper_interval_secs` / `max_attempts`。
 - **API 管理**:`admin_key`(密码框)、`cors_origins`(多选 tag 输入)。
 
-### 6.5 顶栏操作
+### 7.5 顶栏操作
 
 ```
 [开关即时生效;API密钥需保存后才持久化]  [☑ 持久化到文件]  [重置]  [保存]
@@ -329,11 +426,11 @@ data: {"model_used":"gpt-4o-mini","pack_id":"pk_abc","citations":[...]}
 - **持久化到文件** 复选框:控制 `persist` 查询参数。
 - **重置**:`working = structuredClone(original)`,清空 `newApiKeys`。
 
-## 7. 前端:OpsView 运维监控
+## 8. 前端:OpsView 运维监控
 
 `frontend/src/views/OpsView.vue` 是实时运维仪表盘,每 5 秒 `refreshAll()` 并发拉 `getMetrics()` 与 `getJobs()`。
 
-### 7.1 统计卡片
+### 8.1 统计卡片
 
 两行 `NStatistic`:
 
@@ -342,7 +439,7 @@ data: {"model_used":"gpt-4o-mini","pack_id":"pk_abc","citations":[...]}
 
 队列计数从 `metrics.jobs_by_status` 读取,存储计数从 `metrics` 顶层字段读取。
 
-### 7.2 活跃 Worker
+### 8.2 活跃 Worker
 
 ```{important}
 活跃 worker 不是独立端点,而是前端从 `jobs` 列表推导:
@@ -352,7 +449,7 @@ data: {"model_used":"gpt-4o-mini","pack_id":"pk_abc","citations":[...]}
 
 每个活跃 worker 渲染为一个 warning 色 `NTag`:`worker_id · job_type (scope)`,带 Tooltip。
 
-### 7.3 任务队列表
+### 8.3 任务队列表
 
 `NDataTable` 列定义(均用 `render` 函数定制):
 
@@ -369,18 +466,18 @@ data: {"model_used":"gpt-4o-mini","pack_id":"pk_abc","citations":[...]}
 
 表头两个 `NSelect` 过滤器(`status` / `job_type`),通过 `filteredJobs` computed 应用。分页 15/30/50。
 
-### 7.4 Dreaming 控制
+### 8.4 Dreaming 控制
 
 - 「立即运行」按钮调 `runDreaming(scope, dryRun, asyncEnqueue=true)`。
 - `dry_run` 开关:预演不落库。
 - 返回 `run_id` 后,每 3 秒轮询 `getDreamingRun(runId)`,直到 `status` 为 `completed`/`failed`。
 - 结果展示 5 个指标:`status` / `phase0_closed` / `phase_a_clusters` / `phase_b_issues` / `phase_c_actions` / `timing_ms`。
 
-## 8. 前端:QaView Ask 诊断面板
+## 9. 前端:QaView Ask 诊断面板
 
 `frontend/src/views/QaView.vue` 在回答区与 Raw pack 之间插入了一个可折叠的诊断面板,含四个维度。数据来自 SSE `phase` 事件与最终 pack 的 `diagnostics` / `provenance` 字段。
 
-### 8.1 监听 phase 事件
+### 9.1 监听 phase 事件
 
 ```typescript
 const phaseEvents = ref<Record<string, number>>({})  // phase → 收到时的 Date.now()
@@ -397,7 +494,7 @@ es.addEventListener('phase', (ev) => {
 })
 ```
 
-### 8.2 阶段耗时瀑布图
+### 9.2 阶段耗时瀑布图
 
 `stageTimings` computed 从 `phaseEvents` 推导三段耗时:
 
@@ -415,7 +512,7 @@ const stageTimings = computed(() => {
 
 渲染为三行横向进度条,宽度按 `ms / stageMax * 100%`。**瓶颈检测**:任一阶段 `> 5000ms` 时进度条加 `is-bottleneck` class,触发脉冲动画,提示用户哪一段拖慢了响应。
 
-### 8.3 6 通道命中数
+### 9.3 6 通道命中数
 
 ```typescript
 const CHANNEL_META = {
@@ -430,7 +527,7 @@ const CHANNEL_META = {
 
 从 `pack.diagnostics.channels` 读取每通道命中候选数,渲染为 6 条彩色条形图。若全为 0,显示警告「所有通道命中均为 0,召回可能未命中任何候选」—— 这是召回调优的关键信号(通常是 embedding 维度不匹配或 scope 写错)。
 
-### 8.4 provenance trail(数据漏斗)
+### 9.4 provenance trail(数据漏斗)
 
 从 `pack.provenance.trail` 读取召回管线每步的 `kept` 计数,渲染为顺序 `NTag` 链:
 
@@ -440,7 +537,7 @@ const CHANNEL_META = {
 
 `trailKeptTotal()` 兼容 `kept` 是数字(fetch 步可能是各通道计数的 dict)的情况,dict 时求和。这条漏斗直观展示了候选从 6 通道抓取 → RRF 融合 → rerank 精排的逐级收敛。
 
-### 8.5 LLM 状态指示器
+### 9.5 LLM 状态指示器
 
 ```typescript
 const llmStatus = computed<LlmStatus>(() => {
@@ -456,23 +553,21 @@ const llmStatus = computed<LlmStatus>(() => {
 
 **卡住检测**:`stuckDetected` computed 在 `llm_start` 已触发但 10 秒内无 reasoning/answer 文本时返回 true(`nowTick` 每秒刷新驱动重算),触发警告「LLM 正在响应但尚无输出,可能模型正在思考或上游 API 超时」。这对推理模型(长 think)尤其有用 —— 区分「正常长思考」与「上游卡死」。
 
-## 9. 导航
+## 10. 新增视图速览
 
-`frontend/src/App.vue` 的 `navItems` 现在是 6 项,覆盖完整工作流:
+控制平面重构新增 6 个视图,覆盖此前缺失的后端能力面:
 
-```typescript
-const navItems = [
-  { to: '/ingest',   label: 'Ingest' },          // 写入事件
-  { to: '/graph',    label: 'Knowledge Graph' }, // 图谱可视化
-  { to: '/qa',       label: 'Ask' },             // 问答 + 诊断面板
-  { to: '/browse',   label: 'Browse' },          // 层直读
-  { to: '/ops',      label: 'Ops' },             // 运维监控(本章)
-  { to: '/settings', label: 'Settings' },        // 配置中心(本章)
-]
-```
+| 视图 | 路由 | 职责 |
+|------|------|------|
+| **OverviewView** | `/overview` | health/version/storage/queue/active features/pending governance 概览 + 快捷动作 |
+| **DataOpsView** | `/data` | 文档 ingest、批量 experience、import/export、Evidence 登记 |
+| **CasesView** | `/cases` | Case CRUD/lifecycle、workspace graph、promotion、diagnosis recall |
+| **UnderstandingView** | `/understanding` | 概念合成、coverage、detail、related concepts |
+| **GovernanceView** | `/governance` | evolution 审批、feedback、vocabularies、temporal phrases、Erasure preview/execute |
+| **ApiConsoleView** | `/api-console` | 全端点目录 + 认证原始调用(回退兜底,任何新端点无需等 UI 适配) |
 
-Ingest / Knowledge Graph / Ask / Browse 是数据面,Ops / Settings 是控制面。两者分离让普通用户只接触数据面,运维才进 Ops/Settings —— 后者受 `admin_auth` 保护。
+**设计意图**:Observe/Operate/Inspect/Govern 四组对应运维生命周期 —— 观察 → 操作 → 审视 → 治理。API Console 作为"原始回退",保证任何后端能力(含尚未建专用 UI 的新端点)都能通过控制平面调用,不再需要 curl。
 
 ```{seealso}
-配置项的语义与默认值见 `src/cortex/infra/config.py` 的 Pydantic 模型定义(`RetrievalCfg` / `DreamingCfg` / `HigherOrderCfg` 等)。API 端点完整列表见第18章。
+配置项的语义与默认值见 `src/cortex/infra/config.py` 的 Pydantic 模型定义(`RetrievalCfg` / `DreamingCfg` / `HigherOrderCfg` 等)。API 端点完整列表见第18章。前端控制平面的完整设计文档见主仓 `DESIGN.md`。
 ```
