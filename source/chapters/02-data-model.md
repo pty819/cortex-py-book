@@ -21,7 +21,7 @@ cortex schema 共 **27 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分
 | `events` | WAL, 唯一真相源 | scope, content, context, idempotency_key, access_count, feedback_processed, last_recalled_at |
 | `entities` | 实体表, B-over-C 载体 | canonical_name, entity_type, embedding, identity_context |
 | `entity_aliases` | 别名表 | entity_id, alias |
-| `facts` | **双时态三元组 + 图边** | subject_id, predicate, object, 双时态4字段, polarity, assertion_status, salience, 正/负反馈计数, is_higher_order, evidence_fact_ids |
+| `facts` | **双时态三元组 + 图边** | subject_id, predicate, object, 双时态4字段, polarity, assertion_status, salience, retrieval_count, retrieval_usefulness, 正/负反馈计数, is_higher_order, evidence_fact_ids |
 | `beliefs` | 概率断言 + supports 链 | about_entity_id, claim, confidence, supports |
 | `episodes` | 有界事件序列 + Case | scope, event_ids, case_id, equipment, root_cause |
 | `concepts` | Understanding 概念 | name, topic, summary, supports, related |
@@ -135,14 +135,19 @@ CREATE TABLE facts (
 
 #### 记忆自演化的增量列(ALTER TABLE 增量补加)
 
-以下 6 列在 `schema.sql` 中以 `ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS ...` 形式追加(位于主 `CREATE TABLE` 之后),用于支持 salience 软降权、反馈计数与高阶归纳:
+以下列在 `schema.sql` 中以 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...` 形式追加(位于主 `CREATE TABLE` 之后),用于支持 salience 软降权、检索信号(retrieval_count/usefulness)、反馈计数与高阶归纳:
 
 ```sql
--- 信号总线:facts 软降权(salience)+ 反馈计数(冗余加速查询)
+-- 信号总线:facts 软降权(salience)+ 检索信号 + 反馈计数
 ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS salience FLOAT NOT NULL DEFAULT 1.0
     CHECK (salience >= 0 AND salience <= 2);
 ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS positive_feedback_count INT NOT NULL DEFAULT 0;
 ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS negative_feedback_count INT NOT NULL DEFAULT 0;
+-- 检索控制面:被动召回次数(Usage 信号)+ 显式反馈累积值(Usefulness 信号)
+ALTER TABLE cortex.events ADD COLUMN IF NOT EXISTS retrieval_count INT NOT NULL DEFAULT 0;
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS retrieval_usefulness FLOAT NOT NULL DEFAULT 0
+    CHECK (retrieval_usefulness >= -1 AND retrieval_usefulness <= 1);
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS retrieval_count BIGINT NOT NULL DEFAULT 0;
 
 -- Higher-Order 高阶归纳:一阶事实 LLM 归纳高阶结论
 ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS is_higher_order BOOLEAN NOT NULL DEFAULT false;
@@ -152,12 +157,16 @@ ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS evidence_fact_ids UUID[] NOT N
 
 | 列 | 类型 | 用途 |
 |----|------|------|
-| `salience` | FLOAT ∈ [0,2],默认 1.0 | 信号总线软降权;负反馈累积会把它拉低,影响召回排序 |
-| `positive_feedback_count` | INT,默认 0 | 正反馈计数(冗余加速查询,避免每次聚合 feedback_signals) |
-| `negative_feedback_count` | INT,默认 0 | 负反馈计数 |
-| `is_higher_order` | BOOLEAN,默认 false | 标记该 fact 是由一阶事实经 LLM 归纳出的高阶结论 |
-| `higher_order_reasoning` | TEXT | 高阶归纳的推理过程(可空) |
-| `evidence_fact_ids` | UUID[],默认 '{}' | 支撑本高阶结论的一阶 fact_id 列表 |
+| `facts.salience` | FLOAT ∈ [0,2],默认 1.0 | 信号总线软降权;负反馈累积会把它拉低,影响召回排序(Salience 信号) |
+| `facts.retrieval_count` | BIGINT,默认 0 | **检索加权直接读**:被动召回次数,recall 每次命中 +1(Usage 信号) |
+| `facts.retrieval_usefulness` | FLOAT ∈ [-1,1],默认 0 | **检索加权直接读**:显式 relevant/irrelevant 反馈累积值(Usefulness 信号) |
+| `facts.positive_feedback_count` | INT,默认 0 | 正反馈计数(冗余加速查询,避免每次聚合 feedback_signals) |
+| `facts.negative_feedback_count` | INT,默认 0 | 负反馈计数 |
+| `events.retrieval_count` | INT,默认 0 | events 级召回计数,与 facts.retrieval_count 同步递增 |
+| `events.access_count` | INT,默认 0 | 旧召回计数(原生列),Higher-Order/Dreaming 门控仍读;检索加权已改读 facts.retrieval_count |
+| `facts.is_higher_order` | BOOLEAN,默认 false | 标记该 fact 是由一阶事实经 LLM 归纳出的高阶结论 |
+| `facts.higher_order_reasoning` | TEXT | 高阶归纳的推理过程(可空) |
+| `facts.evidence_fact_ids` | UUID[],默认 '{}' | 支撑本高阶结论的一阶 fact_id 列表 |
 
 ### Events 表的增量列
 

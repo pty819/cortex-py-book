@@ -192,7 +192,7 @@ CREATE TABLE synonyms (
 
 该通道使用 `events.access_count` 字段统计每个 event 被召回次数。access_count=0 且超过阈值的 events 会被 methylation 标记为 `excluded_from_recall`。
 
-> **信号总线加权补充**：除上述 6 通道融合外,RRF 后还有一步**信号总线加权**(salience + access_count),详见第14章和第10章。temporal-decay 通道的 `access_count` 因子与信号总线的 `access_count` 是**同一字段**——召回频率高的记忆在 temporal-decay 通道得分更高(通道内排序),同时又在信号总线加权阶段叠加 `salience_weight * ac/10.0`(融合后加权),形成**双重加权**效应,使这类记忆在最终排序中更靠前。
+> **信号总线加权补充**：除上述 6 通道融合外,融合后还有一步**四信号加权**(salience / usage / usefulness / exploration),详见第14章和第10章。注意:temporal-decay 通道内排序仍用 `events.access_count`(通道内热度),但融合后的信号总线加权阶段已改读 `facts.retrieval_count`(被动召回次数)——两者由 recall 同步递增,语义一致但物理字段不同。通道内热度让高频记忆在 temporal-decay 通道得分更高(进候选集),信号总线加权再叠加 Usage 饱和加分(融合后),形成**通道内 + 融合后**两层热度影响。
 
 ## HyDE 假设性文档嵌入
 

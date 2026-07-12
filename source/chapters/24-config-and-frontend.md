@@ -373,7 +373,26 @@ export function subscribeApiStream(path, onFrame, onError): () => void {
 | `PageHeader.vue` | 页内标题 + 说明 + 操作槽,统一各视图顶部样式 |
 | `JsonResult.vue` | 深色 `<pre>` 渲染任意 JSON 响应,API Console / 调试视图复用 |
 | `ConnectionPanel.vue` | 连接凭据配置模态(actor/token/admin-key) |
+| `RetrievalControlPanel.vue` | 检索控制面(六通道调音 + 三融合策略 + 四信号开关 + A/B 预览) |
 | `ScopeSelector.vue` | 全局 scope 选择(已存在,接入上下文栏) |
+
+### 6.6 检索控制面(RetrievalControlPanel)
+
+`frontend/src/components/RetrievalControlPanel.vue` 是检索调参的核心 UI,嵌入 SettingsView 的检索 Tab。它把后端 `/v1/admin/retrieval/effective` 返回的**三层视图**(配置值 / 有效值 / 依赖就绪态)分开呈现,让运维清楚区分"我配的"和"实际生效的":
+
+- **六通道独立行**:每通道(vector/bm25/graph/entity_name/synonym/temporal)一行,各带 `enabled` 开关、`weight` 滑块、`top_k` 输入。通道关闭或其依赖(如 vector/graph 依赖 embedding)未就绪时,显示降级徽标而非静默失效。
+- **融合策略选择**:`rrf` / `weighted_rrf` / `priority` 三选一。选 `weighted_rrf` 时各通道 weight 生效;选 `priority` 时 weight 失效(按通道顺序拼接)。
+- **四信号独立开关**:Salience / Usage / Usefulness / Exploration 各自一个 `NSwitch`,配各自的权重/参数输入。开关状态直接映射 `AdvancedRetrievalCfg` 的 `*_enabled` 字段。
+- **Rerank 控制**:`enabled` 开关 + `threshold` / `top_n` / `timeout`。
+- **命名 Profile**:可创建/切换 Profile,每个 Profile 是一份完整 tuning + 专属 rerank 覆盖。`active_profile` 标记当前激活。
+
+#### A/B Preview(无副作用预览)
+
+面板内置 **Active-vs-Draft A/B 预览**:输入一个 query,选择 1–4 个配置变体(不同 profile 或临时 overrides),点"预览"调 `POST /v1/admin/retrieval/preview`。返回每个变体的 fact 排名 + 每通道候选数 + 耗时,并标注与 baseline(第一个变体)的排名差异。
+
+```{important}
+预览请求后端以 `track_usage=False` 执行:**不递增 `retrieval_count`、不写 `recall_packs` 缓存**。这是反复调参的前提——否则每次预览都会污染线上计数与缓存。运维可以放心地反复试不同 weight/通道开关,找到最优配置再保存生效。
+```
 
 ## 7. 前端:SettingsView 配置中心
 

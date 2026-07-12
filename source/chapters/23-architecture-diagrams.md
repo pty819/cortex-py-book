@@ -29,14 +29,14 @@
 ```{mermaid}
 graph TB
     subgraph interfaces ["interfaces · 对外入口"]
-        API["FastAPI 端点(70)"]
+        API["FastAPI 端点(72)"]
         MCP["MCP Server(32 工具)"]
         CLI["CLI"]
         WK["Worker 循环"]
     end
     subgraph graph_ ["graph · 知识图谱"]
         EXT["extraction<br/>LLM 抽取 + 实体链接"]
-        RET["retrieval<br/>6 通道 + RRF + rerank"]
+        RET["retrieval<br/>6 通道 + 三策略融合 + rerank"]
     end
     subgraph memory ["memory · 记忆生命周期"]
         INGEST["ingest · 批量导入"]
@@ -120,13 +120,13 @@ graph TB
 | 模块 | 职责 |
 |------|------|
 | `graph.extraction.pipeline` | LLM 抽取三元组 + 实体链接 B over C + 事实校验 |
-| `graph.retrieval.pipeline` | 6 通道 + RRF(k=60)+ prism rerank + StratifiedPack |
+| `graph.retrieval.pipeline` | 6 通道 + 三策略融合(rrf/weighted_rrf/priority)+ 四信号加权 + prism rerank + StratifiedPack |
 
 **interfaces —— 对外入口(6 模块)**
 
 | 模块 | 职责 |
 |------|------|
-| `interfaces.api.app` | FastAPI 全端点(70 个) |
+| `interfaces.api.app` | FastAPI 全端点(72 个) |
 | `interfaces.api.schemas` | Pydantic 请求/响应契约 |
 | `interfaces.mcp_server` | MCP server(32 工具,双传输) |
 | `interfaces.cli` | CLI 入口(db/worker/serve/probe-llm/smoke/mcp) |
@@ -472,16 +472,16 @@ sequenceDiagram
         RET->>DB: _chan_synonym
         RET->>DB: _chan_temporal_decay
     end
-    Note over RET: RRF 融合 (k=60) → 候选集
-    Note over RET,DB: 信号总线加权(salience × scores + access_count 加成)
-    RET->>DB: 批量查 facts.salience + events.access_count
-    RET->>RET: scores[fid] = scores[fid] * sal + w * (ac/10)
+    Note over RET: 融合(rrf/weighted_rrf/priority)→ 候选集
+    Note over RET,DB: 信号总线加权(四信号独立:salience/usage/usefulness/exploration)
+    RET->>DB: 批量查 facts.salience + retrieval_count + retrieval_usefulness
+    RET->>RET: scores = scores·sal_mult + usage_bonus + usefulness_bonus;explore/exploit 分配
     RET->>SVC: rerank (top-K → top-20, 会话外)
     Note over RET,DB: Phase 3: _assemble_pack(独立短事务 ×3 重试)
     RET->>DB: 加载 higher_order 层(is_higher_order=true facts)
     RET->>SVC: context_block LLM (会话外)
     RET-->>API: StratifiedPack (layers: events/facts/beliefs/higher_order)
-    Note over RET,DB: 隐式反馈环:recall 命中 → access_count += 1(独立短事务, 非纯读)
+    Note over RET,DB: 隐式反馈环:recall 命中 → retrieval_count += 1(track_usage=true 时,独立短事务)
 
     API-->>A: SSE event: phase(recall_done, pack_id, time_ms)
     API-->>A: SSE event: phase(llm_start, model)
@@ -498,7 +498,7 @@ sequenceDiagram
 
 **穿越层级**:interfaces → graph → infra。think 标签在后端状态机解析,前端按 event 类型分别渲染推理过程与回答。
 
-**信号总线接入点**:RRF 融合后、rerank 前,recall 读 `facts.salience`(Feedback 软降权)与 `events.access_count`(隐式正反馈),按 `scores[fid] * sal + salience_weight * (ac / 10.0)` 重排候选。recall 返回时还增量写回 `access_count`(隐式反馈环),使频繁召回的记忆获得排序加成。详见第10章(信号总线)和第14章(检索系统)。
+**信号总线接入点**:融合后、rerank 前,recall 读 `facts` 上的三个信号列 —— `salience`(Feedback 软降权)、`retrieval_count`(被动召回次数)、`retrieval_usefulness`(显式反馈累积)—— 按四信号独立模型重排候选:`scores = scores·salience_multiplier + usage_bonus + usefulness_bonus`,再用 exploration_ratio 拆分 explore/exploit 槽位(详见第14章)。recall 返回时(`track_usage=true`)增量写回 `retrieval_count`(隐式反馈环),使频繁召回的记忆获得有界饱和加成;A/B preview 与 `track_usage=false` 的 recall 不写计数、不污染缓存。检索配置支持命名 Profile + `/v1/admin/retrieval/preview` 无副作用 A/B 预览。详见第10章(信号总线)、第14章(检索系统)和第16章(融合)。
 
 **phase 事件**:answer/stream 在 recall 完成、LLM 调用前后分别发出 `recall_done`/`llm_start`/`llm_end` 三个 phase 事件,前端据此构建阶段耗时瀑布图,直观定位召回慢或 LLM 卡住(详见第24章 前端诊断面板)。
 

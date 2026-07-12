@@ -31,8 +31,8 @@ graph LR
 
 | signal_type    | 极性 | 即时动作                                                       | 用途                                 |
 |----------------|------|----------------------------------------------------------------|--------------------------------------|
-| `relevant`     | 正   | access_count+1, salience+positive_weight, positive_feedback_count+1 | 表扬：这条召回有用，提升下次排序      |
-| `irrelevant`   | 负   | salience−negative_weight, negative_feedback_count+1            | 轻惩：跑题，降权；累积触发 methylation |
+| `relevant`     | 正   | retrieval_usefulness+positive_weight, salience+positive_weight, positive_feedback_count+1 | 表扬：这条召回有用，提升下次排序      |
+| `irrelevant`   | 负   | retrieval_usefulness−negative_weight, salience−negative_weight, negative_feedback_count+1 | 轻惩：跑题，降权；累积触发 methylation |
 | `wrong`        | 强负 | salience−negative_weight, negative_feedback_count+1, assertion_status='ruled_out'（task_temporary 再 recorded_to=now） | 纠错：结论错了，推翻并可能归档       |
 | `partial`      | 中性 | 仅记录                                                         | 不调整，作为 Dreaming/Higher-Order 的离线输入信号 |
 
@@ -48,8 +48,8 @@ graph LR
 
 |                       | `task_temporary`                            | `scenario_specific`                  | `long_term`（默认）                   |
 |-----------------------|---------------------------------------------|--------------------------------------|--------------------------------------|
-| **relevant**          | access_count+1, salience↑                   | access_count+1, salience↑            | access_count+1, salience↑            |
-| **irrelevant**        | salience↓, 累积触发 methylation             | salience↓, 累积触发 methylation      | salience↓, 累积触发 methylation      |
+| **relevant**          | retrieval_usefulness↑, salience↑            | retrieval_usefulness↑, salience↑     | retrieval_usefulness↑, salience↑     |
+| **irrelevant**        | salience↓, retrieval_usefulness↓, 累积触发 methylation | salience↓, retrieval_usefulness↓, 累积触发 methylation | salience↓, retrieval_usefulness↓, 累积触发 methylation |
 | **wrong**             | salience↓, ruled_out, **recorded_to=now()**, methylation 检查 | salience↓, ruled_out, methylation 检查 | salience↓, ruled_out, methylation 检查 |
 | **partial**           | 仅记录                                      | 仅记录                               | 仅记录                               |
 
@@ -96,39 +96,42 @@ WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND recorded_to IS NULL AND valid_to
 
 `_apply_to_fact` 是即时反馈的核心调度器，按 `signal_type` 分四个分支。所有写操作前先做 `SELECT ... FOR UPDATE` 锁住该活跃 fact（见第 6 节），然后进入分支：
 
-### 4.1 relevant 分支（L122-136）
+### 4.1 relevant 分支
 
 ```python
 if signal_type == "relevant":
-    # 正反馈:递增 supports events access_count + salience 上调 + positive_feedback_count
-    conn.execute(text("""
-        UPDATE events SET access_count = access_count + 1
-        WHERE event_id = ANY(SELECT unnest(supports) FROM facts
-                             WHERE fact_id=CAST(:f AS uuid) AND scope=:s
-                               AND recorded_to IS NULL AND valid_to IS NULL)
-    """), {"f": fact_id, "s": scope})
+    # 显式 usefulness 不再写入被动 retrieval/access 计数，避免同一信号双重加权。
     conn.execute(text(f"""
         UPDATE facts SET positive_feedback_count = positive_feedback_count + 1,
-                         salience = least(salience + :w, :ceil)
+                         salience = least(salience + :w, :ceil),
+                         retrieval_usefulness = least(retrieval_usefulness + :uw, 1.0)
         WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND {_LIVE_FACT}
-    """), {"f": fact_id, "s": scope, "w": fb.positive_weight, "ceil": fb.salience_ceiling})
-    actions.append("access_count_incremented")
+    """), {"f": fact_id, "s": scope, "w": fb.positive_weight,
+           "uw": min(fb.positive_weight, 0.25), "ceil": fb.salience_ceiling})
+    actions.append("retrieval_usefulness_boosted")
     actions.append("salience_boosted")
 ```
 
-两条 UPDATE：
-1. 把支撑该事实的所有 `events.access_count` 各 +1（抬高事件热度，延缓其被 Maintenance 甲基化）。
-2. `facts.positive_feedback_count` +1，salience 钳顶上调。
+一条 UPDATE(全在 `facts` 表):
+1. `positive_feedback_count` +1。
+2. `salience` 钳顶上调(`least(..., salience_ceiling)`)。
+3. `retrieval_usefulness` 钳顶上调(`least(..., 1.0)`,每次最多 +`positive_weight` 上限 0.25)。
 
-### 4.2 irrelevant 分支（L138-147）
+```{note}
+关键设计:**正反馈不再递增 `events.access_count`**。旧版把"用户说有用"伪装成"被动召回次数",导致同一信号在 access_count 和 salience 上双重加权。新版把显式反馈值独立写入 `facts.retrieval_usefulness`(检索加权单独读它),与被动召回次数 `retrieval_count` 分轨。被动召回只由 recall 自己递增(见第10章 §3)。
+```
+
+### 4.2 irrelevant 分支
 
 ```python
 elif signal_type == "irrelevant":
     conn.execute(text(f"""
         UPDATE facts SET negative_feedback_count = negative_feedback_count + 1,
-                         salience = greatest(salience - :w, :floor)
+                         salience = greatest(salience - :w, :floor),
+                         retrieval_usefulness = greatest(retrieval_usefulness - :uw, -1.0)
         WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND {_LIVE_FACT}
-    """), {"f": fact_id, "s": scope, "w": fb.negative_weight, "floor": fb.salience_floor})
+    """), {"f": fact_id, "s": scope, "w": fb.negative_weight,
+           "uw": min(fb.negative_weight, 0.25), "floor": fb.salience_floor})
     actions.append("salience_demoted")
     _check_methylation(conn, scope, fact_id, cfg, actions)
 ```

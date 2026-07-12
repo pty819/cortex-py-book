@@ -2,32 +2,70 @@
 
 ## 概述
 
-RRF（Reciprocal Rank Fusion）将多个通道的召回结果合并为一个有序列表。
+融合层(`_fuse`)将 6 个通道的召回结果合并为一个有序列表。cortex-py 支持三种可切换的融合策略,由 `retrieval.fusion_strategy` 控制。
 
-## RRF 公式
-
-```
-RRF score = Σ(1 / (k + rank(d, c)))
-```
-
-其中：
-- `rank(d, c)` = 文档 d 在通道 c 中的排名
-- `k` = 融合常数（默认 60）
-- 所有通道结果等权融合
-
-## 实现
+## 三种融合策略
 
 ```python
-def rrf_merge(channel_results: List[List[str]], k: int = 60) -> List[str]:
-    """RRF 融合多个通道的 fact_id 列表"""
-    scores = {}
-    for fact_ids in channel_results:
-        for rank, fid in enumerate(fact_ids):
-            scores[fid] = scores.get(fid, 0) + 1.0 / (k + rank + 1)
-    
-    # 按 score 降序排列
-    ranked = sorted(scores.items(), key=lambda x: -x[1])
-    return [fid for fid, score in ranked]
+def _fuse(rank_lists: List[List[str]], tuning: RetrievalTuningCfg) -> Dict[str, float]:
+    if tuning.fusion_strategy == "priority":
+        # 按通道优先级(声明顺序)直接拼接,先出现的 fact 排名更高
+        ordered = list(dict.fromkeys(fid for items in rank_lists for fid in items))
+        total = max(len(ordered), 1)
+        return {fid: (total - index) / total for index, fid in enumerate(ordered)}
+    weights = None
+    if tuning.fusion_strategy == "weighted_rrf":
+        # 每通道独立 weight,从 channels.<name>.weight 取
+        weights = [float(getattr(tuning.channels, name).weight) for name in CHANNEL_NAMES]
+    return _rrf(rank_lists, tuning.rrf_k, weights)
+```
+
+| 策略 | 公式 | 适用 |
+|------|------|------|
+| **`rrf`** | `Σ 1/(k+rank)`(等权) | 各通道质量相近,经典稳健 |
+| **`weighted_rrf`**(默认) | `Σ w_c · 1/(k+rank)`,权重来自 `channels.<name>.weight` | 想压低/放大某通道(如 graph 默认 weight=0.20) |
+| **`priority`** | 按通道声明顺序拼接,先出现者优先 | 需要确定性的通道优先级(如 vector 先于 graph) |
+
+### weighted_rrf 的 RRF 基础公式
+
+```
+weighted RRF score(d) = Σ_c  w_c / (k + rank(d, c))
+```
+
+其中:
+- `rank(d, c)` = 文档 d 在通道 c 中的排名
+- `k` = 融合常数(默认 60,`retrieval.rrf_k`)
+- `w_c` = 通道 c 的权重(默认全 1.0,graph 通道默认 0.20)
+
+等权 RRF 是 weighted RRF 在所有 `w_c = 1` 时的特例。
+
+## 每通道独立控制
+
+每个通道(`RetrievalChannelCfg`)有三项独立配置,使六通道成为真正可独立调音的输入:
+
+| 字段 | 默认 | 作用 |
+|------|------|------|
+| `enabled` | `true` | 关闭则该通道完全不参与召回与融合 |
+| `top_k` | `None`(回退全局 `retrieval.top_k`) | 限制该通道返回的候选数上限 |
+| `weight` | `1.0`(graph 通道 `0.20`) | `weighted_rrf` 策略下该通道的融合权重 |
+
+```python
+class RetrievalChannelCfg(BaseModel):
+    enabled: bool = True
+    top_k: Optional[int] = Field(default=None, ge=1, le=1000)
+    weight: float = Field(default=1.0, ge=0.0, le=10.0)
+
+class RetrievalChannelsCfg(BaseModel):
+    vector: RetrievalChannelCfg = Field(default_factory=RetrievalChannelCfg)
+    bm25: RetrievalChannelCfg = Field(default_factory=RetrievalChannelCfg)
+    graph: RetrievalChannelCfg = Field(default_factory=lambda: RetrievalChannelCfg(weight=0.20))
+    entity_name: RetrievalChannelCfg = Field(default_factory=RetrievalChannelCfg)
+    synonym: RetrievalChannelCfg = Field(default_factory=RetrievalChannelCfg)
+    temporal: TemporalChannelCfg = Field(default_factory=TemporalChannelCfg)  # 多 decay_days
+```
+
+```{note}
+`graph_weight`(旧顶层字段)被保留为兼容别名,`model_validator` 会把它同步到 `channels.graph.weight`。两个方向都生效:改 `channels.graph.weight` 会回写 `graph_weight`,反之亦然。新代码应直接用 `channels.graph.weight`。
 ```
 
 ```{mermaid}
@@ -63,11 +101,23 @@ flowchart LR
 
 ## Rerank 后处理
 
-RRF 融合后，top-N（默认 40）走 Prism rerank：
+RRF 融合后,top-N(默认 40)走 Prism rerank。rerank 现在有正式的运行时开关与预算控制(`RerankRuntimeCfg`):
+
+```python
+class RerankRuntimeCfg(BaseModel):
+    enabled: bool = True       # 关闭则跳过 rerank,直接用融合分数
+    threshold: float = 0.1     # 低于此 relevance_score 的候选丢弃
+    top_n: int = 25            # 送入 rerank 的候选池大小
+    timeout: int = 60          # 超时秒数
+```
+
+`rerank.enabled=false` 时 pipeline 直接用融合 + 信号加权后的分数排序,不经 HTTP rerank 调用。这对无 rerank 服务的部署是硬性开关。每个命名 Profile 还可以有自己的 `rerank` 覆盖(见下文)。
+
+rerank 调用本身:
 
 ```python
 def rerank(query, documents):
-    """Prism rerank：语义重排序"""
+    """Prism rerank:语义重排序"""
     cfg = load_config().rerank
     url = cfg.api_base.rstrip("/") + "/rerank"
     with httpx.Client(timeout=cfg.timeout) as cli:
@@ -80,7 +130,7 @@ def rerank(query, documents):
         return r.json()["data"]  # [{index, relevance_score, document}]
 ```
 
-rerank 后按 `relevance_score` 降序排列，取 top_k（默认 20）。
+rerank 后按 `relevance_score` 降序排列,低于 `threshold` 的丢弃,取最终 top_k。
 
 ## StratifiedPack 组装
 
@@ -135,10 +185,10 @@ sequenceDiagram
         R->>DB: _chan_temporal_decay
     end
     
-    Note over R: RRF 融合 (k=60)
+    Note over R: 融合 (rrf/weighted_rrf/priority)
 
-    R->>DB: salience 再加权 (scores * sal + w * ac/10)
-    Note over R: 信号总线加权:见第14章/第10章
+    R->>DB: 信号总线再加权 (4 信号独立)
+    Note over R: salience·usage·usefulness·exploration,见第14章
 
     R->>LLM: Prism rerank (top-40)
     LLM-->>R: reranked top-20
@@ -151,21 +201,35 @@ sequenceDiagram
     R-->>C: StratifiedPack
 ```
 
-## salience 再加权(信号总线)
+## 信号总线再加权(融合后、rerank 前)
 
-上图流程中,RRF 融合与 Prism rerank 之间还有一步**salience 再加权**,因它与 RRF 的衔接关系而放在本章说明。RRF 输出 `scores` 后,pipeline 按下式改写每个候选 fact 的分数:
+上图流程中,融合与 Prism rerank 之间还有一步**信号总线再加权**——把记忆的四个重要性信号叠加到融合分数上。四个信号各自有独立开关,可单独启停:
 
-```
-scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
-```
+| 信号 | 来源 | 加权方式 | 开关(默认) |
+|------|------|----------|------------|
+| **Salience** | `facts.salience`(默认 1.0,Feedback 调整) | 乘数混合:`score · ((1-w) + w·sal)` | `salience_enabled`(默认 **关**) |
+| **Usage** | `facts.retrieval_count`(被动召回次数) | 饱和加法:`usage_weight·(1-e^(-n/saturation))` | `usage_enabled`(默认 **开**) |
+| **Usefulness** | `facts.retrieval_usefulness`(显式反馈累积) | 线性加法:`usefulness_weight·usefulness` | `usefulness_enabled`(默认 **开**) |
+| **Exploration** | `retrieval_count == 0` 的新 fact | 为新 fact 保留候选位(explore/exploit 分配) | `exploration_enabled`(默认 **开**) |
 
-其中 `sal = facts.salience`(默认 1.0,由 Feedback 软降权),`ac = max(events.access_count)`(被召回次数)。效果是:RRF 排名并非最终排名——高 salience / 高 access_count 的 fact 在送入 rerank 之前就被向上抬,低 salience 的 fact 被向下压。完整的加权语义、反馈环与 `access_count` 递增细节见 **第14章「信号总线加权」** 与 **第10章 信号总线**。
+完整加权公式与 explore/exploit 机制见 **第14章「信号总线加权」**。这里只点明:融合分数 `scores[fid]` 并非最终排名——开启的信号会在送入 rerank 前改写它,使"被用得越多越强、被否定得越多越弱、全新的 fact 也有曝光机会"。
+
+## 命名 Profile 与 A/B Preview
+
+检索配置支持**命名 Profile**(`retrieval.profiles`):每个 Profile 是一份完整的 `RetrievalTuningCfg`(可含自己的 `rerank` 覆盖),`active_profile` 指定当前生效的那份。recall 时也可临时指定 `profile` 参数,不切换全局激活态。
+
+`POST /v1/admin/retrieval/preview` 提供**无副作用的 Active-vs-Draft A/B 预览**:对同一 query 跑多个配置变体,比较它们的 fact 排名与每通道候选数/耗时,但 `track_usage=False`(不递增 retrieval_count、不写 recall_packs 缓存)。这让调参可在不影响线上计数与缓存的前提下进行。详见第18章。
 
 ## 关键参数
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
+| `fusion_strategy` | `weighted_rrf` | 融合策略(rrf / weighted_rrf / priority) |
 | `rrf_k` | 60 | RRF 融合常数 |
-| `rerank_top_n` | 40 | 送入 rerank 的文档数 |
-| `top_k` | 20 | 最终返回的文档数 |
+| `channels.<name>.enabled` | `true` | 通道开关 |
+| `channels.<name>.weight` | `1.0`(graph `0.20`) | weighted_rrf 下的通道权重 |
+| `top_k` | 40 | 全局每通道候选上限(通道未设 top_k 时回退) |
+| `rerank.enabled` | `true` | rerank 开关 |
+| `rerank.threshold` / `.top_n` / `.timeout` | `0.1` / `25` / `60` | rerank 阈值/候选池/超时 |
+| `salience_enabled` / `usage_enabled` / `usefulness_enabled` / `exploration_enabled` | 关/开/开/开 | 四信号开关 |
 | `pack_ttl` | 60s | 缓存有效期 |

@@ -130,8 +130,8 @@ flowchart TB
         T[Temporal]
     end
 
-    P1 --> RRF[RRF Fusion 会话内]
-    RRF --> SIG[信号总线加权 会话内]
+    P1 --> FUSE[Fuse 会话内<br/>rrf/weighted_rrf/priority]
+    FUSE --> SIG[信号总线加权 会话内<br/>salience/usage/usefulness/exploration]
     SIG --> P2[Phase 2: Rerank 会话外]
     P2 --> P3[Phase 3: _assemble_pack 独立短事务 x3 重试]
     P3 --> CB[context_block LLM 会话外]
@@ -230,7 +230,7 @@ def recall(*, scope, query=None, view="local", top_k=None, as_of=None, ...):
         c_ent = _chan_entity_name(conn, ...)
         c_syn = _expand_synonyms(conn, ...)
         c_tmp = _chan_temporal_decay(conn, ...)
-        scores = _rrf([...], cfg.retrieval.rrf_k)
+        scores = _fuse([...], tuning)          # 三策略:rrf/weighted_rrf/priority
         # 信号总线加权(见下文专节)
         ranked = sorted(scores, key=lambda fid: scores[fid], reverse=True)[:top_k]
     # ← session 关闭——下面 rerank 不持有 DB 连接
@@ -255,66 +255,132 @@ def recall(*, scope, query=None, view="local", top_k=None, as_of=None, ...):
 
 Rerank 与 Pack 装配均移出主 `session_scope`，避免 LLM/rerank HTTP 调用占用 DB 连接。`_assemble_pack` 在独立短事务里执行，失败重试 3 次；三次全失败则兜底构造最小 pack。
 
-## 信号总线加权 (salience + access_count)
+## 信号总线加权 (四信号独立模型)
 
-RRF 融合产出 `scores` 之后、rerank 之前，pipeline 还插入了一步**信号总线再加权**——把记忆的"重要性信号"叠加到 RRF 分数上。这一步只在 `adv.salience_weight > 0` 时触发：
+融合产出 `scores` 之后、rerank 之前，pipeline 插入一步**信号总线再加权**——把记忆的四个重要性信号叠加到融合分数上。与旧版"单一 salience 公式"不同,这四个信号现在**相互独立、各自有开关**,可单独启停(`AdvancedRetrievalCfg`):
 
 ```python
-# retrieval/pipeline.py — Phase 1 session 内,RRF 之后
-if adv.salience_weight > 0 and scores:
-    # H4:批量查询(单条 SQL 取全部候选的 ac+sal),消除 N+1
+class AdvancedRetrievalCfg(BaseModel):
+    salience_enabled: bool = False      # 乘数混合 salience
+    usage_enabled: bool = True          # 被动召回次数(饱和)
+    usefulness_enabled: bool = True     # 显式反馈累积值
+    exploration_enabled: bool = True    # 为新 fact 保留候选位
+    # 各自的权重 / 参数
+    salience_weight: float = 0.0
+    usage_weight: float = 0.02
+    usage_saturation: float = 5.0
+    usefulness_weight: float = 0.05
+    exploration_ratio: float = 0.10
+```
+
+### 批量取信号(消除 N+1)
+
+```python
+# retrieval/pipeline.py — Phase 1 session 内,融合之后
+if scores:
     all_fids = list(scores.keys())
     sig_rows = conn.execute(text("""
-        SELECT f.fact_id::text, coalesce(max(e.access_count),0) AS ac,
-               coalesce(f.salience,1.0) AS sal
-        FROM facts f LEFT JOIN events e ON e.event_id = ANY(f.supports)
+        SELECT f.fact_id::text, coalesce(f.retrieval_count,0) AS retrievals,
+               coalesce(f.salience,1.0) AS sal,
+               coalesce(f.retrieval_usefulness,0.0) AS usefulness
+        FROM facts f
         WHERE f.fact_id = ANY(CAST(:ids AS uuid[]))
-        GROUP BY f.fact_id
     """), {"ids": "{" + ",".join(all_fids) + "}"}).fetchall()
-    sig = {r[0]: ((r[1] or 0), (r[2] or 1.0)) for r in sig_rows}
-    for fid in all_fids:
-        ac, sal = sig.get(fid, (0, 1.0))
-        scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
+    sig = {r[0]: (int(r[1] or 0), float(r[2] or 1.0), float(r[3] or 0.0))
+           for r in sig_rows}
 ```
 
-加权公式：
+注意信号来源已从 `events.access_count`(需 JOIN events)改为 `facts` 表上的冗余列 `retrieval_count` / `retrieval_usefulness` —— 单表查询,无 JOIN,更快。
 
-```
-scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
-```
-
-两个信号因子：
-
-| 因子 | 来源 | 含义 |
-|------|------|------|
-| `sal` | `facts.salience`（默认 1.0） | Feedback 双向调整：正向反馈提升 salience（`salience += positive_weight`，上限 `salience_ceiling`），负向反馈降低 salience（如降到 0.7）。`sal < 1.0` 时压低分数,`sal > 1.0` 时放大分数 |
-| `ac` | `max(events.access_count)` of supporting events | 隐式正反馈：该 fact 被召回的累计次数。除以 10.0 归一化后,乘以 `salience_weight` 作为加分项 |
-
-**排序效果**：
-
-- **高 salience 的 fact**（被正向反馈强化,或天生重要）——RRF 分数被 `sal` 放大,排名更靠前
-- **低 salience 的 fact**（被负向反馈降权,如错误结论/过时推断）——RRF 分数被 `sal < 1.0` 压缩,排名下沉
-- **频繁被召回的 fact**（高 `access_count`）——额外加 `salience_weight * ac/10` 的分,热门记忆自然浮现
-
-这一步把第10章的"信号总线"(`salience` + `access_count`)与第11章的"反馈循环"(Feedback 改写 salience)接入了检索排序——记忆不再是静态召回,而是"被用得越多越强,被否定得越多越弱"的动态权重。详见 **第10章 信号总线** 和 **第11章 反馈系统**。
-
-### recall → access_count 隐式反馈环
-
-Pack 装配成功后,pipeline 还做了一步**隐式正反馈**——对本次命中的 fact 的 supporting events 批量递增 `access_count`：
+### 四信号加权公式
 
 ```python
-# retrieval/pipeline.py — recall() 返回路径,Pack 装配成功后
-if pack and pack.get("layers", {}).get("facts"):
-    _hit_ids = [f["fact_id"] for f in pack["layers"]["facts"] if f.get("fact_id")]
-    if _hit_ids:
-        with session_scope() as conn:
-            conn.execute(text("""
-                UPDATE events SET access_count = access_count + 1, last_recalled_at = now()
-                WHERE event_id = ANY(SELECT unnest(supports) FROM facts
-                                     WHERE fact_id = ANY(CAST(:ids AS uuid[])))
-            """), {"ids": "{" + ",".join(_hit_ids) + "}"})
+for fid in all_fids:
+    retrievals, sal, usefulness = sig.get(fid, (0, 1.0, 0.0))
+    saturation = max(float(adv.usage_saturation), 0.001)
+    # (1) Usage:饱和加法,防止高频 fact 无限加分
+    usage_bonus = (float(adv.usage_weight) * (1.0 - math.exp(-retrievals / saturation))
+                   if adv.usage_enabled else 0.0)
+    # (2) Usefulness:显式反馈累积,线性加法
+    usefulness_bonus = (float(adv.usefulness_weight) * usefulness
+                         if adv.usefulness_enabled else 0.0)
+    # (3) Salience:乘数混合(默认关),salience_enabled 才生效
+    salience_multiplier = 1.0
+    if adv.salience_enabled:
+        weight = min(max(float(adv.salience_weight), 0.0), 1.0)
+        salience_multiplier = (1.0 - weight) + weight * sal
+    scores[fid] = scores[fid] * salience_multiplier + usage_bonus + usefulness_bonus
 ```
 
-注意这步**写在 `recall()` 的返回路径上**——也就是说 **recall 不再是一个纯读操作**：每次成功召回都会写回 `events.access_count` 和 `events.last_recalled_at`,影响下一次 temporal-decay 通道和信号总线加权的分数。被频繁召回的记忆因此进入"越用越好召回"的正循环;长期未被召回的 event 则由 methylation 机制标记 `excluded_from_recall`(详见第10章)。
+汇总:
 
-异常容错:这步递增用 `try/except` 包裹,**信号采集失败不阻塞召回**——读路径的可靠性优先于反馈环的完整性。
+```
+scores[fid] = scores[fid] * salience_multiplier + usage_bonus + usefulness_bonus
+```
+
+| 信号 | 来源 | 加权方式 | 开关 | 默认权重 |
+|------|------|----------|------|----------|
+| **Salience** | `facts.salience`(默认 1.0,Feedback 调整) | 乘数混合:`(1-w) + w·sal` | `salience_enabled`(**默认关**) | `salience_weight=0.0` |
+| **Usage** | `facts.retrieval_count`(被动召回次数) | 饱和加法:`w·(1-e^(-n/saturation))` | `usage_enabled`(**默认开**) | `usage_weight=0.02`,`saturation=5.0` |
+| **Usefulness** | `facts.retrieval_usefulness`(显式 relevant/irrelevant 反馈累积) | 线性加法:`w·usefulness` | `usefulness_enabled`(**默认开**) | `usefulness_weight=0.05` |
+
+### Usage 的饱和设计
+
+被动召回次数(retrieval_count)若线性加分,高频 fact 会无限累积优势、霸占结果。Usage 信号用**指数饱和**封顶:
+
+```
+usage_bonus = usage_weight · (1 - e^(-retrievals / saturation))
+```
+
+`retrievals → ∞` 时 bonus 趋近 `usage_weight`(默认 0.02)——无论被召回多少次,Usage 最多只能贡献一个有界的固定加分。`saturation`(默认 5.0)控制达到饱和的速度:约被召回 5 次后接近上限。这让"热门"记忆获得适度加成,但不会淹没从未被召回但高度相关的新 fact。
+
+### Salience 乘数混合(默认关)
+
+Salience 信号默认**关闭**(`salience_enabled=false`)。开启后用乘数混合而非直接相乘,避免极端 salience 值主导分数:
+
+```
+salience_multiplier = (1 - weight) + weight · sal
+```
+
+`weight = salience_weight`(裁剪到 [0,1])。`weight=0` 时乘数恒为 1(等于关闭);`weight=1` 时乘数就是 `sal` 本身。这让 salience 的影响是**可控渐变**的,而非全有或全无。
+
+### Exploration 探索槽(exploit/exploit 分配)
+
+第四个信号 `exploration` 不改分数,而是改**最终选哪些 fact**。融合 + 三信号加权排好序后,pipeline 按 `exploration_ratio`(默认 0.10)把 top_k 个名额拆成 exploit/exploit 两段:
+
+```python
+ranked_all = sorted(scores, key=lambda fid: scores[fid], reverse=True)
+explore_slots = (math.ceil(top_k * adv.exploration_ratio)
+                 if adv.exploration_enabled else 0)
+exploit_slots = max(0, top_k - explore_slots)
+exploit = ranked_all[:exploit_slots]                          # 高分热门 fact
+explore_pool = sorted(                                        # 从未被召回(retrieval_count==0)的新 fact
+    (fid for fid in ranked_all if fid not in exploit
+     and sig.get(fid, (0,))[0] == 0),
+    key=lambda fid: base_scores.get(fid, 0.0), reverse=True,
+)
+ranked = exploit + explore_pool[:explore_slots]               # 拼 final top_k
+```
+
+效果:默认 10% 的名额预留给"从未被召回过的新 assertion",保证新鲜记忆有曝光机会,而不是被热门 fact 永远压在下面。`exploration_enabled=false` 时退化为纯 exploit(全按分数排序)。
+
+**排序效果总览**:
+
+- **高 salience 的 fact**(开启时)——分数被乘数放大,排名更靠前
+- **频繁被召回的 fact**(Usage)——获得有界饱和加分(封顶 0.02),适度上浮
+- **获正向反馈的 fact**(Usefulness)——usefulness 累积值线性加分
+- **全新的 fact**(Exploration)——保留 10% 候选位,不被热门压制
+
+这一步把第10章的"信号总线"与第11章的"反馈循环"(Feedback 改写 salience/usefulness)接入了检索排序——记忆不再是静态召回,而是"被用得越多越强、被否定得越多越弱、全新的也有曝光"的动态权重。详见 **第10章 信号总线** 和 **第11章 反馈系统**。
+
+### recall → retrieval_count 隐式反馈环
+
+Pack 装配成功后,pipeline 还做了一步**隐式正反馈**——对本次命中的 fact 批量递增 `retrieval_count`(并刷新 `last_recalled_at`):
+
+注意这步**写在 `recall()` 的返回路径上**——也就是说 **recall 不再是一个纯读操作**(当 `track_usage=True` 时):每次成功召回都会写回 `facts.retrieval_count`,影响下一次 Usage 信号加权的分数。被频繁召回的记忆因此进入"越用越容易召回"的饱和正循环。
+
+```{warning}
+A/B Preview(`POST /v1/admin/retrieval/preview`)和带 `track_usage=False` 的 recall **不递增** retrieval_count、不写 recall_packs 缓存——这是无副作用调参的前提。详见第16章「命名 Profile 与 A/B Preview」与第18章。
+```
+
+异常容错:反馈环写入用 `try/except` 包裹,**信号采集失败不阻塞召回**——读路径的可靠性优先于反馈环的完整性。

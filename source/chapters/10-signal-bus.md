@@ -1,22 +1,27 @@
 # 第10章 信号总线 — 记忆自演化的基础设施
 
+````{admonition} 检索控制面重构后的信号模型变化
+:class: important
+本章描述的是信号总线的**物理字段与跨特性共享协议**,这些设计仍然成立。但检索加权阶段(§4)的信号消费方式已重构:**检索 pipeline 现在读 `facts` 表的 `retrieval_count` / `retrieval_usefulness`(而非旧的 `events.access_count`)**,且拆成四个可独立开关的信号(Salience / Usage / Usefulness / Exploration)。本章 §3/§4 已按新模型更新;四个信号的加权公式与 explore/exploit 机制详见 **第14章「信号总线加权」**。
+````
+
 ## 1. 概述
 
-Feedback(反馈回灌)、Dreaming(离线巩固)、Higher-Order(高阶归纳)这三个自演化特性,表面上各自独立,实际上共享同一套底层数据通路——**信号总线**(signal bus)。它不是一个新的模块或服务,而是 `events` 与 `facts` 两张表上一组被刻意设计出来的共享列:`access_count`、`last_recalled_at`、`salience`、`feedback_processed`,以及 `positive_feedback_count` / `negative_feedback_count` 这两个冗余计数。
+Feedback(反馈回灌)、Dreaming(离线巩固)、Higher-Order(高阶归纳)这三个自演化特性,表面上各自独立,实际上共享同一套底层数据通路——**信号总线**(signal bus)。它不是一个新的模块或服务,而是 `events` 与 `facts` 两张表上一组被刻意设计出来的共享列:`access_count`、`retrieval_count`、`last_recalled_at`、`salience`、`retrieval_usefulness`、`feedback_processed`,以及 `positive_feedback_count` / `negative_feedback_count` 这两个冗余计数。
 
 信号总线的本质是一份**跨特性可读写的运行时状态**:
 
-- **recall** 在每次命中时向 `access_count` 写入隐式正反馈;
-- **Feedback** 读 `access_count`、写 `salience`(软降权)与两个计数列;
+- **recall** 在每次命中时向 `facts.retrieval_count`(+ `events` 冗余计数)写入隐式正反馈;
+- **Feedback** 写 `facts.salience`(软降权)、`facts.retrieval_usefulness`(显式反馈值)与两个计数列;
 - **Dreaming** 读 `access_count` 与 `salience`,决定哪些簇值得巩固、哪些 evidence 已冷;
-- **Higher-Order** 读 `access_count`,只有累计被召回过的事实才会被归纳为高阶结论。
+- **Higher-Order** 读 `events.access_count`,只有累计被召回过的事实才会被归纳为高阶结论。
 
 如果把这组列拆掉,三个特性就会退化为彼此隔离的孤岛——这正是 MindMemOS 原型的设计缺陷:它的反馈通道、巩固通道、归纳通道各自维护私有的热度统计,互相看不见对方的信号,导致"用户反复召回的记忆"和"系统决定巩固的记忆"之间出现系统性偏差。cortex-py 把信号总线下沉到 schema 层,让所有特性读写同一份物理状态,从而把记忆从静态存储变成一个自调整系统。
 
 ```{mermaid}
 graph LR
     R[recall 命中] -->|writes| AC[events.access_count++]
-    AC --> SRW[salience 再加权]
+    AC --> SRW[四信号加权]
     FB[Feedback] -->|reads salience<br/>writes salience| SRW
     SRW -->|re-weighted score| RR[rerank]
     AC --> DR[Dreaming<br/>读 access_count 选簇]
@@ -37,7 +42,8 @@ graph LR
 
 | 列 | 类型 | 默认 | 语义 |
 |---|---|---|---|
-| `access_count` | `INT NOT NULL` | `0` | 隐式正反馈计数,每次被召回 +1 |
+| `access_count` | `INT NOT NULL` | `0` | 召回计数(保留兼容,Higher-Order/Dreaming 仍读它做门控;检索加权已改读 `facts.retrieval_count`) |
+| `retrieval_count` | `INT NOT NULL` | `0` | 新增:events 级召回计数,与 `facts.retrieval_count` 同步递增 |
 | `last_recalled_at` | `TIMESTAMPTZ` | `NULL` | 最近一次被召回的时间戳 |
 | `feedback_processed` | `BOOLEAN NOT NULL` | `false` | 是否已被反馈流水线处理过(幂等标记) |
 
@@ -46,6 +52,8 @@ graph LR
 | 列 | 类型 | 默认 / 约束 | 语义 |
 |---|---|---|---|
 | `salience` | `FLOAT NOT NULL` | `1.0`,`CHECK (0 <= salience <= 2)` | 显式反馈权重,`<1` 被负反馈降权,`>1` 被正反馈加权 |
+| `retrieval_count` | `BIGINT NOT NULL` | `0` | **检索加权直接读**:被动召回次数,recall 每次命中 +1 |
+| `retrieval_usefulness` | `FLOAT NOT NULL` | `0.0`,`CHECK (-1 <= x <= 1)` | **检索加权直接读**:显式 relevant/irrelevant 反馈累积值 |
 | `positive_feedback_count` | `INT NOT NULL` | `0` | 正反馈累计次数(冗余,加速查询) |
 | `negative_feedback_count` | `INT NOT NULL` | `0` | 负反馈累计次数,达阈值触发 methylation |
 
@@ -67,20 +75,26 @@ ALTER TABLE cortex.events ADD COLUMN IF NOT EXISTS last_recalled_at TIMESTAMPTZ;
 
 注意 `IF NOT EXISTS`:这是信号总线能向后兼容的关键。老库迁移时这几条语句幂等执行,不会破坏既有数据。
 
-## 3. 隐式反馈环:recall → access_count
+## 3. 隐式反馈环:recall → retrieval_count
 
-信号总线的写入端不止 Feedback。recall 本身在每次成功返回 pack 后,会对其命中的 fact 所依赖的 events 批量递增 `access_count`。代码在 `src/cortex/graph/retrieval/pipeline.py` 的 `recall()` 返回路径(Pack 装配成功后):
+信号总线的写入端不止 Feedback。recall 本身在每次成功返回 pack 后(`track_usage=True` 时),会对命中的 fact 批量递增 `retrieval_count`。代码在 `src/cortex/graph/retrieval/pipeline.py` 的 `recall()` 返回路径(Pack 装配成功后):
 
 ```python
-# 信号总线:recall 命中递增 access_count(隐式正反馈)
-# --对 pack 内 fact 的 supports events 批量 +1
-if pack and pack.get("layers", {}).get("facts"):
-    _hit_ids = [f["fact_id"] for f in pack["layers"]["facts"] if f.get("fact_id")]
+# 被动召回只更新 retrieval_count;access_count 仅保留为兼容统计,不再参与评分/知识晋升。
+if track_usage and result_pack.get("layers", {}).get("facts"):
+    _hit_ids = [f["fact_id"] for f in result_pack["layers"]["facts"] if f.get("fact_id")]
     if _hit_ids:
         try:
             with session_scope() as conn:
                 conn.execute(text("""
-                    UPDATE events SET access_count = access_count + 1, last_recalled_at = now()
+                    UPDATE facts SET retrieval_count=retrieval_count+1
+                    WHERE fact_id = ANY(CAST(:ids AS uuid[]))
+                """), {"ids": "{" + ",".join(_hit_ids) + "}"})
+                # events 冗余计数(access_count 仍写,供 Higher-Order/Dreaming 门控)
+                conn.execute(text("""
+                    UPDATE events SET retrieval_count = retrieval_count + 1,
+                                      access_count = access_count + 1,
+                                      last_recalled_at = now()
                     WHERE event_id = ANY(SELECT unnest(supports) FROM facts
                                          WHERE fact_id = ANY(CAST(:ids AS uuid[])))
                 """), {"ids": "{" + ",".join(_hit_ids) + "}"})
@@ -88,83 +102,74 @@ if pack and pack.get("layers", {}).get("facts"):
             pass
 ```
 
-对应的 SQL 语义是:
-
-```sql
-UPDATE events SET access_count = access_count + 1, last_recalled_at = now()
-WHERE event_id = ANY(SELECT unnest(supports) FROM facts
-                     WHERE fact_id = ANY(:hit_fact_ids))
-```
-
 这条语句有几个值得注意的设计点:
 
-1. **写的是 events,不是 facts。** `access_count` 挂在 events 上,因为一条 event 可能被多条 fact 引用(`supports` 是数组),递增 event 级计数能让所有共享该 evidence 的 fact 同时受益。
-2. **批量 +1,消除 N+1。** 用 `fact_id = ANY(...)` 一次把 pack 内所有 fact 的 supports events 全部覆盖,单条 SQL 完成。
+1. **主写 `facts.retrieval_count`,events 冗余同步。** 检索加权阶段直接读 `facts` 表(单表查询,无 JOIN),更快;`events` 上的 `access_count`/`retrieval_count` 仍写,供 Higher-Order/Dreaming 的门控沿用。
+2. **`track_usage` 开关。** A/B preview 和显式 `track_usage=False` 的 recall **不写计数**——这是无副作用调参的前提(见第14章、第18章 `/v1/admin/retrieval/preview`)。
 3. **`last_recalled_at = now()` 顺带刷新。** 这个时间戳是 Dreaming 冷热分区的依据之一。
 4. **异常吞掉,不阻塞召回。** 信号采集是 best-effort:写失败不影响用户拿到 pack。这是"读优先于写"的取舍——召回的正确性高于信号的完整性。
 
-**核心权衡:recall 不再是纯读操作。** 传统检索系统里 `query → result` 是无副作用的,但 cortex-py 的 recall 每次都会触发一次 `UPDATE`。这带来两个后果:
+**核心权衡:recall 不再是纯读操作。** 传统检索系统里 `query → result` 是无副作用的,但 cortex-py 的 recall(当 `track_usage=True`)每次都会触发一次 `UPDATE`。这带来隐式信号:无需用户显式点赞/踩,系统就能从"被召回的频率"中推断出记忆的价值。这是 MindMemOS 完全缺失的一环——它只有显式反馈通道,而真实用户极少主动反馈。
 
-- **写放大**:每次召回至少多一次写事务。在高 QPS 场景下,`events` 表的写压力会随召回量线性增长。
-- **隐式信号**:无需用户显式点赞/踩,系统就能从"被召回的频率"中推断出记忆的价值。这是 MindMemOS 完全缺失的一环——它只有显式反馈通道,而真实用户极少主动反馈。
+这个取舍是值得的:隐式信号的数据量比显式反馈大几个数量级,且不受用户惰性影响。Dreaming 和 Higher-Order 的门控阈值(见 §6、第 12 章和第 13 章)都建立在召回计数稳定增长的前提上。
 
-这个取舍是值得的:隐式信号的数据量比显式反馈大几个数量级,且不受用户惰性影响。Dreaming 和 Higher-Order 的门控阈值(见 §6、第 12 章和第 13 章)都建立在 `access_count` 稳定增长的前提上。
+## 4. 信号注入:融合后的四信号加权
 
-## 4. salience 再加权:RRF 后的信号注入
+信号总线的读取端最关键的一环,是检索 pipeline 在融合之后、rerank 之前,把记忆的"重要性信号"注入到候选分数里。检索控制面重构后,这从旧版的"双因子(salience + access_count)"升级为**四个可独立开关的信号**:Salience / Usage / Usefulness / Exploration。
 
-信号总线的读取端最关键的一环,是检索 pipeline 在 RRF 融合之后、rerank 之前,把 `salience` 与 `access_count` 注入到候选分数里。代码在 `src/cortex/graph/retrieval/pipeline.py` 的 Phase 1 session 内(RRF 之后):
+读取的数据源也从"JOIN events 取 access_count"改为**直接读 facts 表的冗余列**(单表查询,无 JOIN):
 
 ```python
-scores = _rrf([c_vec, c_bm25, c_graph, c_ent, c_syn, c_tmp], cfg.retrieval.rrf_k)
-if adv.salience_weight > 0 and scores:
-    # 信号总线:access_count(隐式正反馈)+ salience(Feedback 软降权)双因子加权
-    # H4:批量查询(单条 SQL 取全部候选的 ac+sal),消除 N+1
+scores = _fuse([c_vec, c_bm25, c_graph, c_ent, c_syn, c_tmp], tuning)
+if scores:
+    # 批量取三个信号列(全部在 facts 表,无需 JOIN events)
     all_fids = list(scores.keys())
     sig_rows = conn.execute(text("""
-        SELECT f.fact_id::text, coalesce(max(e.access_count),0) AS ac,
-               coalesce(f.salience,1.0) AS sal
-        FROM facts f LEFT JOIN events e ON e.event_id = ANY(f.supports)
+        SELECT f.fact_id::text, coalesce(f.retrieval_count,0) AS retrievals,
+               coalesce(f.salience,1.0) AS sal,
+               coalesce(f.retrieval_usefulness,0.0) AS usefulness
+        FROM facts f
         WHERE f.fact_id = ANY(CAST(:ids AS uuid[]))
-        GROUP BY f.fact_id
     """), {"ids": "{" + ",".join(all_fids) + "}"}).fetchall()
-    sig = {r[0]: ((r[1] or 0), (r[2] or 1.0)) for r in sig_rows}
+    sig = {r[0]: (int(r[1] or 0), float(r[2] or 1.0), float(r[3] or 0.0))
+           for r in sig_rows}
     for fid in all_fids:
-        ac, sal = sig.get(fid, (0, 1.0))
-        scores[fid] = scores[fid] * sal + adv.salience_weight * (ac / 10.0)
-ranked = sorted(scores, key=lambda fid: scores[fid], reverse=True)[: top_k]
+        retrievals, sal, usefulness = sig.get(fid, (0, 1.0, 0.0))
+        # 四信号各自有开关,详见第14章
+        # usage: 饱和加法(防止高频 fact 无限加分)
+        # usefulness: 显式反馈累积,线性加法
+        # salience: 乘数混合(默认关)
+        # exploration: 改候选选择而非改分数(explore/exploit 分配)
+        ...
 ```
 
-重加权公式是:
+新的加权公式:
 
 ```
-scores[fid] = scores[fid] * sal + salience_weight * (ac / 10.0)
+scores[fid] = scores[fid] * salience_multiplier + usage_bonus + usefulness_bonus
+# (exploration 在此之后改 explore/exploit 名额分配,不改分数)
 ```
 
-其中:
+四个信号的语义、开关、默认权重与公式见 **第14章「信号总线加权」**。这里只点明信号总线在融合后的接入位置与数据源迁移:从 `events.access_count`(需 JOIN)改为 `facts.retrieval_count`/`retrieval_usefulness`(单表),更快且把"被动召回次数"与"显式反馈值"拆成独立信号,避免旧版"正反馈伪装成被动召回"的双重加权问题。
 
-- `sal` = `facts.salience`,默认 `1.0`。负反馈把它压到 `<1`(软降权),正反馈把它抬到 `>1`(软加权)。`1.0` 时该项是无操作乘法。
-- `ac` = 该 fact 所有 supports events 中 `access_count` 的最大值(`max(e.access_count)`)。用 max 而非 sum,避免一条 fact 因为 supports 数组很长而虚高。
-- `salience_weight` = `AdvancedRetrievalCfg.salience_weight`,默认 `0.3`。这是信号总线对最终分数的"音量旋钮":`0` 完全关闭信号注入,退回纯 RRF;`0.3` 是轻量提升高频记忆的默认值。
-- `ac / 10.0` 是归一化:把 access_count 从整数域压到 `0.x` 量级,与 `salience_weight = 0.3` 配合后,单次召回的隐式信号贡献约 `0.03` 分,需要约 10 次召回才能产生 `0.3` 量级的提升——这个斜率设计避免了一次召回就爆分。
-
-`coalesce` 兜底是新 fact / 新 event 的常见情况:`salience` 默认 `1.0`、`access_count` 默认 `0`,LEFT JOIN 可能产生 NULL,`coalesce` 保证不会因为缺信号而把分数算成 NULL。
+`coalesce` 兜底是新 fact 的常见情况:`salience` 默认 `1.0`、`retrieval_count` 默认 `0`、`retrieval_usefulness` 默认 `0.0`,可能产生 NULL,`coalesce` 保证不会因为缺信号而把分数算成 NULL。
 
 ```{mermaid}
 sequenceDiagram
     participant Q as 查询
     participant CH as 6 通道
     participant RRF as RRF 融合
-    participant SRW as salience 再加权
+    participant SRW as 信号总线加权(4 信号)
     participant RR as rerank
     participant SP as StratifiedPack
     Q->>CH: embed + 检索
     CH->>RRF: 候选 fact_ids
     RRF->>SRW: scores[fid]
-    SRW->>SRW: SELECT ac, sal FROM facts/events
-    SRW->>SRW: scores = scores*sal + 0.3*(ac/10)
+    SRW->>SRW: SELECT retrieval_count, salience, retrieval_usefulness FROM facts
+    SRW->>SRW: scores = scores·sal_mult + usage_bonus + usefulness_bonus
     SRW->>RR: re-weighted scores
     RR->>SP: keep_idx
-    SP->>SP: 写 access_count++ (隐式反馈)
+    SP->>SP: 写 retrieval_count++ (隐式反馈, track_usage=true 时)
 ```
 
 注意时序:salience 重加权发生在 RRF **之后**、rerank **之前**。这是因为 RRF 的输入是各通道的 rank,与分数绝对值无关,不能掺入信号;而 rerank 是基于文本相关性的 LLM/模型打分,信号注入必须在它之前完成,否则 rerank 的语义判断会被信号噪声污染。重加权只调整候选池的排序和截断(`top_k`),不改变 rerank 阶段的输入文档内容。
@@ -214,7 +219,7 @@ CREATE INDEX IF NOT EXISTS idx_events_methylation
 
 ## 7. 配置
 
-信号总线的总开关是 `AdvancedRetrievalCfg.salience_weight`(`src/cortex/infra/config.py` 的 `AdvancedRetrievalCfg`):
+信号总线的开关现在拆成四个独立字段(`AdvancedRetrievalCfg`,`src/cortex/infra/config.py`):
 
 ```python
 class AdvancedRetrievalCfg(BaseModel):
@@ -222,26 +227,36 @@ class AdvancedRetrievalCfg(BaseModel):
     hyde_passages: int = 1
     multihop_enabled: bool = False
     multihop_count: int = 4
-    salience_weight: float = 0.3  # 信号总线:access_count 加权(0=关,0.3=默认轻量提升高频记忆)
+    # 四信号(各自独立开关 + 权重)
+    salience_enabled: bool = False      # 乘数混合 salience(默认关)
+    salience_weight: float = 0.0
+    usage_enabled: bool = True          # 被动召回次数(饱和,默认开)
+    usage_weight: float = 0.02
+    usage_saturation: float = 5.0
+    usefulness_enabled: bool = True     # 显式反馈累积(默认开)
+    usefulness_weight: float = 0.05
+    exploration_enabled: bool = True    # 新 fact 候选位(默认开)
+    exploration_ratio: float = 0.10
     entity_vector_seed: bool = False
-    question_routing: bool = False   # 规则版 single/multi → top_k 40/160
+    question_routing: bool = False
 ```
 
-取值语义:
+四信号的取值语义:
 
-| 值 | 行为 |
-|---|---|
-| `0.0` | 完全关闭信号注入,RRF 分数原样进入 rerank。`access_count` 仍会被 recall 递增、Feedback 仍会写 `salience`,但二者不影响排序——总线"断路"。 |
-| `0.3`(默认) | 轻量提升高频记忆。单次召回贡献约 `0.03` 分,10 次召回才抵得上一个 `salience_weight` 量级。 |
-| `>0.3` | 放大信号影响。需谨慎:过大会让 `access_count` 高的老记忆压制新但相关的记忆,产生"富者愈富"的马太效应。 |
+| 信号 | 默认 | 关闭后行为 |
+|---|---|---|
+| **Salience** | 关(`weight=0.0`) | 不做乘数混合,salience 只供 Feedback/Dreaming 读,不进排序 |
+| **Usage** | 开(`weight=0.02`,`saturation=5.0`) | 被动召回次数不影响分数(但仍被 recall 递增) |
+| **Usefulness** | 开(`weight=0.05`) | 显式反馈累积值不影响分数(但 Feedback 仍写它) |
+| **Exploration** | 开(`ratio=0.10`) | 不为新 fact 保留候选位,纯按分数排序(exploit-only) |
 
-`salience_weight` 与 Feedback 的 `positive_weight` / `negative_weight` / `salience_floor` / `salience_ceiling`(见 `FeedbackCfg`)是配套的:前者控制信号对排序的影响强度,后者控制信号本身的产生速率与边界。两者共同决定了总线的"增益曲线"。完整的运行配置(含环境变量覆盖、热更新白名单)见{doc}`24-config-and-frontend`。
+各信号权重与 Feedback 的 `positive_weight` / `negative_weight`(见 `FeedbackCfg`)是配套的:前者控制信号对排序的影响强度,后者控制信号本身的产生速率与边界。完整的运行配置(含环境变量覆盖、热更新白名单)见{doc}`24-config-and-frontend`,四信号加权公式与 explore/exploit 机制见{doc}`14-retrieval-system`。
 
-值得注意:`salience_weight` 在运行时配置热更新的白名单内(`_CONFIG_PATCH_WHITELIST` 含 `retrieval`),因此可以在不重启服务的前提下动态调整信号总线增益——例如在反馈洪峰期临时调高 `salience_weight` 加速信号生效,或在冷启动期置 0 避免少量早期反馈过度影响排序。
+值得注意:整个 `retrieval` 子树在运行时配置热更新的白名单内(`_CONFIG_PATCH_WHITELIST` 含 `retrieval`),因此可以在不重启服务的前提下动态调整四信号增益——配合 `/v1/admin/retrieval/preview` 的无副作用 A/B 预览(第18章),可以反复试不同开关组合找到最优配置再保存生效。
 
 ## 8. 小结
 
-信号总线不是一个新的特性,而是 Feedback、Dreaming、Higher-Order 三个特性得以协同的**底层协议**。它的物理形态是 `events` 与 `facts` 上的一组共享列(`access_count`、`last_recalled_at`、`salience`、`feedback_processed`、两个 `_count`),逻辑形态是 recall → salience 再加权 → Feedback/Dreaming/Higher-Order 的双向数据流。
+信号总线不是一个新的特性,而是 Feedback、Dreaming、Higher-Order 三个特性得以协同的**底层协议**。它的物理形态是 `events` 与 `facts` 上的一组共享列(`access_count`、`retrieval_count`、`last_recalled_at`、`salience`、`retrieval_usefulness`、`feedback_processed`、两个 `_count`),逻辑形态是 recall → 四信号加权 → Feedback/Dreaming/Higher-Order 的双向数据流。
 
 关键设计决策回顾:
 

@@ -211,8 +211,72 @@
 | `/v1/admin/metrics` | GET | auth | 存储指标(各表行数 + jobs 按 status 计数) | `scope` |
 | `/v1/admin/version` | GET | auth | cortex 版本 + schema 表数 | — |
 | `/v1/admin/maintenance` | POST | auth | 维护操作(取代旧 `maintenance/*` 三端点) | `action=methylation|consolidation`, `scope`, `older_than_days=30` |
+| `/v1/admin/retrieval/effective` | GET | admin | 配置值 + 依赖就绪状态 + 预测生效态(每通道 configured/effective enabled、weight、top_k) | `profile` |
+| `/v1/admin/retrieval/preview` | POST | auth | 无副作用 Active-vs-Draft A/B 预览(不递增 retrieval_count、不写缓存) | body:`scope`/`query`/`variants[]` |
 
 > `POST /v1/admin/dreaming` 与 `POST /v1/admin/higher-order` 见第6节(记忆自演化)。
+
+### 12.1 `/v1/admin/retrieval/effective` — GET
+
+返回当前(或指定 Profile)检索配置的**三层视图**:configured(配置值)、dependencies(依赖就绪态)、effective(预测生效态)。这是前端检索控制面板展示"配置值 vs 有效值 vs 依赖就绪"的依据。
+
+```python
+@app.get("/v1/admin/retrieval/effective")
+def admin_retrieval_effective(profile: Optional[str] = Query(None),
+                              actor: str = Depends(admin_auth)):
+    tuning = resolve_retrieval_config(load_config().retrieval, profile=profile)
+    rerank_cfg = resolve_rerank_config(load_config(), profile=profile)
+    return {"profile": profile or load_config().retrieval.active_profile,
+            **describe_retrieval_runtime(tuning, rerank_cfg)}
+```
+
+`describe_retrieval_runtime` 对每个通道算出 `configured_enabled`(配置里写的)与 `effective_enabled`(配置开关 AND 依赖就绪,如 vector/graph 依赖 embedding 服务)。这让 UI 能区分"我关了它"和"依赖没就绪所以它没生效":
+
+```json
+{
+  "configured": { "channels": { "vector": {"enabled": true, "weight": 1.0} } },
+  "dependencies": {
+    "embedding":        {"ready": true,  "kind": "configured"},
+    "synthesis_llm":    {"ready": true,  "kind": "configured"},
+    "rerank_service":   {"ready": false, "kind": "configured"}
+  },
+  "effective": {
+    "channels": {
+      "vector": {"configured_enabled": true, "effective_enabled": true,
+                 "dependency": "embedding", "dependency_ready": true, "weight": 1.0, "top_k": 40},
+      "graph":  {"configured_enabled": true, "effective_enabled": true, "weight": 0.20, "top_k": 40}
+    },
+    "fusion_strategy": "weighted_rrf",
+    "hyde":   {"configured_enabled": false, "effective_enabled": false},
+    "rerank": {"configured_enabled": true,  "effective_enabled": false}
+  }
+}
+```
+
+### 12.2 `/v1/admin/retrieval/preview` — POST
+
+无副作用的检索变体预览:对同一 `{scope, query}` 跑 1–4 个配置变体,比较它们的 fact 排名、每通道候选数、耗时。**关键:`track_usage=False`,不递增 `retrieval_count`、不写 `recall_packs` 缓存** —— 这是调参可反复执行的前提。
+
+```python
+class RetrievalPreviewVariant(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    profile: Optional[str] = None          # 用哪个命名 Profile
+    overrides: Optional[Dict[str, Any]] = None    # 临时覆盖检索 tuning 字段
+    rerank_overrides: Optional[Dict[str, Any]] = None  # 临时覆盖 rerank 字段
+
+class RetrievalPreviewRequest(BaseModel):
+    scope: str
+    query: str = Field(min_length=1)
+    view: Literal["local", "holistic", "descend"] = "local"
+    top_k: int = Field(default=20, ge=1, le=200)
+    variants: List[RetrievalPreviewVariant] = Field(min_length=1, max_length=4)
+```
+
+每个 variant 跑一次 `recall(...)`,返回 `fact_ids` + `diagnostics`(含每通道候选数 `channels` 与耗时 `channel_time_ms`)。第一个 variant 视为 baseline,后续变体与之对比排名差异。
+
+```{note}
+`overrides` 只接受 `RetrievalTuningCfg` 字段(不能改 `profiles`/`active_profile`),`rerank_overrides` 只接受 `RerankRuntimeCfg` 字段。未知字段返回 422。Profile 的 `rerank` 覆盖(若有)先生效,`rerank_overrides` 再叠加。
+```
 
 ---
 
@@ -288,4 +352,6 @@
 
 删除的失效端点:`GET /v1/context`、`GET /v1/timeline`(改为 `/v1/facts/timeline`)、所有 `/v1/layers/*` 路由、`/v1/erasures/execute`+`/v1/erasures/status`(改为 `/v1/erasures`+`/v1/erasures/{id}`)、`/v1/vocab`(改为 `/v1/vocabularies`)、`/v1/temporal`(改为 `/v1/temporal/phrases`)、`/v1/maintenance/*` 三端点(合并为 `POST /v1/admin/maintenance`)、`/v1/lifecycle`(改为 `/v1/lifecycle/stream`)、`GET /v1/experience/{id}`。
 
-新增端点:`POST/GET /v1/feedback`、`POST /v1/admin/dreaming`+`GET /v1/admin/dreaming/{run_id}`、`POST /v1/admin/higher-order`+`GET /v1/higher-order`、`GET/POST /v1/admin/config`、`GET /v1/admin/jobs`、`GET /v1/admin/version`、`POST /v1/recall/stream`、`GET /v1/answer/stream`、`GET /v1/beliefs/why`+`POST /v1/beliefs/build`、`POST /v1/cases/{episode_id}/events`、`GET /v1/import/{import_id}`、`GET /v1/health`(无鉴权)。
+新增端点:`POST/GET /v1/feedback`、`POST /v1/admin/dreaming`+`GET /v1/admin/dreaming/{run_id}`、`POST /v1/admin/higher-order`+`GET /v1/higher-order`、`GET/POST /v1/admin/config`、`GET /v1/admin/jobs`、`GET /v1/admin/version`、`POST /v1/recall/stream`、`GET /v1/answer/stream`、`GET /v1/beliefs/why`+`POST /v1/beliefs/build`、`POST /v1/cases/{episode_id}/events`、`GET /v1/import/{import_id}`、`GET /v1/health`(无鉴权)、`GET /v1/admin/retrieval/effective`+`POST /v1/admin/retrieval/preview`(检索控制面:有效态预览 + 无副作用 A/B)。
+
+> 端点总数:69 个非流式端点 + 3 个专用流式端点(`/v1/lifecycle/stream`、`/v1/recall/stream`、`/v1/answer/stream`),共 72 个。
