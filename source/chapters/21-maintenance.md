@@ -34,11 +34,8 @@ def methylation_run(scope, older_than_days=30):
               AND observed_at < now() - make_interval(secs => :secs)
         """), {"s": scope, "secs": float(older_than_days * 86400)})
         n = r.rowcount or 0
-    
-    with session_scope() as conn:
-        emit_lifecycle(conn, kind="methylated", scope=scope,
-                       payload={"methylated": n})
-    return {"methylated": n, "older_than_days": older_than_days}
+    return {"action": "methylation", "scope": scope,
+            "methylated": n, "older_than_days": older_than_days}
 ```
 
 **触发条件**：
@@ -62,38 +59,58 @@ flowchart LR
 
 ## Consolidation（去重）
 
-**目的**：同 (subject, predicate, object) 的重复 live facts → 保留最新版本，旧版本 closed。
+**目的**：合并**完整语义身份**相同的 legacy duplicates——不同工况/Case/状态/层级永不折叠。
+
+**分组维度**（~16 列完整语义身份）：`subject_id, predicate, object_type, object_entity_id/object_value, polarity, assertion_status, knowledge_tier, operating_regime, case_id, valid_from, valid_to, confidence, salience, positive_feedback_count, negative_feedback_count, retrieval_usefulness, evidence_quality, diagnostic_correctness, population_prevalence, retrieval_count`。任一列不同即视为不同 fact，不合并。这与早期"同 S/P/O 三列去重"的简化描述完全不同——三列分组会把不同工况/状态的正负反馈混成一组，破坏双时态语义。
 
 ```python
-def consolidation_run(scope):
-    """同 subject/predicate/object 的重复 live facts → 保留最新"""
+def consolidation_run(scope, min_age_hours=24):
+    """合并完整语义身份相同的 legacy duplicates；不同工况/Case/状态/层级永不折叠。"""
     with session_scope() as conn:
-        # 找到需要合并的重复组
-        r = conn.execute(text("""
-            UPDATE facts f SET recorded_to = now()
-            WHERE recorded_to IS NULL AND valid_to IS NULL
-              AND f.fact_id NOT IN (
-                SELECT fact_id FROM (
-                  SELECT fact_id, ROW_NUMBER() OVER (
-                    PARTITION BY scope, subject_id, predicate, 
-                                 COALESCE(object_entity_id::text, object_value->>'value')
-                    ORDER BY confidence DESC, extracted_at DESC
-                  ) AS rn FROM facts
-                  WHERE recorded_to IS NULL AND valid_to IS NULL
-                    AND scope=:s
-                ) sub WHERE rn = 1
-              )
-        """), {"s": scope})
-        n = r.rowcount or 0
-    
-    return {"consolidated": n, "scope": scope}
+        # 1. 找重复组(>1 条 live fact 同完整语义身份)
+        # min_age_hours 守卫:extracted_at < now() - interval(默认24h),避免合并刚抽取的
+        dups = conn.execute(text("""
+            SELECT subject_id, predicate, object_type,
+                   coalesce(object_entity_id,''), coalesce(object_value->>'value',''),
+                   polarity, assertion_status, knowledge_tier, operating_regime, case_id,
+                   valid_from, valid_to, confidence, salience, positive_feedback_count,
+                   negative_feedback_count, retrieval_usefulness, evidence_quality,
+                   diagnostic_correctness, population_prevalence, retrieval_count
+            FROM facts
+            WHERE scope=:s AND recorded_to IS NULL
+              AND extracted_at < now() - make_interval(secs => :secs)
+            GROUP BY <完整语义身份 16 列>
+            HAVING count(*) > 1
+        """), {"s": scope, "secs": float(min_age_hours * 3600)}).fetchall()
+        closed = 0
+        for d in dups:
+            # 2. survivor 选择:ORDER BY recorded_from DESC, fact_id(非 confidence DESC)
+            fact_ids = [...ORDER BY recorded_from DESC, fact_id]
+            survivor, redundant = fact_ids[0], fact_ids[1:]
+            # 3. 合并三类引用到 survivor:
+            #    - facts.supports(聚合并去重 event_id)
+            #    - claim_evidence(ON CONFLICT DO NOTHING)
+            #    - assertion_case_links(ON CONFLICT DO NOTHING)
+            ...
+            # 4. 软关 redundant facts
+            closed += conn.execute(text(
+                "UPDATE facts SET recorded_to=now() WHERE fact_id=ANY(:ids)"
+            ), ...).rowcount or 0
+    return {"action": "consolidation", "scope": scope,
+            "facts_closed": closed, "groups": len(dups)}
 ```
 
-**选择规则**：每个重复组保留 `confidence DESC, extracted_at DESC` 第一条。
+**选择规则**：survivor = `ORDER BY recorded_from DESC, fact_id` 第一条（最早入库的优先保留，不是 confidence 最高的）。
 
-**超替语义**：旧 fact 的 `recorded_to = now()`（认知上已过时），`valid_to` 保持不变（保留历史上为真的时间窗口）。
+**引用合并**：把 redundant facts 的三类引用迁到 survivor——`facts.supports`（聚合并去重 `event_id`）、`claim_evidence`、`assertion_case_links`，用 `ON CONFLICT DO NOTHING` 防重复。
 
-**与 Dreaming 的关系**：Dreaming 流程的 Phase 0 直接复用 `consolidation_run` 作为前置去重——先跑一遍 consolidation 把同 S/P/O 的重复 live facts 收敛到最新版本，Phase 1/2 才在干净的图上做 relation_detect + action_plan。详见第 12 章。
+**`min_age_hours` 守卫**：`extracted_at < now() - interval`（默认 24h），不合并刚抽取的 fact——给抽取管线时间稳定。
+
+**返回键**：`action="consolidation"`, `scope`, `facts_closed`(软关条数), `groups`(重复组数)。注意是 `facts_closed`/`groups`，不是 `consolidated`。
+
+**超替语义**：redundant fact 的 `recorded_to = now()`（认知上已过时），`valid_to` 保持不变（保留历史上为真的时间窗口）。
+
+**与 Dreaming 的关系**：Dreaming 流程的 Phase 0 直接复用 `consolidation_run(scope, min_age_hours=0)` 作为前置去重——先跑一遍 consolidation 把完整语义身份重复的 live facts 收敛，Phase 1/2 才在干净的图上做 relation_detect + action_plan。详见第 12 章。
 
 ## 诊断谓词词表预置
 
@@ -126,19 +143,23 @@ def seed_diagnosis_vocab(scope):
 第 4 个 maintenance 动作：把 `ontology.py` 中定义的谓词 upsert 到 `predicate_definitions` 表，`prop_order=1`，使本体从纯代码常量升级为 DB 支撑的元数据表（带 category / order 字段），支持运行时查询与约束校验。
 
 ```python
-def seed_predicate_definitions(scope=None):
-    """upsert ontology.py 谓词到 predicate_definitions 表（prop_order=1）"""
+def seed_predicate_definitions() -> int:
+    """把 ontology.py 的硬编码谓词预置到 predicate_definitions 表(一阶,order=1)。幂等。"""
+    # 从 STRUCTURAL/CAUSAL/DIAGNOSTIC/STATE 四集合构建 cat_map
+    cat_map = {}
+    for p in STRUCTURAL_PREDICATES:  cat_map[p] = "structural"
+    for p in CAUSAL_PREDICATES:      cat_map[p] = "causal"
+    for p in DIAGNOSTIC_PREDICATES:  cat_map[p] = "diagnostic"
+    for p in STATE_PREDICATES:       cat_map[p] = "state"
     n = 0
     with session_scope() as conn:
-        for pred in ONTOLOGY_PREDICATES:  # 来自 ontology.py
+        for pred, cat in cat_map.items():
+            card = PREDICATE_CARDINALITY.get(pred, "multi")
             r = conn.execute(text("""
-                INSERT INTO predicate_definitions
-                    (predicate, category, prop_order, description)
-                VALUES (:p, :cat, 1, :d)
-                ON CONFLICT (predicate) DO UPDATE
-                SET category=:cat, prop_order=1, description=:d
-            """), {"p": pred.name, "cat": pred.category,
-                   "d": pred.description})
+                INSERT INTO predicate_definitions (predicate, category, prop_order, cardinality)
+                VALUES (:p, :c, 1, :card)
+                ON CONFLICT (predicate) DO UPDATE SET category=:c, cardinality=:card
+            """), {"p": pred, "c": cat, "card": card})
             n += r.rowcount or 0
     return n
 ```
@@ -168,13 +189,7 @@ POST /v1/admin/maintenance
   body.scope  → 目标 scope
 ```
 
-词表预置走专用端点：
-
-```
-POST /v1/admin/maintenance/vocab/seed   → 预置词表（scope）
-```
-
-> 注意：不存在 `/v1/maintenance/methylation`、`/v1/maintenance/consolidation` 这类按动作拆分的路径——旧文档中的写法已废弃，实际实现是单端点 + action 字段。
+> 注意：不存在 `/v1/maintenance/methylation`、`/v1/maintenance/consolidation` 这类按动作拆分的路径，也不存在 `POST /v1/admin/maintenance/vocab/seed` 端点。`seed_diagnosis_vocab` 是内部函数（由 CLI / 测试调用），不暴露为 HTTP 端点；consolidation 端点本身也不支持 vocab seed，seed_predicates 走的是 `/v1/admin/higher-order?seed_predicates=true`。旧文档中的写法已废弃，实际实现是单端点 + action 字段。
 
 ## 最佳实践
 

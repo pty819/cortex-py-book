@@ -24,13 +24,15 @@ CREATE TABLE temporal_phrases (
 
 ## 预置短语
 
+`temporal.py:18-24` 的 `_DEFAULTS` 在 `seed_defaults()` 时写入（`is_default=true`）。注意短语名是**自然语言带空格**（不是 `recent_week` 这种标识符风格），注册和查询都按小写匹配（`register_phrase` / `delete_phrase` / `parse_temporal` 均对 name 做 `.lower()`）：
+
 | 名称 | 表达式 | 含义 |
 |------|--------|------|
-| `recent_day` | `-P1D..P0D` | 最近 1 天 |
-| `recent_week` | `-P7D..P0D` | 最近 7 天 |
-| `recent_month` | `-P30D..P0D` | 最近 30 天 |
-| `recent_quarter` | `-P90D..P0D` | 最近 90 天 |
-| `recent_year` | `-P365D..P0D` | 最近 1 年 |
+| `last week` | `-P7D..P0D` | 最近 7 天 |
+| `last month` | `-P30D..P0D` | 最近 30 天 |
+| `yesterday` | `-P1D..P0D` | 昨天 |
+| `last quarter` | `-P90D..P0D` | 最近 90 天 |
+| `last year` | `-P365D..P0D` | 最近 365 天 |
 
 ## 注册自定义短语
 
@@ -60,7 +62,7 @@ class RecallRequest(BaseModel):
 
 ## REST API
 
-除 MCP 工具外，时态短语也通过 REST 端点管理（端点均会先调用 `temporal.seed_defaults()` 确保预置短语就位）：
+除 MCP 工具外，时态短语也通过 REST 端点管理（**只有 `POST /v1/temporal/phrases` 会先调用 `temporal.seed_defaults()` 确保预置短语就位；`GET` / `DELETE` 不调，因此首次对空库 `GET` 可能返回空列表，直到有人先 POST 一条或显式调用 MCP `temporal_register`/`seed_defaults`**）：
 
 | 端点 | 说明 |
 |------|------|

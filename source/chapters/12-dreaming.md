@@ -80,16 +80,16 @@ LIMIT :max                 -- max_scopes_per_run
 
 ### 可选的 pg_trgm 预筛
 
-当操作员显式把 `similarity_threshold` 设为 `>= 1.0` 时,Phase A 会额外调用 `_similarity_prefilter()`(`dreaming.py` 第 172-198 行),用 PostgreSQL 的 `pg_trgm` 扩展做三元组相似度预筛:
+当 `similarity_threshold` 落在 `(0, 1]` 区间时(默认 0.85 即满足),Phase A 会额外调用 `_similarity_prefilter()`(`dreaming.py`),用 PostgreSQL 的 `pg_trgm` 扩展做三元组相似度预筛:
 
 ```python
-# dreaming.py 第 165-168 行
-if similarity_threshold and similarity_threshold >= 1.0:
+# 0 表示显式关闭;正常的 (0,1] 阈值必须实际参与候选发现。
+# complementary 的广域分析应使用较低阈值或 0,同时仍受单簇硬上限保护。
+if 0.0 < similarity_threshold <= 1.0:
     facts = _similarity_prefilter(conn, scope, facts, similarity_threshold)
 ```
 
 ```python
-# dreaming.py 第 190-195 行
 sim = conn.execute(text("SELECT similarity(:a, :b)"),
                    {"a": ta, "b": tb}).scalar()
 if sim is not None and sim >= threshold:
@@ -98,9 +98,17 @@ if sim is not None and sim >= threshold:
     break
 ```
 
-注意默认配置 `similarity_threshold=0.85` **不会**触发预筛——阈值 `>= 1.0` 才启用。这是一个有意为之的保守默认:簇内可能包含互补但文本相似度较低的 fact(如"温度过高"与"散热风扇停转"),LLM 需要看到全貌才能判定 `complementary`。若默认开启预筛,这类互补对会被提前剔除,损害巩固效果。预筛仅供操作员在 token 成本敏感、且能接受丢失部分互补对时显式开启。
+阈值语义:
 
-聚簇完成后,`_load_facts_detail()`(`dreaming.py` 第 201-218 行)加载每条 fact 的详情(predicate、object_text、effective_time、assertion_status、salience、access_count),供后续 LLM 阶段使用。其中 `effective_time` 已在 SQL 里预计算为 `coalesce(valid_from, extracted_at)`,供 Phase C 的 latest-wins 仲裁直接取用。
+| `similarity_threshold` | 行为 |
+|---|---|
+| `0.0` | **显式关闭**预筛(广域 complementary 分析用,簇可能很大,仍受 `max_facts_per_cluster` 硬上限保护) |
+| `(0, 1]`(默认 `0.85`) | **启用** pg_trgm 预筛,只保留相似度 >= 阈值的 fact 对 |
+| `> 1.0` | 配置层 `le=1.0` 校验拒绝,无法配出 |
+
+注意默认 `0.85` **会触发预筛**。若想关闭以做广域 complementary 分析(簇内可能包含文本相似度低但语义互补的 fact,如"温度过高"与"散热风扇停转"),应显式设为 `0`。配置项有 `ge=0.0, le=1.0` 约束。
+
+聚簇完成后,`_load_facts_detail()` 加载每条 fact 的详情(predicate、object_text、effective_time、assertion_status、salience),供后续 LLM 阶段使用。其中 `effective_time` 已在 SQL 里预计算为 `coalesce(valid_from, extracted_at)`,供 Phase C 的 latest-wins 仲裁直接取用。
 
 ## Phase B+C: 两阶段 LLM（跨簇并发）
 
@@ -178,58 +186,49 @@ prompt 中两条最重要的规则:
 
 对 `new_salience`,prompt 明确约束 **必须在 `[0, 2]` 范围内**(0=完全降权,1=默认,2=最高)。即便 LLM 输出越界,代码层也会 clamp(见下一节)。对 `effective_time` 相同的冲突,prompt 要求双方都保留,最多标 `ambiguous` 降权,不归档任何一方。
 
-## _execute_actions — SAVEPOINT 隔离
+## _execute_actions — 写 pending 候选,不直接改知识图
 
-`_execute_actions()`(`dreaming.py` 第 262-292 行)是 LLM 输出落地为数据库变更的唯一入口。其核心设计是:**每个 action 用 SAVEPOINT(嵌套事务)隔离**。
+````{admonition} 关键设计变更
+:class: important
+Dreaming **不再直接修改 facts 表**(不再用 SAVEPOINT 隔离地执行 archive/merge/create)。现在 `_execute_actions` 把每个 LLM action 写成一条 `evolution_candidates(status='pending')` 候选,等人工审批(`evolution.review_candidate`)通过后才由 `_approve_dreaming` 执行真实变更。这是"不污染 verified graph"护栏的核心。
+````
 
 ```python
-# dreaming.py 第 269-292 行
-with session_scope() as conn:
-    for act in actions:
-        sp = conn.begin_nested()  # SAVEPOINT
-        try:
-            atype = act.get("action")
-            fids = act.get("fact_ids", [])
-            if not fids:
-                continue
-            if atype == "archive":
-                conn.execute(text("UPDATE facts SET recorded_to=now() "
-                                  "WHERE fact_id = ANY(CAST(:ids AS uuid[])) AND scope=:s"),
-                             {"ids": "{" + ",".join(fids) + "}", "s": scope})
-            elif atype == "merge":
-                _do_merge(conn, scope, fids, act.get("merged_object_value"), fact_map)
-            elif atype == "create":
-                _do_create(conn, scope, fids, act.get("merged_object_value"), fact_map)
-            elif atype == "update_quality":
-                _do_update_quality(conn, scope, fids, act.get("new_salience", 0.5))
-            sp.commit()
-        except Exception as e:  # noqa: BLE001  单个 action 失败:回滚到 SAVEPOINT,继续下一个
+# dreaming.py — _execute_actions
+"""把 LLM action 写成 pending review candidate;不直接修改知识。"""
+def _execute_actions(scope, actions, cluster_facts):
+    fact_map = {f["fact_id"]: f for f in cluster_facts}
+    with session_scope() as conn:
+        for act in actions:
             try:
-                sp.rollback()
-            except Exception:  # noqa: BLE001
-                pass
-            log.warning("dreaming action failed (action=%s), skipped: %s", act.get("action"), e)
+                atype = act.get("action")
+                fids = act.get("fact_ids", [])
+                # 只接受 4 种落地动作;link 动作被丢弃
+                if not fids or atype not in {"archive", "merge", "create", "update_quality"}:
+                    continue
+                source = next((fact_map[fid] for fid in fids if fid in fact_map), None)
+                if not source:
+                    continue
+                conn.execute(text("""
+                    INSERT INTO evolution_candidates(
+                        scope,source_type,proposed_action,subject_id,predicate,payload,
+                        source_fact_ids,status,proposed_confidence,reasoning)
+                    VALUES(:s,'dreaming',:action,CAST(:subject AS uuid),:predicate,
+                           CAST(:payload AS jsonb),CAST(:ids AS uuid[]),
+                           'pending',:confidence,:reasoning)
+                """), {...})
+            except Exception as e:  # 单个坏 proposal 不阻断整轮
+                log.warning("dreaming proposal failed (action=%s), skipped: %s", atype, e)
 ```
 
-`conn.begin_nested()` 在 PostgreSQL 上对应 `SAVEPOINT`,`sp.commit()` 释放保存点,`sp.rollback()` 回滚到保存点而不影响外层事务。这样设计的目的是:**单个坏 LLM 输出(如不合法的 fact_id、越界的 salience、格式错误的 merged_object_value)只回滚自身,不拖垮整轮 run,也不影响其他 action 已提交的写入**。Dreaming 一次可能处理数十个 action,若没有 SAVEPOINT 隔离,一个 action 失败就会让整轮 run 中途夭折,已执行的 archive/merge 全部回滚,浪费大量 LLM token。
+设计要点:
 
-### 各动作的执行细节
+- **不碰 facts 表**:每个 action 落一条 `evolution_candidates(status='pending', source_type='dreaming')`,`payload` 存完整 LLM action JSON,`source_fact_ids` 存涉及的 fact。真实 archive/merge/create/update_quality 只在审批通过后由 `evolution._approve_dreaming` 执行。
+- **try/except 隔离**:单个坏 proposal(如不合法 fact_id)只 `log.warning` 跳过,不阻断整轮。旧版的 SAVEPOINT 不再需要——因为这里不再有"部分写入已落到 facts"的风险,候选写入要么成功要么跳过。
+- **4 种落地动作**:`archive`/`merge`/`create`/`update_quality`。第 5 种 `link`(关系建议)被直接 `continue` 丢弃。
+- **salience clamp 移到审批阶段**:`_approve_dreaming` 执行 `update_quality` 时才 clamp salience 到 `[0,2]`,生成阶段不碰。
 
-- **archive**:`UPDATE facts SET recorded_to=now()`。纯软关,不删除任何行,历史可回溯。
-- **merge**(`_do_merge`,第 295-325 行):取源 fact 中最早的 `valid_from` 作为新 fact 的 `valid_from`,`supports` 取所有源 fact supports 的并集(`array_agg(DISTINCT e.event_id)`),插入新 fact 后归档所有源 fact。新 fact 的 `extraction_model` 标记为 `'dreaming-merge'`,`evidence_span` 记录来源 fact_id 列表。
-- **create**(`_do_create`,第 328-345 行):与 merge 类似但**不归档源 fact**,`supports` 直接指向源 fact_id,`extraction_model='dreaming-create'`,用于高阶结论提炼。
-- **update_quality**(`_do_update_quality`,第 348-356 行):**salience clamp** 是这里的关键防御:
-
-```python
-# dreaming.py 第 350-354 行
-try:
-    sal = max(0.0, min(2.0, float(new_salience)))
-except (TypeError, ValueError):
-    log.warning("dreaming update_quality: unparseable new_salience=%r, skipped", new_salience)
-    return
-```
-
-`max(0.0, min(2.0, float(new_salience)))` 把 LLM 输出强制 clamp 到 `[0, 2]`,防止违反 `facts` 表的 CHECK 约束(`salience_floor=0.1`、`salience_ceiling=2.0`,见第 21 章 FeedbackCfg)。若 `new_salience` 根本无法解析为 float(如 LLM 返回了字符串 `"high"`),则跳过该 action 而非抛异常。
+这与 Higher-Order(第13章)的"只生成 candidate tier 待审"是同一套审批门设计,统一由 `evolution.review_candidate` 把关(见第2章 evolution_candidates 表)。审批通过才改 verified graph,避免 LLM 幻觉直接污染知识。
 
 ## 并发与调度
 
@@ -248,28 +247,44 @@ graph LR
     end
     subgraph Dispatch["Worker dispatch"]
         D1["claim dream job"]
-        D2["_DreamHeartbeat 启动<br/>每 60s 刷 locked_at"]
+        D2["_JobHeartbeat 启动<br/>(所有 job 共用,vis/3 间隔)"]
         D3["dream_run"]
-        D4["advisory lock<br/>pg_try_advisory_xact_lock"]
-        D1 --> D2 --> D3 --> D4
+        D4["advisory lock<br/>pg_try_advisory_lock (session 级)"]
+        D1 --> D2 --> D3
+        D3 --> D4
+        D4 -.->|finally unlock| D3
     end
     S4 --> D1
 ```
 
 ### advisory lock
 
-`dream_run()` 入口处用 PostgreSQL 事务级 advisory lock 序列化同一 scope 的并发 run(`dreaming.py` 第 53-56 行):
+`dream_run()` 入口处用 PostgreSQL **会话级** advisory lock 序列化同一 scope 的并发 run(`dreaming.py`):
 
 ```python
-# dreaming.py 第 53-56 行
-with session_scope() as conn:
-    locked = conn.execute(text("SELECT pg_try_advisory_xact_lock(hashtext(:s))"),
-                          {"s": scope}).scalar()
-    if not locked:
-        return {"scope": scope, "skipped": "another dream run in progress for this scope"}
+# dreaming.py — dream_run 入口
+def dream_run(scope, ...):
+    """Hold a session advisory lock for the complete Dreaming run, not only setup."""
+    lock_conn = get_engine().connect()   # 独立 connection,覆盖完整 run
+    lock_key = f"dream:{scope}"
+    try:
+        locked = lock_conn.execute(text("SELECT pg_try_advisory_lock(hashtext(:key))"),
+                                   {"key": lock_key}).scalar()
+        if not locked:
+            return {"scope": scope, "skipped": "another dream run in progress for this scope"}
+        return _dream_run_impl(scope, ...)
+    finally:
+        try:
+            lock_conn.execute(text("SELECT pg_advisory_unlock(hashtext(:key))"), {"key": lock_key})
+        finally:
+            lock_conn.close()
 ```
 
-`pg_try_advisory_xact_lock` 是非阻塞的:拿不到锁立即返回 false 而非等待。锁的生命周期绑定当前事务,`session_scope` 提交后自动释放。`hashtext(scope)` 把 scope 字符串映射为 32 位整数作为 lock key。这是最后一道防线——即使 scheduler 的 H2 去重因竞态漏过,advisory lock 也能阻止两个 worker 同时跑同一 scope 的 dream。
+关键设计:
+
+- **会话级 `pg_try_advisory_lock`(非事务级 `pg_try_advisory_xact_lock`)**。因为 dream run 会进出多个 `session_scope`(Phase 0/A/B/C 各自的事务),事务级锁会在第一个 session 提交时释放,无法覆盖完整 run。会话级锁绑定一个**独立 connection**(`lock_conn`),覆盖从入口到 `_dream_run_impl` 返回的整个生命周期,`finally` 里显式 `pg_advisory_unlock` 释放。
+- **lock key 是 `f"dream:{scope}"`**(非裸 scope),`hashtext` 映射为 32 位整数。命名空间前缀避免与其他子系统的 advisory lock 冲突。
+- 非阻塞:拿不到锁立即返回 false,本次 run 跳过(返回 `skipped`)而非等待。这是最后一道防线——即使 scheduler 的 H2 去重因竞态漏过,advisory lock 也能阻止两个 worker 同时跑同一 scope 的 dream。
 
 ### worker scheduler
 
@@ -300,36 +315,37 @@ if already:
 
 Dream job 运行时间长(一次可能处理数十个聚簇、两次 LLM 调用 × 聚簇数),极易超过 worker 的 `visibility_timeout_secs`(默认 300s)。若不加保护,reaper 会在 300s 后误判 dream job 为僵尸并重置其状态,导致另一个 worker 重新 claim 并**并发执行同一 dream job**。
 
-`_DreamHeartbeat`(`runner.py` 第 20-40 行)是为此设计的后台心跳线程:
+````{admonition} 设计变更
+:class: important
+旧版有一个 dream 专用的 `_DreamHeartbeat` 类。现已重构为**所有 job 共用的 `_JobHeartbeat`**(`runner.py`),在 `run_worker` 外层包裹**每个** job(不只是 dream),带 **owner-fencing**:lease 丢失(被别的 worker 抢走)则 `stop.set()` 自停。
+````
+
+`_JobHeartbeat`(`runner.py`)是所有 job 共用的上下文管理器,不再为 dream 专用:
 
 ```python
-# runner.py 第 24-36 行
-stop = threading.Event()
-
-def _beat():
-    while not stop.wait(interval):   # interval=60s
-        try:
+# runner.py — 所有 job 共用的心跳(含 owner fencing)
+@contextmanager
+def _JobHeartbeat(job_id, worker_id, interval=60.0):
+    stop = threading.Event()
+    def _beat():
+        while not stop.wait(interval):
             with session_scope() as c:
-                c.execute(text("UPDATE jobs SET locked_at=now() "
-                               "WHERE job_id=CAST(:j AS uuid) AND status='running'"),
-                          {"j": job_id})
-        except Exception:  # noqa: BLE001  心跳失败不影响主流程
-            pass
-
-t = threading.Thread(target=_beat, daemon=True)
-t.start()
+                # heartbeat_job 带 owner fencing:lease 丢失则返回 False
+                if not heartbeat_job(c, job_id, worker_id):
+                    stop.set()   # 别的 worker 抢走了,停止续租
+                    return
+    threading.Thread(target=_beat, daemon=True).start()
+    try:
+        yield
+    finally:
+        stop.set()
 ```
 
-心跳每 60 秒刷新 `jobs.locked_at`,让 reaper 始终看到该 job"最近被访问过",不会误判为僵尸。心跳线程是 daemon,`dream_run` 返回或抛异常时 `stop.set()` 停止心跳。dispatch 分支用 `with _DreamHeartbeat(...)` 包裹 `dream_run`:
+关键设计:
 
-```python
-# runner.py 第 138-144 行
-if jt == "dream" and scope:
-    from ...memory.dreaming import dream_run
-    payload = job.get("payload") or {}
-    with _DreamHeartbeat(job["job_id"]):
-        return dream_run(scope, **payload)
-```
+- **所有 job 共用**,在 `run_worker` 的 job 循环外层包裹(`with _JobHeartbeat(job_id, worker_id, heartbeat_interval):`),dream job 不再有专用心跳,也不在 `_dispatch` 的 dream 分支内单独包裹。
+- **心跳间隔随 visibility_timeout 动态算**:`heartbeat_interval = max(1.0, min(60.0, vis / 3.0))`(`vis = cfg.worker.visibility_timeout_secs`),非固定 60s。
+- **owner fencing**:`heartbeat_job(c, job_id, worker_id)` 内部用 `WHERE job_id=:j AND locked_by=:w` 条件更新——如果 lease 已被别的 worker 抢走(reaper 重排后),更新影响 0 行返回 False,心跳线程 `stop.set()` 自停,避免为不属于自己的 job 续命。
 
 ## dreaming_runs 表
 

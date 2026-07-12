@@ -23,18 +23,27 @@ cortex-py 的配置最初是只读的:启动时由 `load_config()` 从 `config/c
 # src/cortex/infra/config.py
 _CONFIG_PATCH_WHITELIST = {
     "llm", "rerank", "embedding.api_base", "embedding.model", "embedding.provider",
-    "api", "worker", "retrieval", "extraction", "feedback", "dreaming", "higher_order",
+    "worker", "retrieval", "extraction", "feedback", "dreaming", "higher_order",
 }
 
 def apply_config_patch(patch: dict) -> AppConfig:
     """原地深合并 patch 到缓存的 AppConfig(不替换 _CACHE 实例,
     避免 app.py 的 cfg 绑定失效)。"""
     cfg = load_config()
-    _deep_merge(cfg, patch, root_path="")
+    candidate = cfg.model_copy(deep=True)                 # 1) 深拷贝,避免半成品污染 _CACHE
+    _deep_merge(candidate, patch, root_path="")           # 2) 白名单深合并
+    validated = AppConfig.model_validate(                 # 3) 重跑 Pydantic 校验(含 dimension 强约束)
+        candidate.model_dump(by_alias=True))
+    for field_name in AppConfig.model_fields:             # 4) 把校验通过的值逐字段回填到原 cfg
+        setattr(cfg, field_name, getattr(validated, field_name))
     return cfg
 ```
 
+白名单**不含 `api`**:`api` 是认证边界(principals/token_hash/admin_key),改它会让运行中进程的鉴权状态与磁盘/部署不一致。注释明确"认证边界 `api` 与 `database`/`embedding.dimension` 禁止运行时修改",必须通过受控部署更新并重启。
+
 为什么不替换 `_CACHE`?因为 `app.py` 等模块在启动时通过 `cfg = load_config()` 拿到单例引用,并在闭包/装饰器里长期持有。如果热更新走 `load_config(reload=True)` 路径重建实例,旧的 `cfg` 引用就指向了一个孤儿对象,新配置对它们永远不可见。原地改字段让所有持有引用的代码立刻看到新值。
+
+但"原地改字段"不能跳过校验:补丁可能引入非法值(如 `embedding.dimension` 与 schema 的 `vector(N)` 不一致)。所以 `apply_config_patch` 先深拷贝一份候选对象,合并补丁后用 `AppConfig.model_validate(...)` 重跑完整 Pydantic 校验,校验通过才把每个字段 `setattr` 回真正的 `_CACHE` 实例。校验失败 `_CACHE` 不变。
 
 ### 2.2 白名单校验
 
@@ -45,13 +54,30 @@ def _deep_merge(target, patch: dict, root_path: str) -> None:
     for key, value in patch.items():
         path = f"{root_path}.{key}" if root_path else key
         top = path.split(".")[0]
-        allowed = path in _CONFIG_PATCH_WHITELIST or top in _CONFIG_PATCH_WHITELIST
+        # 三条白名单匹配规则:精确路径、顶层、父路径在白名单
+        allowed = (path in _CONFIG_PATCH_WHITELIST or top in _CONFIG_PATCH_WHITELIST
+                   or any(item.startswith(path + ".") for item in _CONFIG_PATCH_WHITELIST))
         if not allowed:
             raise ValueError(f"Field '{path}' is not patchable at runtime (not in whitelist)")
         if top == "database" or path == "embedding.dimension":
             raise ValueError(f"Field '{path}' cannot be changed at runtime (requires restart)")
-        # …递归或赋值
+        # 特判:retrieval.graph_weight 落到 channels.graph.weight
+        if path == "retrieval.graph_weight":
+            target.channels.graph.weight = value
+        # 递归或赋值;retrieval.profiles 整表替换并逐项 model_validate
+        if isinstance(value, dict) and hasattr(current, "model_dump"):
+            _deep_merge(current, value, path)
+        elif isinstance(value, dict) and isinstance(current, dict):
+            if path == "retrieval.profiles":
+                current.clear()
+            for k2, v2 in value.items():
+                current[k2] = (RetrievalProfileCfg.model_validate(v2)
+                               if path == "retrieval.profiles" else v2)
+        else:
+            setattr(target, key, value)
 ```
+
+白名单匹配有**三条**规则:① 精确路径命中(如 `embedding.api_base`);② 顶层整棵子树命中(如 `llm`,覆盖 `llm.extraction.api_key` 等任意下钻);③ **父路径**已在白名单(如 `embedding.model` 在白名单,允许 `embedding.model` 本身)。另有两条 `retrieval` 特判:`retrieval.graph_weight` 实际写入 `target.channels.graph.weight`(检索通道权重,非顶层标量);`retrieval.profiles` 走"整表 clear + 逐项 `RetrievalProfileCfg.model_validate`",而非原地合并。
 
 规则:
 
@@ -62,23 +88,45 @@ def _deep_merge(target, patch: dict, root_path: str) -> None:
 | `embedding.dimension` | **否** | 与 `vector(N)` 强绑定 |
 | `embedding.api_key` | 否(不在白名单) | 走环境变量 |
 | `database.*` | **否** | 整棵子树禁 |
-| `api` / `worker` / `retrieval` / `extraction` | 是 | |
+| `api` | **否** | 认证边界,禁止运行时修改,需重启 |
+| `worker` / `retrieval` / `extraction` | 是 | |
 | `feedback` / `dreaming` / `higher_order` | 是 | 含 `enabled` 开关 |
 
 ### 2.3 持久化
 
-`save_config()` 把当前缓存 `model_dump()` 后用 `yaml.safe_dump` 写回 YAML:
+`save_config()` 的真实行为与直觉相反:**它不会把 env 注入的 secret 明文落盘**。docstring 直写"原子写回 YAML;环境变量注入的 secret 永不落盘"。流程是先 `model_dump()` 拿到当前内存配置(其中已被 env 覆盖成真实 key 的字段),再调 `_restore_persisted_secrets(data, raw)` 把这些字段替换回**磁盘 YAML 里的原值或占位符**:
 
 ```python
 def save_config(path: Path | str | None = None) -> None:
+    """原子写回 YAML；环境变量注入的 secret 永不落盘。"""
     cfg = load_config()
-    p = Path(path or os.environ.get("CORTEX_CONFIG", _DEFAULT_CONFIG_PATH))
-    data = cfg.model_dump()
-    with open(p, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    p = Path(path or os.environ.get("CORTEX_CONFIG", _DEFAULT_CONFIG_PATH)).resolve()
+    data = cfg.model_dump(by_alias=True)
+    raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}   # 磁盘当前原值
+    _restore_persisted_secrets(data, raw)                      # 用原值/占位符盖回 secret
+    # …原子写:tempfile + fsync + os.replace…
 ```
 
-注意 `model_dump()` 会把通过环境变量注入的 key 也写进文件 —— 若不希望明文落盘,就用环境变量管理敏感 key 而非热更新接口。
+`_restore_persisted_secrets` 对这些键做替换:`api_key` / `key` / `admin_key` / `token` / `token_hash`(每个 secret 字段),以及 `database.url` 与 `api.principals`(整段)。若该键在磁盘原 YAML 里有值就写回原值;否则按类型给空串(字符串)或空列表(`api.principals`):
+
+```python
+def _restore_persisted_secrets(data, raw, path=()) -> None:
+    """把当前模型里的 env secret 替换回磁盘原值/占位符。"""
+    if not isinstance(data, dict):
+        return
+    raw_dict = raw if isinstance(raw, dict) else {}
+    for key, value in list(data.items()):
+        current_path = path + (key,)
+        secret = (key in {"api_key", "key", "admin_key", "token", "token_hash"}
+                  or current_path == ("database", "url")
+                  or current_path == ("api", "principals"))
+        if secret:
+            data[key] = raw_dict[key] if key in raw_dict else ([] if isinstance(value, list) else "")
+            continue
+        _restore_persisted_secrets(value, raw_dict.get(key), current_path)
+```
+
+结果:env 覆盖的 secret 只活在进程内存里,持久化后的 YAML 与重启前看到的内容一致,不泄漏明文。写入采用**原子替换**(tempfile + `os.fsync` + `os.replace`,保留原文件权限),中途崩溃不会留下半截损坏的 `config.yaml`。
 
 ### 2.4 典型用法
 
@@ -135,24 +183,31 @@ sequenceDiagram
 返回 `AppConfig.model_dump()`,但密钥被 `_mask_secrets()` 原地脱敏:
 
 ```python
-def _mask_secrets(d: dict) -> None:
-    """原地脱敏:api_key -> '***'(标记 has_key),database.url -> '***'。"""
-    for k, v in list(d.items()):
-        if k == "api_key" and isinstance(v, str):
-            d[k] = "***" if v else ""
-            d["has_key"] = bool(v)          # 注入布尔状态
-        elif k == "url" and isinstance(v, str):
-            d[k] = "***"                    # database.url
-        elif isinstance(v, dict):
-            _mask_secrets(v)
+def _mask_secrets(value) -> None:
+    """原地遮蔽 DSN、API/admin key、principal token/hash。"""
+    if isinstance(value, list):
+        for item in value:
+            _mask_secrets(item)
+        return
+    if not isinstance(value, dict):
+        return
+    for key, nested in list(value.items()):
+        if key in {"api_key", "key", "admin_key", "token", "token_hash"} and isinstance(nested, str):
+            value[key] = "***" if nested else ""
+            value[f"has_{key}"] = bool(nested)        # 注入布尔状态
+        elif key == "url" and isinstance(nested, str):
+            value[key] = "***"                        # database.url
+        else:
+            _mask_secrets(nested)
 ```
 
-脱敏规则:
+脱敏规则覆盖 **5 个 secret 键** + url:
 
 | 原字段 | 脱敏后 | 附带 |
 |--------|--------|------|
-| `*.api_key`(有值) | `"***"` | `has_key: true` |
-| `*.api_key`(空) | `""` | `has_key: false` |
+| `*.api_key`(有值) | `"***"` | `has_api_key: true` |
+| `*.api_key`(空) | `""` | `has_api_key: false` |
+| `*.key` / `*.admin_key` / `*.token` / `*.token_hash` | `"***"` 或 `""` | 对应 `has_<key>` 布尔 |
 | `database.url` | `"***"` | — |
 
 前端据此在 LLM/Rerank 卡片上显示「已配置 / 未配置」徽标,而无需拿到真实 key。
@@ -208,7 +263,7 @@ def admin_jobs(scope: Optional[str] = Query(None),
                status: Optional[str] = Query(None),
                job_type: Optional[str] = Query(None),
                limit: int = Query(50, le=500),
-               actor: str = Depends(auth)):
+               actor: str = Depends(admin_auth)):
     """查看任务队列明细(不返回 payload,可能含敏感数据)。"""
 ```
 

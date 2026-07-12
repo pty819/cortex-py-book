@@ -61,7 +61,7 @@ CREATE TABLE events (
     idempotency_key   TEXT NOT NULL,
     
     -- 自演化信号
-    access_count      INT NOT NULL DEFAULT 0,        -- 召回计数(隐式正向反馈)
+    access_count      INT NOT NULL DEFAULT 0,        -- 召回计数(recall 命中时 +1;Feedback 显式反馈不再写此列)
     feedback_processed BOOLEAN NOT NULL DEFAULT false, -- 反馈是否已被处理入权重
     last_recalled_at  TIMESTAMPTZ,                    -- 最近一次召回时间
     
@@ -78,7 +78,7 @@ CREATE TABLE events (
 - **`extraction_diagnostics`**：抽取管线诊断信息 JSON
 - **`methylated_at`**：甲基化时间戳（长期不召回的事件被标记）
 - **`case_id`**：关联的诊断案例 ID（诊断场景）
-- **`access_count`**：该事件被召回的次数，作为隐式正向反馈信号（自演化信号总线的一部分）
+- **`access_count`**：该事件被召回的次数（recall 命中时 +1；注意 Feedback 显式 `relevant` 反馈不再写此列，改写 `facts.retrieval_usefulness`）
 - **`feedback_processed`**：标记反馈是否已被处理并入权重，避免重复计算
 - **`last_recalled_at`**：最近一次被召回的时间戳，用于时间衰减与冷热判定
 

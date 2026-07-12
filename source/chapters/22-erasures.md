@@ -24,14 +24,23 @@ graph LR
 
 ```python
 def _select_event_ids(conn, scope, selector):
-    """memory_ids 直接；about_entity/predicate 走 facts.supports 反查"""
+    """memory_ids 直接；about_entity 双向匹配(subject_id 或 object_entity_id)/predicate 走 facts.supports 反查"""
     ids = []
     if selector.get("memory_ids"):
         ids.extend(selector["memory_ids"])
-    if selector.get("about_entity") or selector.get("predicate"):
-        rows = conn.execute(text("""
+    cond = ""
+    params = {"s": scope}
+    if selector.get("about_entity"):
+        # 双向匹配:subject 或 object 任一命中都算
+        cond += " AND (f.subject_id=CAST(:a AS uuid) OR f.object_entity_id=CAST(:a AS uuid))"
+        params["a"] = selector["about_entity"]
+    if selector.get("predicate"):
+        cond += " AND f.predicate=:p"
+        params["p"] = selector["predicate"]
+    if cond:
+        rows = conn.execute(text(f"""
             SELECT DISTINCT unnest(f.supports)::text FROM facts f
-            WHERE f.scope=:s AND (:a IS NULL OR f.subject_id=CAST(:a AS uuid))
+            WHERE f.scope=:s{cond}
         """), params).fetchall()
         ids.extend(r[0] for r in rows)
     return list(dict.fromkeys(ids))  # 去重
@@ -59,29 +68,31 @@ def _event_refcount(conn, scope, event_id):
 | `refcount > 0` | **擦除内容**：清空 `content`，设 `excluded_from_recall=true`，保留 event_id + wal_offset |
 
 ```python
-# refcount = 0：物理删
-DELETE FROM events WHERE event_id = :e
-
 # refcount > 0：擦除（保留行，清内容）
-UPDATE events SET content='{}', excluded_from_recall=true WHERE event_id = :e
+UPDATE events SET content='{}'::jsonb, excluded_from_recall=true WHERE event_id = :e
+
+# refcount = 0：物理删前先置空指向该 event 的 FK(jobs/lifecycle_events),
+# 否则 FK 约束挡 DELETE
+UPDATE jobs SET event_id=NULL WHERE event_id = :e
+UPDATE lifecycle_events SET event_id=NULL WHERE event_id = :e
+DELETE FROM events WHERE event_id = :e
 ```
 
 ### 阶段 4：Cleanup（清理引用）
 
-清理所有指向被删/擦除事件的 supports 引用：
+清理所有指向被删/擦除事件的 supports 引用（只清 `facts.supports` 和 `beliefs.supports`）：
 
 ```python
 # 从 facts.supports 移除引用
-UPDATE facts SET supports = array_remove(supports, :e) 
-WHERE scope=:s AND :e = ANY(supports)
+UPDATE facts SET supports = array_remove(supports, CAST(:e AS uuid))
+WHERE scope=:s
 
 # 从 beliefs.supports 移除引用
-UPDATE beliefs SET supports = array_remove(supports, :e) 
-WHERE scope=:s AND :e = ANY(supports)
-
-# 如果 blob 引用计数归零 → 删除 blob
-DELETE FROM blobs WHERE refcount = 0
+UPDATE beliefs SET supports = array_remove(supports, CAST(:e AS uuid))
+WHERE scope=:s
 ```
+
+> MVP 不处理 blob 清理——`erasures.py` 无 blob 删除逻辑，blob 的引用计数与回收由其他子系统负责。旧文档中"DELETE FROM blobs WHERE refcount=0"不属此模块。
 
 ## 事务策略
 
@@ -90,6 +101,9 @@ DELETE FROM blobs WHERE refcount = 0
 ```python
 for event_id in manifest["to_delete"]:
     with session_scope() as conn:
+        # 先置空 FK,再 DELETE
+        conn.execute(text("UPDATE jobs SET event_id=NULL WHERE event_id=CAST(:e AS uuid)"), ...)
+        conn.execute(text("UPDATE lifecycle_events SET event_id=NULL WHERE event_id=CAST(:e AS uuid)"), ...)
         conn.execute(text("DELETE FROM events WHERE event_id=CAST(:e AS uuid)"), ...)
         conn.execute(text("UPDATE facts SET supports=array_remove(supports,:e) ..."), ...)
 
@@ -121,13 +135,19 @@ def preview_erasure(scope, selector):
 ### Execute（执行 + 审计）
 
 ```python
-def execute_erasure(scope, selector, from_preview_id=None):
-    # 1. 创建 erasure_job（含 idempotency_key）
-    # 2. 枚举 event_ids
-    # 3. 逐 event 处理（每 event 独立事务）
-    # 4. 记录审计日志
-    return {"deleted": n, "redacted": m, "audit_id": audit_id}
+def execute_erasure(*, scope, selector=None, from_preview_id=None):
+    # 1. preview_erasure（或复用 from_preview_id 的 manifest）
+    # 2. 逐 event 处理（每 event 独立事务）
+    # 3. 写 erasure_jobs.phase='completed' + progress
+    # 4. 审计走 emit_lifecycle(kind="erasure_complete")
+    progress = {"deleted": 0, "redacted": 0, "demoted": 0}
+    ...
+    emit_lifecycle(conn, kind="erasure_complete", scope=scope,
+                   payload={"erasure_id": str(erasure_id), "progress": progress})
+    return {"erasure_id": str(erasure_id), "phase": "completed", "progress": progress}
 ```
+
+> `progress` 含三个键：`deleted`/`redacted`/`demoted`（MVP 中 `demoted` 恒为 0，保留键位供未来软降级路径）。审计走 `emit_lifecycle(kind="erasure_complete")`，**无** `audit_id` 返回字段。
 
 ## 完整 API
 
@@ -139,7 +159,7 @@ GET  /v1/erasures/{erasure_id}               → 查询 erasure 任务状态
 POST /v1/erasures/{erasure_id}/cancel        → 取消正在运行的 erasure
 ```
 
-> 注意路径形态：执行用 `POST /v1/erasures`（不是 `/execute`），状态查询用 `GET /v1/erasures/{erasure_id}`（不是 `/status/{id}`）。preview 与 execute 是两个独立入口——preview 返回的 `preview_id` 可换 manifest，但 execute 本身可不依赖 preview 直接跑。
+> 注意路径形态：执行用 `POST /v1/erasures`（不是 `/execute`），状态查询用 `GET /v1/erasures/{erasure_id}`（不是 `/status/{id}`）。preview 与 execute 是两个独立入口——preview 返回的 `preview_id` 可换 manifest，但 execute 本身可不依赖 preview 直接跑。manifest 24 小时后过期（`MANIFEST_TTL_HOURS=24`），过期后取 manifest 返回 `{"expired": True}`、execute 带 `from_preview_id` 会 409。
 
 MCP 工具：
 ```

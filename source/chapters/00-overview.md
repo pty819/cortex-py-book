@@ -138,8 +138,9 @@ flowchart TD
 | 图遍历 | 递归 CTE | 种子实体 BFS 2-3 跳 |
 | Entity Name | pg_trgm | 模糊实体名匹配 |
 | Synonym | synonyms 表 | 同义词扩展 |
-| Temporal-decay | access_count + 衰减 | 热数据优先 |
-| Salience 软降权 | signal bus（retrieval_count + salience + retrieval_usefulness，四信号独立开关） | 负反馈多的事实按 salience 软降权，避免噪声召回 |
+| Temporal-decay | valid_from 近因窗 | 按 `valid_from DESC` 时间新近度排序（不依赖 access_count） |
+
+> **Salience 软降权不是第 7 个通道**，而是**融合后的信号总线加权**（signal bus：retrieval_count + salience + retrieval_usefulness，四信号独立开关）。它在 RRF 融合之后、rerank 之前注入，让负反馈多的事实按 salience 软降权、高频事实按 usage 饱和加分，避免噪声召回。详见第 10 章与第 14 章。
 
 ### 4. 功能模块
 

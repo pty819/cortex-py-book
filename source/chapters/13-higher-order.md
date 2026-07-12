@@ -1,5 +1,13 @@
 # 第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论
 
+````{admonition} 重大重构:认知晋升门 + evidence_quality + candidate tier
+:class: important
+本章曾以"`access_count` 热度门控 + 直接写 `confirmed` 高阶 fact"为核心。两项均已过时,请以下述为准:
+1. **不再读 `access_count`**:证据窗排序与门控改用 `facts.evidence_quality`(`min_access_count` 已 `deprecated=0`,使用热度不参与认知晋升)。唯一门控是证据数量 `min_evidence_count`。
+2. **不再直接写 `confirmed`**:LLM 归纳只能生成 `assertion_status='hypothesized' / knowledge_tier='candidate'` 的待审 fact + 同步落 `evolution_candidates(status='pending', proposed_action='promote')`。需人工 `review_candidate` 审批后才晋升 `verified`。召回层只返回 `knowledge_tier='verified'` 的高阶 fact。
+3. 认知晋升质量由**人工审批门**(检查 confirmed + 独立闭环 Case + 回归证据)保证,不再由召回热度保证。
+````
+
 ## 13.1 概述
 
 Dreaming 与 Higher-Order 是记忆自演化的两条互补热路径：
@@ -57,7 +65,7 @@ ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS evidence_fact_ids UUID[] NOT N
 | `extraction_model` | LLM 模型名 | `'higher-order'`（固定标记，标识由高阶归纳产生） |
 | `predicate` | `order=1` 谓词（`caused_by`、`located_in` …） | `order=2` 谓词（`failure_mode`、`behavior_pattern` …） |
 
-高阶事实的写入见 `higher_order.py` 的 generate_higher_order 写入段的 INSERT 语句——`confidence=0.7`、`assertion_status='confirmed'`、`object_type='literal'`，并显式填入 `is_higher_order=true`、`higher_order_reasoning`、`evidence_fact_ids`。版本化更新时，旧高阶 fact 不会被 DELETE，而是 `recorded_to=now()` 软关闭，新版本 INSERT，保留完整演化历史（见 13.4）。
+高阶事实的写入见 `higher_order.py` 的 generate_higher_order 写入段的 INSERT 语句——`confidence=candidate_confidence`(默认 0.5)、`assertion_status='hypothesized'`、`knowledge_tier='candidate'`、`object_type='literal'`，并显式填入 `is_higher_order=true`、`higher_order_reasoning`、`evidence_fact_ids`。注意生成阶段只产 candidate tier 待审 fact,需人工审批(`evolution.review_candidate`)通过后才晋升 `verified`(见 13.4.5)。
 
 为加速热路径检索，`schema.sql:448-450` 专门建了部分索引：
 
@@ -127,12 +135,10 @@ flowchart TD
     B -- no --> S1["skip: disabled"]
     B -- yes --> C{entity 存在<br/>且未 merged_into?}
     C -- no --> S2["skip: not found/merged"]
-    C -- yes --> D["加载一阶 live facts<br/>ORDER BY new_fact_id DESC,<br/>access_count DESC, valid_from DESC<br/>LIMIT lookback_facts"]
+    C -- yes --> D["加载一阶正向 live facts<br/>ORDER BY new_fact_id DESC,<br/>evidence_quality DESC, valid_from DESC<br/>LIMIT lookback_facts"]
     D --> E{len ≥ min_evidence_count?<br/>默认 ≥2}
     E -- no --> S3["skip: insufficient evidence"]
-    E -- yes --> F{Σ access_count<br/>≥ min_access_count?<br/>默认 ≥2}
-    F -- no --> S4["skip: insufficient access_count"]
-    F -- yes --> G{order=2 谓词存在?<br/>predicate_definitions}
+    E -- yes --> G{order=2 谓词存在?<br/>predicate_definitions}
     G -- no --> S5["skip: no order=2 predicates"]
     G -- yes --> H{LLM tier 配置?<br/>最后检查}
     H -- no --> S6["skip: LLM not configured"]
@@ -164,36 +170,38 @@ if not services.llm_configured(cfg.higher_order.llm_tier):
 `higher_order.py` 加载该实体的一阶 live facts 作为 evidence：
 
 ```python
-# 取该实体的一阶 live facts(按 access_count + valid_from DESC,信号总线:高频优先)
-# M4:若有 new_fact_id(触发本归纳的新 fact),强制它排在证据窗首位(即便 access_count=0)
+# 取该实体的一阶正向 live facts(按 evidence_quality + valid_from DESC;使用热度不参与晋升)
+# 只取 polarity='positive' AND assertion_status IN ('observed','confirmed');ruled_out/rejected/negative 不得作归纳依据
+# M4:若有 new_fact_id(触发本归纳的新 fact),强制它排在证据窗首位(即便 evidence_quality=0)
 nf_order = "(f.fact_id = CAST(:nf AS uuid)) DESC, " if new_fact_id else ""
 first_order = conn.execute(text(f"""SELECT fact_id::text, predicate,
     coalesce(o.canonical_name, f.object_value->>'value') AS object_text,
     f.valid_from::text, f.assertion_status,
-    coalesce((SELECT max(e.access_count) FROM events e WHERE e.event_id = ANY(f.supports)), 0) AS access_count
+    coalesce(f.evidence_quality,0.0) AS evidence_quality,
+    coalesce(f.case_id,(SELECT max(e.case_id) FROM events e WHERE e.event_id = ANY(f.supports))) AS case_id
     FROM facts f LEFT JOIN entities o ON o.entity_id=f.object_entity_id
     WHERE f.subject_id=CAST(:e AS uuid) AND f.scope=:s
       AND f.is_higher_order=false AND f.recorded_to IS NULL AND f.valid_to IS NULL
-    ORDER BY {nf_order} access_count DESC, f.valid_from DESC
+      AND f.polarity='positive' AND f.assertion_status IN ('observed','confirmed')
+    ORDER BY {nf_order} evidence_quality DESC, f.valid_from DESC
     LIMIT :n"""), ...)
 ```
 
-两个要点：
+三个要点：
 
-1. **`access_count` 来自信号总线**——通过子查询 `SELECT max(e.access_count) FROM events e WHERE e.event_id = ANY(f.supports)` 聚合该 fact 支撑事件的最大访问计数。高访问计数意味着该事实在召回中被反复命中，是"值得归纳的高价值事实"。这让高阶归纳与召回热度联动（详见 13.7 冷启动保护）。
-2. **M4 fix：`new_fact_id` 强制进证据窗首位**——刚抽取触发本次归纳的新事实 `access_count=0`，正常排序会排在末尾甚至被 `LIMIT` 截掉。`(f.fact_id = CAST(:nf AS uuid)) DESC` 把它强制顶到首位，保证"触发源"一定进入 LLM 视野。这修正了早期版本"新事实触发归纳却没参与归纳"的 bug。
+1. **按 `evidence_quality` 排序(非 access_count)**——证据质量高的 fact 优先进入证据窗。`access_count` 热度不再参与认知晋升门控(`min_access_count` 已 `deprecated=0`)。
+2. **正向证据过滤**:只取 `polarity='positive' AND assertion_status IN ('observed','confirmed')`。被 `wrong` 反馈推翻(`ruled_out`)或负向(`negative`)的 fact 不得作为归纳依据——这是质量护栏。
+3. **M4 fix:`new_fact_id` 强制进证据窗首位**——刚抽取触发本次归纳的新事实 `evidence_quality=0`,正常排序会排在末尾甚至被 `LIMIT` 截掉。`(f.fact_id = CAST(:nf AS uuid)) DESC` 把它强制顶到首位,保证"触发源"一定进入 LLM 视野。
 
-### 13.4.3 冷启动双重门槛
+### 13.4.3 证据数量门控(单一门槛)
 
 ```python
 if len(first_order) < cfg.higher_order.min_evidence_count:      # 默认 2
-    return {"synthesized": 0, "skipped": f"insufficient evidence(...)"}
-total_ac = sum(r[5] for r in first_order)
-if total_ac < cfg.higher_order.min_access_count:                 # 默认 2
-    return {"synthesized": 0, "skipped": f"insufficient access_count(...)"}
+    return {"synthesized": 0, "skipped": f"insufficient evidence({len(first_order)} < {min_evidence_count})"}
+# 注意:已无 access_count 热度门槛;min_access_count deprecated=0,使用热度不参与认知晋升
 ```
 
-两道门槛缺一不可：**证据数量**（至少 2 条一阶事实）+ **证据热度**（累计访问计数至少 2）。后者对齐信号总线——只有被召回系统真正"用过"的事实才有资格被抽象。
+单一门槛:**证据数量**(至少 `min_evidence_count` 条一阶正向事实)。使用热度(`access_count`/`retrieval_count`)不参与认知晋升——晋升质量由后续人工审批门保证(见 13.4.5)。
 
 ### 13.4.4 LLM synthesis
 
@@ -219,35 +227,51 @@ if total_ac < cfg.higher_order.min_access_count:                 # 默认 2
 }
 ```
 
-### 13.4.5 版本化 apply updates
+### 13.4.5 生成 candidate tier fact + evolution_candidates(不直接改 verified graph)
 
-`higher_order.py` 遍历 updates 写库，采用**软关 + 新版本**策略（而非 in-place UPDATE）：
+````{admonition} 关键设计变更
+:class: important
+LLM 归纳**不再直接写 `assertion_status='confirmed'` 高阶 fact**。现在只生成 `assertion_status='hypothesized' / knowledge_tier='candidate'` 的待审 fact,并同步落一条 `evolution_candidates(status='pending', proposed_action='promote')`。旧 fact 的软关也推迟到审批阶段。需人工 `review_candidate` 审批通过后才晋升 `verified`。
+````
 
 ```python
+allowed_predicates = {row[0] for row in ho_predicates}  # order=2 谓词白名单
 for upd in updates:
-    action = upd.get("action", "create")
     predicate = upd.get("predicate")
-    ...
+    if not predicate or predicate not in allowed_predicates:
+        log.warning("higher_order rejected unapproved predicate: %s", predicate)
+        continue   # LLM 输出的 predicate 必须在 order=2 定义里,否则 reject
+    supersedes_fact_id = None
     if action == "update":
-        # 找已有的同 predicate 高阶 fact,软关 + 新版本
+        # 找已有的同 predicate 高阶 fact;仅记录 proposed supersession
+        # 生成阶段绝不关闭现有 verified assertion
         old = conn.execute(text("""SELECT fact_id::text FROM facts
-            WHERE subject_id=CAST(:e AS uuid) AND scope=:s AND predicate=:p
-              AND is_higher_order=true AND recorded_to IS NULL LIMIT 1"""), ...)
+            WHERE subject_id=... AND predicate=:p AND is_higher_order=true
+              AND recorded_to IS NULL LIMIT 1"""), ...)
         if old:
-            conn.execute(text("UPDATE facts SET recorded_to=now() WHERE fact_id=CAST(:f AS uuid)"), {"f": old[0]})
-    # INSERT 新高阶 fact
-    conn.execute(text("""INSERT INTO facts (scope, subject_id, predicate, object_type, object_value,
-        valid_from, confidence, assertion_status, evidence_span, supports, extraction_model,
-        is_higher_order, higher_order_reasoning, evidence_fact_ids)
-        VALUES (:s, CAST(:e AS uuid), :p, 'literal', CAST(:ov AS jsonb),
-        now(), 0.7, 'confirmed', :es, '{}', 'higher-order',
-        true, :reasoning, CAST(:evid AS uuid[]))"""), ...)
+            supersedes_fact_id = old[0]   # 只记下,不软关
+    # INSERT candidate tier fact(LLM 只能生成 candidate)
+    new_fact_id = conn.execute(text("""INSERT INTO facts (...,assertion_status,
+        extraction_model, knowledge_tier, is_higher_order, higher_order_reasoning, evidence_fact_ids)
+        VALUES (...,'hypothesized', 'higher-order', 'candidate', true, :reasoning, ...)"""), ...)
+    # 同步落 evolution_candidates 待审
+    conn.execute(text("""INSERT INTO evolution_candidates(
+        scope,source_type,proposed_action,subject_id,predicate,payload,
+        source_fact_ids,status,proposed_confidence,reasoning)
+        VALUES(:s,'higher_order','promote',...,CAST(:payload AS jsonb),...,'pending',:confidence,...)"""),
+        {"payload": json.dumps({"fact_id": new_fact_id, "value": value,
+                                "supersedes_fact_id": supersedes_fact_id})})
     n += 1
 ```
 
-`update` 动作会把旧高阶 fact 的 `recorded_to=now()` 软关闭（recension 层关闭），再 INSERT 一条新版本——保留完整的高阶结论演化轨迹，可回溯任何时刻的结论版本。这与 Facts 表的双时态语义完全一致（见第17章）。
+设计要点:
 
-成功归纳后 `emit_lifecycle(kind="higher_order_generated", ...)` 发生命周期事件（`higher_order.py` 收尾段）。
+- **`assertion_status='hypothesized'` + `knowledge_tier='candidate'`**:LLM 归纳只能生成待审候选,不直接进 verified graph。`confidence` 读 `cfg.higher_order.candidate_confidence`(默认 0.5),非硬编 0.7。
+- **predicate 白名单**:LLM 输出的 predicate 必须在 `predicate_definitions` 的 `order=2` 集合里,否则 reject。防止 LLM 编造未定义的高阶谓词。
+- **update 只记录 `supersedes_fact_id`,不软关旧 fact**:旧 fact 的软关推迟到审批通过后由 `evolution._approve_higher_order` 执行。生成阶段绝不关闭现有 verified assertion。
+- **同步落 `evolution_candidates(proposed_action='promote', status='pending')`**:与 Dreaming(第12章)共用同一套审批门。人工 `review_candidate` 通过后才晋升 `confirmed/verified` 并(若有)软关被取代的旧 fact。
+
+成功归纳后 `emit_lifecycle(kind="higher_order_generated", ...)` 发生命周期事件。注意:此时只是"候选已生成",尚未晋升 verified——召回层不会返回 candidate tier 的高阶 fact(见 13.6)。
 
 ## 13.5 触发机制：extract 后异步 enqueue
 
@@ -330,7 +354,8 @@ if subj_ids:
         f.higher_order_reasoning, f.evidence_fact_ids::text[], f.confidence,
         s.canonical_name AS subject_name, f.valid_from::text
         FROM facts f JOIN entities s ON s.entity_id=f.subject_id
-        WHERE {sf} AND f.is_higher_order=true AND f.recorded_to IS NULL AND f.valid_to IS NULL
+        WHERE {sf} AND f.is_higher_order=true AND f.knowledge_tier='verified'
+          AND f.recorded_to IS NULL AND f.valid_to IS NULL
           {tw} AND f.subject_id = ANY(CAST(:a AS uuid[])) LIMIT 10
     """), sp).fetchall()
     higher_order = [{"fact_id": r[0], "predicate": r[1], "value": r[2],
@@ -347,21 +372,21 @@ if subj_ids:
 三个设计要点：
 
 1. **H5 一致性修正**——早期版本该层没用 `_scope_filter` 和 `temporal_where`，导致 holistic/descend scope 和时间旅行查询时高阶层行为与其他层不一致。现版用正则 `_re.sub(r'(?<![.\w])scope(?=\s*[=L])', 'f.scope', sf_raw)` 给 scope 列名加 `f.` 前缀（因 SQL 里 facts 表别名为 `f`），同时保留 bind param 名不变，让 scope 片段和时间片段与其他层共享同一组参数。
-2. **过滤契约**——`is_higher_order=true AND recorded_to IS NULL AND valid_to IS NULL`，与一阶 facts 层的"只返回活跃 fact"契约一致（recension 未关闭 + 时间未失效）。
+2. **过滤契约**——`is_higher_order=true AND knowledge_tier='verified' AND recorded_to IS NULL AND valid_to IS NULL`。注意多一个 `knowledge_tier='verified'`:**召回只返回已审批晋升 verified 的高阶 fact**,candidate tier 的不返回。这与 13.4.5 的"只生成 candidate 待审"配套——未经人工审批的高阶结论不会进入召回结果。若要查看所有高阶 fact(含 candidate),用 `list_higher_order_facts` 接口(`higher_order.py`)。
 3. **LIMIT 10**——高阶结论本身是浓缩产物，每个实体通常只有少数几条，10 条足够覆盖；过多会挤占召回 token 预算。
 
 召回系统的分层结构与 RRF 融合详见第10-12章。
 
-## 13.7 冷启动保护
+## 13.7 质量保护:candidate tier + 人工审批门
 
-Higher-Order 默认**禁用**（`HigherOrderCfg.enabled=False`），并由 `min_access_count` 门禁。原因在于 evidence 的质量依赖信号总线的成熟度：
+Higher-Order 默认**禁用**(`HigherOrderCfg.enabled=False`)。质量保护不再依赖召回热度门(`min_access_count` 已 `deprecated=0`),而是由两层护栏:
 
-- **`access_count` 的来源**——来自 `events` 表的 `access_count` 列（`schema.sql:26`），由召回系统每次命中该事件时递增。它反映"这条一阶事实在真实查询中被验证过多少次"。
-- **冷启动期的问题**——系统刚部署时，事件 `access_count` 全为 0，此时若强行归纳，LLM 只能基于"未被任何查询验证过"的原始抽取结果做抽象，极易产生**幻觉式高阶结论**（把偶发的抽取噪声归纳成"模式"）。
-- **双重门槛的语义**——`min_evidence_count=2` 保证证据数量，`min_access_count=2` 保证证据质量（至少被召回系统验证过）。两者都满足才允许 LLM 介入。
-- **`min_access_count` 对齐信号总线**——这与 Dreaming 的"只合并高频访问的相似三元组"、Methylation 的"冷数据下沉"是同一套热度信号体系。整个记忆自演化系统共享 `access_count` 作为"数据价值"的统一度量。
+- **生成层:candidate tier**。LLM 归纳只能生成 `assertion_status='hypothesized' / knowledge_tier='candidate'` 的待审 fact(见 13.4.5),**不直接进 verified graph**,召回层不返回(见 13.6)。即使 LLM 产生幻觉式高阶结论(把偶发抽取噪声归纳成"模式"),它也只是候选,污染不了知识。
+- **晋升层:人工审批门**。candidate 要晋升 `verified` 必须经 `evolution.review_candidate` 人工审批(`evolution.py`)。`_approve_higher_order` 在执行晋升前会检查:断言须 `confirmed`、需至少两个独立闭环 Case 支撑、有回归证据——这是"认知晋升"的硬质量门槛,比召回热度可靠得多。
 
-因此启用顺序通常是：先跑系统积累召回数据 → 观察 `events.access_count` 分布 → 确认有足够热度后 `higher_order.enabled=true` + 手动 INSERT 几条 `order=2` 谓词定义 → 让抽取管线开始 enqueue 高阶 job。
+`min_evidence_count=2`(证据数量门槛)仍保留:至少 2 条一阶正向事实才允许 LLM 介入归纳,防止单条孤证被抽象。
+
+启用顺序通常是:配 LLM key → 手动 INSERT 几条 `order=2` 谓词定义 → `higher_order.enabled=true` → 抽取管线开始 enqueue 高阶 job → 候选落 `evolution_candidates` → 人工审批通过后晋升 verified、进入召回。`min_access_count` 字段保留但 deprecated(=0),使用热度不参与认知晋升。
 
 ## 13.8 API 与 MCP
 
@@ -449,18 +474,20 @@ class HigherOrderCfg(BaseModel):
     """高阶归纳:从一阶 fact LLM 归纳高阶结论(order=2 谓词)。"""
     enabled: bool = False              # 默认关
     min_evidence_count: int = 2        # 至少 N 条一阶 fact 才归纳
-    min_access_count: int = 2          # 一阶 fact 累计 access_count 达此值才归纳
+    min_access_count: int = 0          # deprecated:使用热度不再作为认知晋升门槛
     lookback_facts: int = 10           # 取最近 N 条一阶 fact 作 evidence
     llm_tier: str = "synthesis"
+    candidate_confidence: float = 0.5  # LLM 归纳只能生成待审核候选
 ```
 
 | 字段 | 默认 | 含义 |
 |------|------|------|
 | `enabled` | `False` | 全局开关。关时 extract 不 enqueue、`generate_higher_order` 直接 skip |
 | `min_evidence_count` | `2` | 证据数量下限，证据窗 facts 数 < 此值则 skip |
-| `min_access_count` | `2` | 证据热度下限，证据窗 facts 的 `access_count` 之和 < 此值则 skip |
+| `min_access_count` | `0` | **deprecated**,使用热度不参与认知晋升(晋升由人工审批门保证) |
 | `lookback_facts` | `10` | 证据窗大小，`LIMIT` 取最近 N 条一阶事实 |
 | `llm_tier` | `"synthesis"` | LLM tier 名（见 LLM 配置），走 `services.llm_chat` |
+| `candidate_confidence` | `0.5` | 生成的 candidate tier fact 的 confidence 值 |
 
 YAML 配置示例：
 
@@ -468,9 +495,9 @@ YAML 配置示例：
 higher_order:
   enabled: true
   min_evidence_count: 3      # 提高证据门槛，减少噪声归纳
-  min_access_count: 5        # 要求证据被反复验证
   lookback_facts: 20         # 更大证据窗，捕捉长周期模式
   llm_tier: "synthesis"
+  candidate_confidence: 0.5  # 候选置信度(审批前)
 ```
 
 调参直觉：

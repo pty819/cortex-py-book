@@ -111,7 +111,7 @@ graph TB
 | `understanding` | 概念合成(per topic)+ related 图 + coverage |
 | `evidence` | 外部证据目录(URI/source_record_id/hash/query/version/quality),payload 留在权威系统 |
 | `evolution` | Dreaming/Higher-Order 人工审批门(`evolution_candidates` 候选列表 + review) |
-| `feedback` | 反馈回灌(双轨:软降权 `salience` + 硬归档 `recorded_to`),正反馈递增 `access_count` |
+| `feedback` | 反馈回灌(双轨:软降权 `salience` + 硬归档 `recorded_to`),正反馈写 `retrieval_usefulness` + `salience`(不写 access_count) |
 | `dreaming` | 离线巩固(两阶段 LLM:`relation_detect` → `action_plan`),scheduler 定时触发 + heartbeat 续命 |
 | `higher_order` | 高阶归纳(evidence-driven LLM 归纳 `order=2` 谓词),extract 后异步触发 |
 
@@ -211,8 +211,8 @@ sequenceDiagram
 | **reaper** | `worker.runner` 每 60s | 扫僵尸 job,防 worker 崩溃后任务卡死 |
 | **退避重试** | `infra.core.fail_job` | 未超 `max_attempts` → queued + 指数退避;超限 → failed 死信 |
 | **Dreaming scheduler** | `worker.runner._maybe_schedule_dreaming` | 内嵌于 worker reaper 周期,按 scope 检查距上次 dreaming 是否超过 `schedule_interval_hours`;有 queued/running dream 时不重复入队 |
-| **Dream heartbeat** | `worker.runner._DreamHeartbeat` | 后台线程每 60s 刷新 dream job 的 `locked_at`,防 reaper 在 300s visibility timeout 内误重排长耗时 dreaming |
-| **Advisory lock** | `memory.dreaming.dream_run` | `pg_try_advisory_xact_lock(hashtext(scope))` 序列化同 scope 并发 dream run |
+| **Dream heartbeat** | `worker.runner._JobHeartbeat` | 所有 job 共用的后台线程,每 60s 刷新 job 的 `locked_at`(带 `worker_id` fencing),防 reaper 在 300s visibility timeout 内误重排长耗时 dreaming |
+| **Advisory lock** | `memory.dreaming.dream_run` | `pg_try_advisory_lock(hashtext(:key))` session 级锁,key=`dream:{scope}`,`finally` 显式 `pg_advisory_unlock` 序列化同 scope 并发 dream run |
 | **pg_notify** | `infra.core.emit_lifecycle` | lifecycle 事件推送,`?wait=` 的 LISTEN 立即收到 |
 | **SSE 长连接** | `api.app` stream 端点 | `EventSourceResponse` + `is_disconnected()` 探活 |
 | **幂等 WAL** | `infra.core.append_event` | 同 key + 同 body hash → 返回既有;异 body → 409 |
@@ -347,7 +347,7 @@ graph TB
     end
 
     subgraph client ["客户端"]
-        VUE["Vue 3 :5173<br/>Ingest·Graph·Ask·Browse<br/>Ops·Settings"]
+        VUE["Vue 3 控制平面 :5173<br/>(12 视图:Overview/Ops/Ingest/Data/Cases/QA<br/>Graph/Browse/Understanding/Governance<br/>ApiConsole/Settings)"]
         CC["Claude Code<br/>MCP stdio"]
         RA["远程 Agent<br/>MCP HTTP"]
     end
@@ -551,8 +551,8 @@ sequenceDiagram
     FB->>DB: SELECT ... FOR UPDATE(序列化同 fact 并发反馈)
 
     alt signal_type=relevant(正)
-        FB->>DB: access_count += 1, salience 上调(ceil 封顶)
-        FB-->>API: actions=[salience_boosted]
+        FB->>DB: retrieval_usefulness + salience 上调(ceil 封顶)
+        FB-->>API: actions=[retrieval_usefulness_boosted, salience_boosted]
     else signal_type=irrelevant(负)
         FB->>DB: salience 下调(floor 兜底), negative_feedback_count += 1
         FB->>FB: _check_methylation(累积阈值?)
@@ -629,7 +629,7 @@ sequenceDiagram
 | 双时态 | 4 字段(valid/recorded × from/to) | 同时支持"现在什么是真的"和"当时我们怎么以为" |
 | 分层 | 4 子包(infra/memory/graph/interfaces) | 职责清晰;依赖单向无环;便于维护演进 |
 | 信号总线 | `access_count` + `salience` 作为共享信号层 | 单一信号层耦合 Feedback/Dreaming/Higher-Order,避免 MindMemOS 把三功能解耦成互不知情的孤岛;反馈即时回流召回排序 |
-| Dreaming 并发 | advisory lock + heartbeat + SAVEPOINT 隔离 | `pg_try_advisory_xact_lock` 序列化同 scope;heartbeat 续命防 reaper;每 action 独立 SAVEPOINT 防单个坏 LLM 输出拖垮整轮 |
+| Dreaming 并发 | advisory lock + heartbeat + SAVEPOINT 隔离 | `pg_try_advisory_lock`(session 级,key=`dream:{scope}`,finally 显式 unlock)序列化同 scope;heartbeat 续命防 reaper;每 action 独立 SAVEPOINT 防单个坏 LLM 输出拖垮整轮 |
 | Feedback 幂等 | `ON CONFLICT` 原子去重 + `FOR UPDATE` 串行 | 防 TOCTOU race(并发同 key → 第二个 500);行锁序列化同 fact 反馈,防 salience/count 读改写竞态 |
 | 配置热更新 | 白名单深合并(原地改 _CACHE) | 开关即时生效无需重启;白名单禁改 database/embedding.dimension;不替换实例避免 auth 绑定失效 |
 

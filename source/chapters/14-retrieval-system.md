@@ -135,7 +135,7 @@ flowchart TB
     SIG --> P2[Phase 2: Rerank 会话外]
     P2 --> P3[Phase 3: _assemble_pack 独立短事务 x3 重试]
     P3 --> CB[context_block LLM 会话外]
-    CB --> CACHE[access_count 递增 + Cache 独立短事务]
+    CB --> CACHE[retrieval_count 递增 + Cache 独立短事务]
     CACHE --> OUT[StratifiedPack]
 ```
 

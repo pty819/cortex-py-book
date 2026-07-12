@@ -131,33 +131,36 @@ def reap_zombies(conn, visibility_secs=300):
     return r.rowcount or 0
 ```
 
-默认 visibility timeout = 300 秒。超过 5 分钟未完成的任务自动回到队列。
+默认 visibility timeout 来自 `cfg.worker.visibility_timeout_secs`（默认 300 秒）。reaper 的触发间隔来自 `cfg.worker.reaper_interval_secs`（默认 60 秒）。超过 `visibility_timeout_secs` 未完成的任务自动回到队列。
 
 ## Worker 主循环
 
 ```python
-def worker_loop():
-    worker_id = f"worker-{uuid.uuid4().hex[:8]}"
-    while True:
+def run_worker(*, max_iterations=0):
+    cfg = load_config()
+    worker_id = f"worker-{uuid.uuid4().hex[:12]}"
+    poll = cfg.worker.poll_interval_secs
+    vis = cfg.worker.visibility_timeout_secs
+    while max_iterations == 0 or it < max_iterations:
+        cfg = load_config()  # 按 YAML mtime 自动刷新
+        poll = cfg.worker.poll_interval_secs
+        vis = cfg.worker.visibility_timeout_secs
         with session_scope() as conn:
-            # 1. 回收僵尸
-            reaped = reap_zombies(conn, visibility_secs=300)
-            
-            # 2. 抢任务
             job = claim_next_job(conn, worker_id)
-        
         if not job:
-            time.sleep(1)  # 空转等待
+            if now - last_reap > cfg.worker.reaper_interval_secs:
+                with session_scope() as conn:
+                    reap_zombies(conn, vis)              # 用 vis 而非硬编码
+                    _maybe_schedule_dreaming(conn, ...)  # 复用同一 session
+                last_reap = now
+            time.sleep(poll)
             continue
-        
-        try:
-            result = _dispatch(job)
-            
-            with session_scope() as conn:
-                complete_job(conn, job["job_id"], result)
-        except Exception as e:
-            with session_scope() as conn:
-                fail_job(conn, job["job_id"], str(e))
+        heartbeat_interval = max(1.0, min(60.0, vis / 3.0))
+        with _JobExecutionLock(job["job_id"]):
+            with _JobHeartbeat(job["job_id"], worker_id, heartbeat_interval):
+                result = _dispatch(job)
+                with session_scope() as conn:
+                    complete_job(conn, job["job_id"], worker_id, result)
 ```
 
 ### `_dispatch`：8 种 job 类型
@@ -168,35 +171,40 @@ def worker_loop():
 |----------|----------|------|
 | `extract` | `extract_event(event_id)` | 同步抽取三元组 + 实体 + 索引 |
 | `segment` | `segment_event(event_id)` | 对长文本 event 做分段切片 |
-| `methylation` | `methylation_run(scope)` | 软剪枝长期不召回的 events |
-| `consolidate` | `consolidate_scope(scope)` | 同 S/P/O 重复 facts 去重 |
+| `methylation` | `methylation_run(scope, older_than_days=...)` | 软剪枝长期不召回的 events；`older_than_days` 从 payload 取（默认 30） |
+| `consolidate` | `consolidation_run(scope)` | 完整语义身份相同的 legacy duplicates 去重 |
 | `enrich` | 内联三段短事务 | 扫无 embedding 实体 → 会话外批量 `embed_texts` → 写回短事务 |
-| `synthesize` | `synthesize_scope(scope)` | 跨 facts 合成摘要/结论 |
-| `dream` | `dreaming_run(scope)` | 离线巩固：relation_detect + action_plan 两阶段（见下文调度器） |
-| `higher_order` | `higher_order_generate(entity_id, scope)` | 高阶归纳：基于证据摘要生成抽象概念节点 |
+| `synthesize` | `synthesize_scope(scope, topics=...)` | 跨 facts 合成摘要/结论；`topics` 从 payload 透传 |
+| `dream` | `dream_run(scope, **payload)` | 离线巩固：relation_detect + action_plan 两阶段（见下文调度器） |
+| `higher_order` | `generate_higher_order(entity_id, new_fact_id=...)` | 高阶归纳：基于证据摘要生成抽象概念节点；无 scope 参数 |
 
 ```python
 def _dispatch(job):
     jt = job["job_type"]
-    if jt == "extract":
+    scope = job.get("scope")
+    if jt == "extract" and job.get("event_id"):
         return extract_event(job["event_id"])
-    elif jt == "segment":
-        return segment_event(job["event_id"])
-    elif jt == "methylation":
-        return methylation_run(job["scope"])
-    elif jt == "consolidate":
-        return consolidate_scope(job["scope"])
-    elif jt == "enrich":
-        return enrich_scope(job["scope"])
-    elif jt == "synthesize":
-        return synthesize_scope(job["scope"])
-    elif jt == "dream":
-        return dreaming_run(job["scope"])
-    elif jt == "higher_order":
-        return higher_order_generate(
-            entity_id=job["payload"].get("entity_id"),
-            scope=job["scope"])
-    raise ValueError(f"unknown job_type: {jt}")
+    if jt == "segment" and scope:
+        return segment_scope(scope)
+    if jt == "methylation" and scope:
+        older = (job.get("payload") or {}).get("older_than_days", 30)
+        return methylation_run(scope, older_than_days=older)
+    if jt == "consolidate" and scope:
+        return consolidation_run(scope)
+    if jt == "enrich" and scope:
+        ...  # 内联三段短事务
+    if jt == "synthesize" and scope:
+        payload = job.get("payload") or {}
+        return synthesize_scope(scope, topics=payload.get("topics"))
+    if jt == "dream" and scope:
+        payload = job.get("payload") or {}
+        return dream_run(scope, **payload)
+    if jt == "higher_order" and scope:
+        payload = job.get("payload") or {}
+        return generate_higher_order(
+            payload.get("entity_id", ""),
+            new_fact_id=payload.get("new_fact_id"))
+    raise ValueError(f"unsupported job_type: {jt}")
 ```
 
 ## 生命周期事件通知
@@ -300,29 +308,28 @@ def _maybe_schedule_dreaming(conn, cfg, last_check, now):
 
 > 查 `dreaming_runs` 而非 `jobs`——dreaming 有独立的运行记录表（含 `started_at`/`completed_at`/`status`），比从 `jobs` 表推断更准确。入队用内联 `INSERT INTO jobs` 而非 `enqueue_job()`，因为此处已在 `session_scope` 内，`enqueue_job` 内部会另开 session 导致嵌套。
 
-### `_DreamHeartbeat`：心跳续约线程
+### `_JobHeartbeat`：心跳续约线程
 
-Dream job 执行期间，后台线程每 60 秒刷新该 job 的 `jobs.locked_at = now()`，使 `reap_zombies`（visibility_timeout 300s）不会把正在跑的长任务误判为僵尸而重新入队。
+所有 job 共用的 `_JobHeartbeat`（带 `worker_id` owner-fencing），在 `run_worker` 的 job 循环外层包裹每个 job，不是 dream 专用、也不在 `_dispatch` 内部。后台线程每 `interval` 秒刷新该 job 的 `locked_at = now()`，使 `reap_zombies`（visibility_timeout）不会把正在跑的长任务误判为僵尸而重新入队。
 
-心跳通过 `@contextmanager` 包装 dream 的 dispatch 调用——进入时起线程，退出时停线程：
+心跳间隔是动态的，基于 `cfg.worker.visibility_timeout_secs`(`vis`) 计算：`max(1.0, min(60.0, vis/3.0))`——不是固定 60s。默认 `vis=300` 时，心跳间隔为 `min(60.0, 100.0) = 60.0`s；若 `vis` 调小，心跳会自动加快以保持"三次心跳超时才回收"的安全余量。
+
+心跳通过 `@contextmanager` 包装整个 `_dispatch` + `complete_job`——进入时起线程，退出时停线程；续约时走 `heartbeat_job(conn, job_id, worker_id)`，lease 丢失（owner 不再是自己）则自动停止续租：
 
 ```python
 from contextlib import contextmanager
 
 @contextmanager
-def _DreamHeartbeat(job_id: str, interval: float = 60.0):
-    """每 interval 秒在独立连接里刷新 jobs.locked_at,防止 reaper 抢走长跑 dream job。
-    心跳内部自行 session_scope(),不需要外部传入 conn_factory。"""
+def _JobHeartbeat(job_id: str, worker_id: str, interval: float = 60.0):
+    """所有 job 共用 owner-fenced heartbeat；lease 丢失后停止续租。"""
     stop = threading.Event()
 
     def _beat():
         while not stop.wait(interval):
             try:
                 with session_scope() as c:
-                    c.execute(text("""
-                        UPDATE jobs SET locked_at=now()
-                        WHERE job_id=CAST(:j AS uuid) AND status='running'
-                    """), {"j": job_id})
+                    if not heartbeat_job(c, job_id, worker_id):
+                        stop.set()
             except Exception:
                 pass  # 心跳失败不阻断主任务
 
@@ -332,15 +339,23 @@ def _DreamHeartbeat(job_id: str, interval: float = 60.0):
         yield
     finally:
         stop.set()
+        t.join(timeout=min(interval, 1.0))
 
-# 在 _dispatch 的 dream 分支中：
-with _DreamHeartbeat(job["job_id"]):
-    result = dream_run(job["scope"])
+# 在 run_worker 的 job 循环中（_dispatch 外层）：
+heartbeat_interval = max(1.0, min(60.0, vis / 3.0))
+with _JobExecutionLock(job["job_id"]):
+    with _JobHeartbeat(job["job_id"], worker_id, heartbeat_interval):
+        result = _dispatch(job)
+        with session_scope() as conn:
+            if not complete_job(conn, job["job_id"], worker_id, result):
+                log.warning("lost lease before completing")
+                continue
+            emit_lifecycle(conn, ...)
 ```
 
-> `@contextmanager` 比手写 `__enter__`/`__exit__` class 更简洁。心跳内部自行 `session_scope()`，不需要调用方传入 `conn_factory`——这避免了调用方需要知道 session 来源的耦合。
+> `_dispatch` 内部不再有 `_DreamHeartbeat`——心跳在 `run_worker` 外层统一包裹所有 job 类型，dream 与其他 job 一视同仁。`@contextmanager` 比手写 `__enter__`/`__exit__` class 更简洁；心跳内部自行 `session_scope()`，不需要调用方传入 `conn_factory`。
 
-> 设计要点：心跳只续 `locked_at`，不改 status / attempts；任务真正结束仍由 `complete_job` / `fail_job` 处理。心跳线程是 daemon，worker 进程崩溃时不会卡住退出。
+> 设计要点：心跳走 `heartbeat_job` 带 owner-fencing（只有持有 lease 的 worker_id 能续租），续不上或被抢占就自动停止；任务真正结束仍由 `complete_job` / `fail_job` 处理。心跳线程是 daemon，worker 进程崩溃时不会卡住退出。
 
 ## 启动 Worker
 

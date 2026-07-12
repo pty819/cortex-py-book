@@ -27,7 +27,7 @@ cortex schema 共 **27 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分
 | `concepts` | Understanding 概念 | name, topic, summary, supports, related |
 | `evidence_artifacts` | **外部证据目录**(payload 留权威系统) | evidence_kind, uri/source_record_id, content_hash, source_system, observed_from/to, query_spec, quality |
 | `claim_evidence` | fact ↔ evidence 引用 | fact_id, evidence_id, role(supports/refutes), weight, span |
-| `assertion_case_links` | fact ↔ Case 关联 | fact_id, episode_id, relation(hypothesis/counter/regime) |
+| `assertion_case_links` | fact ↔ Case 关联 | fact_id, episode_id, relation(supports/refutes/reuses/workspace/promoted_from) |
 | `episode_evidence` | Case ↔ evidence 关联 | episode_id, evidence_id, role(regression) |
 | `jobs` | Postgres-as-queue | job_type, status, payload |
 | `scopes` | scope 注册表 | scope_path, parent_path, policies |
@@ -43,7 +43,7 @@ cortex schema 共 **27 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分
 | `recall_packs` | 检索结果缓存 | pack_id, query_hash, pack_json, expires_at |
 | `feedback_signals` | **反馈信号总线**(反馈回灌) | scope, target_layer, target_id, signal_type, signal_durable, strength, idempotency_key, applied |
 | `dreaming_runs` | **离线巩固运行记录**(Dreaming) | run_id, scope, status, phase0_closed, phase_a_clusters, phase_b_issues, phase_c_actions |
-| `evolution_candidates` | **人工审批门**(Dreaming/Higher-Order 候选) | source_type, proposed_action, subject_id, payload, source_fact_ids, status(pending/approved/rejected), reviewer, reasoning |
+| `evolution_candidates` | **人工审批门**(Dreaming/Higher-Order 候选) | source_type, proposed_action, subject_id, payload, source_fact_ids, status(pending/approved/rejected/applied), reviewer, reasoning |
 | `predicate_definitions` | **谓词本体表**(从 ontology.py 迁入 DB) | predicate, category, prop_order, cardinality, example |
 
 ## 实体表 (entities)
@@ -499,7 +499,7 @@ CREATE TABLE IF NOT EXISTS cortex.evolution_candidates (
     predicate          TEXT,
     payload            JSONB NOT NULL DEFAULT '{}',
     source_fact_ids    UUID[] NOT NULL DEFAULT '{}',
-    status             TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','applied','failed')),
+    status             TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','applied')),
     proposed_confidence FLOAT CHECK (proposed_confidence IS NULL OR (proposed_confidence >= 0 AND proposed_confidence <= 1)),
     reasoning          TEXT,
     reviewer           TEXT,

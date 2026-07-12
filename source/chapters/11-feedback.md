@@ -23,7 +23,7 @@ graph LR
     EV --> NX
 ```
 
-设计借鉴 MindMemOS 的三级 durable 分类法（`task_temporary` / `scenario_specific` / `long_term`），以及 "归档而非删除" 的软关原则。**关键差异**：cortex-py 补上了 MindMemOS 漏掉的正反馈通道——`relevant` 信号会递增 `events.access_count` 并上调 `salience`，让被反复确认的事实持续上浮，而非只做单向惩罚。
+设计借鉴 MindMemOS 的三级 durable 分类法（`task_temporary` / `scenario_specific` / `long_term`），以及 "归档而非删除" 的软关原则。**关键差异**：cortex-py 补上了 MindMemOS 漏掉的正反馈通道——`relevant` 信号会写 `facts.retrieval_usefulness` 并上调 `salience`（不再递增 `access_count`，避免显式反馈伪装成被动召回次数的双重加权），让被反复确认的事实持续上浮，而非只做单向惩罚。
 
 ## 2. 信号分类
 
@@ -33,7 +33,7 @@ graph LR
 |----------------|------|----------------------------------------------------------------|--------------------------------------|
 | `relevant`     | 正   | retrieval_usefulness+positive_weight, salience+positive_weight, positive_feedback_count+1 | 表扬：这条召回有用，提升下次排序      |
 | `irrelevant`   | 负   | retrieval_usefulness−negative_weight, salience−negative_weight, negative_feedback_count+1 | 轻惩：跑题，降权；累积触发 methylation |
-| `wrong`        | 强负 | salience−negative_weight, negative_feedback_count+1, assertion_status='ruled_out'（task_temporary 再 recorded_to=now） | 纠错：结论错了，推翻并可能归档       |
+| `wrong`        | 强负 | 软关旧 fact + INSERT ruled_out 负版本(workspace tier, diagnostic_correctness=0.0) + 派生反驳 evidence（task_temporary 再软关新版本） | 纠错：结论错了，版本化推翻并可能归档 |
 | `partial`      | 中性 | 仅记录                                                         | 不调整，作为 Dreaming/Higher-Order 的离线输入信号 |
 
 ### 2.2 三种 signal_durable
@@ -50,7 +50,7 @@ graph LR
 |-----------------------|---------------------------------------------|--------------------------------------|--------------------------------------|
 | **relevant**          | retrieval_usefulness↑, salience↑            | retrieval_usefulness↑, salience↑     | retrieval_usefulness↑, salience↑     |
 | **irrelevant**        | salience↓, retrieval_usefulness↓, 累积触发 methylation | salience↓, retrieval_usefulness↓, 累积触发 methylation | salience↓, retrieval_usefulness↓, 累积触发 methylation |
-| **wrong**             | salience↓, ruled_out, **recorded_to=now()**, methylation 检查 | salience↓, ruled_out, methylation 检查 | salience↓, ruled_out, methylation 检查 |
+| **wrong**             | 版本化 ruled_out + 软关新版本 + methylation 检查 | 版本化 ruled_out + methylation 检查 | 版本化 ruled_out + methylation 检查 |
 | **partial**           | 仅记录                                      | 仅记录                               | 仅记录                               |
 
 注意 `signal_durable` 只在 `wrong` 分支产生差异化动作：唯有 `task_temporary` 才会走硬轨归档。其他 durable 等级对同类型信号的处理一致——它们的价值在于为后续的 Dreaming 离线巩固提供分级输入，而非改变即时路径。
@@ -138,30 +138,48 @@ elif signal_type == "irrelevant":
 
 只动 facts 表，不碰 events。salience 钳底下调后立即调用 `_check_methylation` 检查是否已累积到阈值。
 
-### 4.3 wrong 分支（L149-164）
+### 4.3 wrong 分支(版本化修订,非 in-place 改)
+
+````{admonition} 关键设计变更
+:class: important
+wrong 反馈**不再 in-place 改 `assertion_status='ruled_out'`**。遵循双时态原则("Epistemic changes are recorded-time revisions, never in-place history edits"),它走**版本化 INSERT**:软关旧 fact → 插入一条 `polarity='negative' / assertion_status='ruled_out' / knowledge_tier='workspace'` 的新版本,保留历史可溯源。
+````
 
 ```python
 elif signal_type == "wrong":
-    conn.execute(text(f"""
-        UPDATE facts SET negative_feedback_count = negative_feedback_count + 1,
-                         salience = greatest(salience - :w, :floor),
-                         assertion_status = 'ruled_out'
-        WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND {_LIVE_FACT}
-    """), {"f": fact_id, "s": scope, "w": fb.negative_weight, "floor": fb.salience_floor})
+    # 1) 软关旧 fact(recorded_to=now())
+    conn.execute(text("UPDATE facts SET recorded_to=now() WHERE fact_id=CAST(:f AS uuid)"),
+                 {"f": fact_id})
+    # 2) INSERT 一条 ruled_out 负版本(从旧 fact 复制大部分列,改 polarity/assertion/tier/salience)
+    revised_id = conn.execute(text("""
+        INSERT INTO facts(...,polarity,assertion_status,...,knowledge_tier,...,
+                           salience,negative_feedback_count,diagnostic_correctness,...)
+        SELECT ...,'negative','ruled_out',...,'workspace',...,
+               greatest(salience-:weight,:floor),negative_feedback_count+1,0.0,...
+        FROM facts WHERE fact_id=CAST(:f AS uuid) RETURNING fact_id::text
+    """), {"f": fact_id, "weight": fb.negative_weight, "floor": fb.salience_floor}).scalar()
+    # 3) 复制 claim_evidence 到新版本(role='context')
+    # 4) 若有 feedback_id:派生一条 evidence_artifacts('derived','feedback')+
+    #    两条 claim_evidence(旧 fact role='refutes', 新 fact role='supports')
     actions.append("assertion_ruled_out")
+    actions.append(f"assertion_versioned:{revised_id}")
     actions.append("salience_demoted")
+    # task_temporary:软关的是新版本 revised_id(不是原 fact_id)
     if signal_durable == "task_temporary":
-        conn.execute(text(f"UPDATE facts SET recorded_to=now() WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND {_LIVE_FACT}"),
-                     {"f": fact_id, "s": scope})
+        conn.execute(text("UPDATE facts SET recorded_to=now() WHERE fact_id=CAST(:f AS uuid)"),
+                     {"f": revised_id})
         actions.append("fact_archived(task_temporary)")
-    _check_methylation(conn, scope, fact_id, cfg, actions)
+    _check_methylation(conn, scope, revised_id, cfg, actions)
 ```
 
-比 irrelevant 多两步：
-- `assertion_status = 'ruled_out'`：把断言状态显式标记为已推翻，供 Belief 层推理感知。
-- 若 `signal_durable == "task_temporary"`：追加硬轨 `recorded_to=now()` 软关。
+与 irrelevant 的关键差异:
 
-无论是否归档，最后都走 `_check_methylation`。
+- **版本化而非 in-place**:软关旧 fact + INSERT 负版本,而非直接 `UPDATE assertion_status`。旧 fact 留在历史里,可溯源"曾经被认为真"。
+- **新版本字段**:`polarity='negative'`、`assertion_status='ruled_out'`、`knowledge_tier='workspace'`、`diagnostic_correctness=0.0`(标记为诊断上不正确)、`salience` 下调、`negative_feedback_count+1`。
+- **证据链迁移**:旧 fact 的 `claim_evidence` 复制到新版本(role='context');若有 feedback_id,额外派生一条 `evidence_artifacts(evidence_kind='derived', source_system='feedback')`,并用两条 claim_evidence 把它分别以 `refutes`(指向旧)、`supports`(指向新)关联——形成可溯源的反驳证据。
+- **task_temporary 软关的是 `revised_id`**(新版本),不是原 fact_id——因为原 fact 已经在第 1 步被软关了。
+
+无论是否归档,最后都对 `revised_id` 走 `_check_methylation`。
 
 ### 4.4 partial 分支（L166-168）
 

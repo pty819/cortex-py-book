@@ -78,12 +78,13 @@ def _chan_bm25(conn, scope, view, query, top_k, as_of=None, include_superseded=F
     sql = f"""
         SELECT fact_id::text FROM facts
         WHERE {frag} AND {tc}
-          AND (to_tsvector('simple', 
+          AND (to_tsvector('simple',
                coalesce(predicate,'')||' '||coalesce(object_value->>'value','')
                ||' '||coalesce((SELECT canonical_name FROM entities WHERE entity_id=facts.subject_id),''))
                @@ plainto_tsquery(:q)
                OR coalesce(object_value->>'value','') ILIKE :likeq
-               OR coalesce((SELECT canonical_name FROM entities WHERE entity_id=facts.subject_id),'') ILIKE :likeq)
+               OR coalesce((SELECT canonical_name FROM entities WHERE entity_id=facts.subject_id),'') ILIKE :likeq
+               OR coalesce((SELECT canonical_name FROM entities WHERE entity_id=facts.object_entity_id),'') ILIKE :likeq)
         ORDER BY ts_rank(...) DESC
         LIMIT :k
     """
@@ -188,11 +189,25 @@ CREATE TABLE synonyms (
 
 ## 通道6：Temporal-decay 时间衰减
 
-**原理**：按 access_count（访问热度）+ 时间衰减加权，热数据优先
+**原理**：按 `valid_from` 近因窗内 facts，纯时间衰减排序（越新越靠前），不依赖 `access_count`。通道内排序只看时间新近度，不看热度。
 
-该通道使用 `events.access_count` 字段统计每个 event 被召回次数。access_count=0 且超过阈值的 events 会被 methylation 标记为 `excluded_from_recall`。
+真实实现（`pipeline.py:222-237`）：scope 过滤 + 时态过滤 + `valid_from >= anchor - decay_days` 近因窗 + `ORDER BY valid_from DESC LIMIT :k`。**完全不读 `access_count`，不 JOIN events**。
 
-> **信号总线加权补充**：除上述 6 通道融合外,融合后还有一步**四信号加权**(salience / usage / usefulness / exploration),详见第14章和第10章。注意:temporal-decay 通道内排序仍用 `events.access_count`(通道内热度),但融合后的信号总线加权阶段已改读 `facts.retrieval_count`(被动召回次数)——两者由 recall 同步递增,语义一致但物理字段不同。通道内热度让高频记忆在 temporal-decay 通道得分更高(进候选集),信号总线加权再叠加 Usage 饱和加分(融合后),形成**通道内 + 融合后**两层热度影响。
+```python
+def _chan_temporal_decay(conn, scope, view, top_k, decay_days=30,
+                         as_of=None, include_superseded=False):
+    frag, p = _scope_filter(scope, view)
+    anchor = "CAST(:ao AS timestamptz)" if as_of else "now()"
+    sql = f"""
+        SELECT fact_id::text FROM facts
+        WHERE {frag} AND {tc}
+          AND valid_from >= {anchor} - make_interval(secs => :d * 86400)
+        ORDER BY valid_from DESC LIMIT :k
+    """
+    return [r[0] for r in conn.execute(text(sql), p).fetchall()]
+```
+
+> **信号总线加权补充**：除上述 6 通道融合外,融合后还有一步**四信号加权**(salience / usage / usefulness / exploration),详见第14章和第10章。注意:temporal-decay 通道内排序只看时间新近度(不看热度),Usage(被动召回次数)只在**融合后的信号总线加权**阶段叠加加分,不会在通道内排序阶段介入。
 
 ## HyDE 假设性文档嵌入
 
@@ -225,14 +240,13 @@ MULTIHOP_SYSTEM = """【本次任务：查询 → 多个子查询（用于多跳
 
 ## scope 过滤视图
 
-所有通道都支持 4 种 scope 视图：
+所有通道都支持 3 种 scope 视图（`_scope_filter` 只有 `holistic` / `descend` / 其他=local 三路，无 `structured` 分支）：
 
 | 视图 | 含义 | SQL |
 |------|------|-----|
-| `local` | 精确 scope 匹配 | `scope = :scope` |
+| `local`（默认） | 精确 scope 匹配 | `scope = :scope` |
 | `holistic` | 祖先链回溯 | `scope = ANY(前缀列表)` |
 | `descend` | scope + 子 scope | `(scope = :s OR scope LIKE :s || '/%')` |
-| `structured` | 精确匹配 | 同 local |
 
 ## 通道对比
 
@@ -243,4 +257,4 @@ MULTIHOP_SYSTEM = """【本次任务：查询 → 多个子查询（用于多跳
 | 图遍历 | 关联推理 | "XX的根因是什么" | graph_eligible facts |
 | Entity Name | 模糊名称 | 记不全的名字 | pg_trgm |
 | Synonym | 同义表达 | "owns vs has" | synonyms 表 |
-| Temporal | 热数据 | "最近的问题" | access_count |
+| Temporal | 最近 facts | "最近的问题" | valid_from |

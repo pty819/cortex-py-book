@@ -20,12 +20,12 @@ Feedback(反馈回灌)、Dreaming(离线巩固)、Higher-Order(高阶归纳)这�
 
 ```{mermaid}
 graph LR
-    R[recall 命中] -->|writes| AC[events.access_count++]
-    AC --> SRW[四信号加权]
+    R[recall 命中] -->|writes| RC[facts.retrieval_count++ / events 冗余]
+    RC --> SRW[四信号加权]
     FB[Feedback] -->|reads salience<br/>writes salience| SRW
     SRW -->|re-weighted score| RR[rerank]
-    AC --> DR[Dreaming<br/>读 access_count 选簇]
-    AC --> HO[Higher-Order<br/>读 access_count 门控]
+    RC --> DR[Dreaming<br/>读 retrieval_count 选簇]
+    RC --> HO[Higher-Order<br/>读 evidence_quality 门控]
     FB -->|writes| SAL[facts.salience]
     SAL --> SRW
     DR -->|失效 cache| CACHE[(recall_packs)]
@@ -42,7 +42,7 @@ graph LR
 
 | 列 | 类型 | 默认 | 语义 |
 |---|---|---|---|
-| `access_count` | `INT NOT NULL` | `0` | 召回计数(保留兼容,Higher-Order/Dreaming 仍读它做门控;检索加权已改读 `facts.retrieval_count`) |
+| `access_count` | `INT NOT NULL` | `0` | 召回计数(保留兼容,主要给 methylation 冷数据扫描的 partial index `access_count=0` 使用;检索加权已改读 `facts.retrieval_count`) |
 | `retrieval_count` | `INT NOT NULL` | `0` | 新增:events 级召回计数,与 `facts.retrieval_count` 同步递增 |
 | `last_recalled_at` | `TIMESTAMPTZ` | `NULL` | 最近一次被召回的时间戳 |
 | `feedback_processed` | `BOOLEAN NOT NULL` | `false` | 是否已被反馈流水线处理过(幂等标记) |
@@ -90,7 +90,7 @@ if track_usage and result_pack.get("layers", {}).get("facts"):
                     UPDATE facts SET retrieval_count=retrieval_count+1
                     WHERE fact_id = ANY(CAST(:ids AS uuid[]))
                 """), {"ids": "{" + ",".join(_hit_ids) + "}"})
-                # events 冗余计数(access_count 仍写,供 Higher-Order/Dreaming 门控)
+                # events 冗余计数(access_count 仍写,但仅供 methylation 冷数据扫描;Higher-Order/Dreaming 已改读 facts.retrieval_count/evidence_quality)
                 conn.execute(text("""
                     UPDATE events SET retrieval_count = retrieval_count + 1,
                                       access_count = access_count + 1,

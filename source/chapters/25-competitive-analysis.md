@@ -352,17 +352,17 @@ Cortex-PY 的三个自演化特性——**Feedback / Dreaming / Higher-Order**�
 |----------------|----------------|--------|------------------|
 | **Dreaming** | 两阶段 LLM 分离：`relation_detect`（先识别实体间该有什么关系）+ `action_plan`（再决定 INSERT/UPDATE/DELETE/MERGE） | 借鉴其两阶段分离架构——Phase 1 只做关系发现，Phase 2 才做动作决策，避免单次 LLM 调用既想关系又想动作导致的幻觉 | 同样两阶段，但 Phase 0 先复用 `consolidation_run` 去重（见第 17/23 章），且 action 阶段受谓词闭集 + assertion_status 约束 |
 | **Higher-Order** | `_schema_higher_order.py`：基于证据驱动（evidence-driven）的摘要化——收集某实体相关的 facts/beliefs 作为证据，LLM 据此生成抽象概念节点 | 借鉴其"证据驱动"思路——归纳不是凭空生成，而是以已存事实为证据基底 | 同样证据驱动，但生成的抽象节点受实体类型体系约束（不能把 component 归纳成 symptom） |
-| **Feedback** | 3 层 durable 分类：`task_temporary`（任务级，短期）/ `scenario_specific`（场景级，中期）/ `long_term`（长期） | 借鉴其 3 层 durable 分类，反馈信号按持久度分级存储与应用 | 增加**正反馈**通道（access_count + salience 提升）——MindMemOS 只处理负反馈降权；cortex-py 允许"用户确认有用"反向提升记忆权重 |
+| **Feedback** | 3 层 durable 分类：`task_temporary`（任务级，短期）/ `scenario_specific`（场景级，中期）/ `long_term`（长期） | 借鉴其 3 层 durable 分类，反馈信号按持久度分级存储与应用 | 增加**正反馈**通道（salience + retrieval_usefulness 提升）——MindMemOS 只处理负反馈降权；cortex-py 允许"用户确认有用"反向提升记忆权重 |
 
 ### 5.3 三个关键设计差异
 
 除了借鉴，cortex-py 在三处故意偏离 MindMemOS：
 
-1. **正反馈通道**。MindMemOS 的反馈模型只覆盖负反馈（纠错、降权、淘汰）。cortex-py 增加了正反馈——用户确认某条记忆有用时，提升其 `access_count` 和 `salience`，使其在未来检索中排名上升。诊断场景下这很重要："上次确认 MFC-1 漂移是根因"这条记忆应被正向强化，而不是只在出错时才被修正。
+1. **正反馈通道**。MindMemOS 的反馈模型只覆盖负反馈（纠错、降权、淘汰）。cortex-py 增加了正反馈——用户确认某条记忆有用时，提升其 `salience` 和 `retrieval_usefulness`，使其在未来检索中排名上升。诊断场景下这很重要："上次确认 MFC-1 漂移是根因"这条记忆应被正向强化，而不是只在出错时才被修正。
 
 2. **双时态软关闭 vs status='archived'**。MindMemOS 用一个 `status='archived'` 字段标记被淘汰的记忆——这是个离散标志位。cortex-py 改用双时态软关闭：设置 `recorded_to = now()`（认知上已过时），但保留 `valid_to`（历史上为真的时间窗口）。差异在于：archived 是"这条没了"，软关闭是"这条在某个时间窗口内曾为真，现在被更新覆盖"——后者保留了时态可追溯性，对诊断复盘有用。
 
-3. **共享信号总线 vs 解耦**。MindMemOS 的三个特性（反馈 / 离线巩固 / 高阶归纳）彼此解耦，各自独立运行。cortex-py 把它们耦合到**同一个信号总线**——`access_count` 和 `salience` 是三个特性共同读写的共享状态：Feedback 写入这两个字段，Dreaming 读它们决定巩固优先级，Higher-Order 读它们决定哪些实体值得归纳。代价是三个特性不能完全独立演进；收益是反馈能即时影响巩固和归纳的优先级，形成闭环。
+3. **共享信号总线 vs 解耦**。MindMemOS 的三个特性（反馈 / 离线巩固 / 高阶归纳）彼此解耦，各自独立运行。cortex-py 把它们耦合到**同一个信号总线**——`retrieval_count`、`salience`、`retrieval_usefulness` 等是三个特性共同读写的共享状态：Feedback 写 salience/retrieval_usefulness，Dreaming 读它们决定巩固优先级，Higher-Order 读 evidence_quality 决定哪些实体值得归纳。代价是三个特性不能完全独立演进；收益是反馈能即时影响巩固和归纳的优先级，形成闭环。
 
 ### 5.4 对诊断场景的意义
 
@@ -387,7 +387,7 @@ MindMemOS 不是为故障诊断设计的——它的目标是通用 agent 的长
   但在诊断意义上完全不同。
 ```
 
-**谁做到了**：Cortex-PY（16 种预定义类型 + 40+ 谓词约束）、Graphiti（可自定义 Pydantic 实体/边类型，但无约束机制）
+**谁做到了**：Cortex-PY（21 种预定义类型 + 40+ 谓词约束）、Graphiti（可自定义 Pydantic 实体/边类型，但无约束机制）
 
 ### 需求 2：同名实体在不同设备中必须是不同实体
 
@@ -478,7 +478,7 @@ MindMemOS 不是为故障诊断设计的——它的目标是通用 agent 的长
 
 | 诊断需求 | **Cortex-PY** | **Mem0** | **Graphiti** | **OpenViking** | **agentmemory** | **MindMemOS** |
 |---------|:-----------:|:-------:|:-----------:|:-------------:|:--------------:|:------------:|
-| **实体类型体系**（16种专用+命名规范） | ✅✅ | ❌ | ⚠️ 自定义 Pydantic 但无约束 | ❌ | ❌ | ❌ |
+| **实体类型体系**（21种专用+命名规范） | ✅✅ | ❌ | ⚠️ 自定义 Pydantic 但无约束 | ❌ | ❌ | ❌ |
 | **身份上下文隔离**（跨设备同名隔离） | ✅✅ 6字段 | ❌ user_id仅 | ❌ | ✅ URI路径 | ❌ | ❌ |
 | **断言认知状态**（hypothesis≠confirmed≠ruled_out） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **排除项不入因果图**（graph_eligible 过滤） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -495,13 +495,13 @@ MindMemOS 不是为故障诊断设计的——它的目标是通用 agent 的长
 | **RAG 检索（搜索相关文档）** | ✅ 6通道+RRF+rerank | ✅✅ 多信号融合 | ✅ 混合融合 | ✅ 目录递归 | ✅✅ BM25+向量+图 | ✅ |
 | **token 节省（按需加载）** | ❌ 无 | ✅ 提取+摘要 | ❌ | ✅✅ L0/L1/L2 | ✅✅ 2000t budget | ✅ |
 | **SaaS 版本** | ❌ | ✅ Mem0 Cloud | ✅ Zep | ❌ | ❌ | ❌ |
-| **自演化：反馈驱动召回权重调整** | ✅✅ 正+负反馈，改 access_count/salience | ❌ 仅写入时 LLM 判 ADD/UPDATE/DELETE | ❌ | ❌ | ❌ | ✅✅ 负反馈 3 层 durable（原型） |
+| **自演化：反馈驱动召回权重调整** | ✅✅ 正+负反馈，改 retrieval_usefulness/salience（显式）与 retrieval_count（隐式 recall 命中） | ❌ 仅写入时 LLM 判 ADD/UPDATE/DELETE | ❌ | ❌ | ❌ | ✅✅ 负反馈 3 层 durable（原型） |
 | **自演化：离线巩固（Dreaming）** | ✅✅ 两阶段+Phase0 复用 consolidation | ❌ | ❌ | ❌ | ⚠️ 4 层整合但非离线 Dreaming | ✅✅ relation_detect+action_plan（原型） |
 | **自演化：高阶归纳（Higher-Order）** | ✅✅ 证据驱动+类型约束 | ❌ | ❌ | ❌ | ❌ | ✅✅ `_schema_higher_order.py` 证据驱动（原型） |
 
 > ✅✅ = 强支持、且该场景下唯此家有；✅ = 支持但有局限；⚠️ = 有但不够；❌ = 不支持
 >
-> **自演化三行说明**：cortex-py 与 MindMemOS 是唯二具备完整自演化（反馈调权 + 离线巩固 + 高阶归纳）的系统。MindMemOS 是这三特性的架构原型，cortex-py 在借鉴基础上增加了正反馈通道、双时态软关闭、以及三者经共享信号总线（access_count + salience）的闭环耦合——详见第 5 节。
+> **自演化三行说明**：cortex-py 与 MindMemOS 是唯二具备完整自演化（反馈调权 + 离线巩固 + 高阶归纳）的系统。MindMemOS 是这三特性的架构原型，cortex-py 在借鉴基础上增加了正反馈通道、双时态软关闭、以及三者经共享信号总线（retrieval_count + salience + retrieval_usefulness）的闭环耦合——详见第 5 节。
 
 ---
 

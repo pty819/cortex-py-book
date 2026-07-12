@@ -12,7 +12,7 @@
 |------|------|------|
 | 无鉴权 | 无 | 仅 `GET /v1/health` |
 | 普通鉴权 (`auth`) | `Authorization: Bearer <api.key>` + 可选 `X-Cortex-Actor` | 若配置 `api.key` 非空则校验;`X-Cortex-Actor` 默认 `user:alice` |
-| 管理员鉴权 (`admin_auth`) | 普通 auth + `X-Cortex-Admin-Key` | 若配置了 `api.admin_key`,该头必须匹配;未配置则退化为普通 auth |
+| 管理员鉴权 (`admin_auth`) | 普通 auth + 管理员能力(principal 带 `admin` 标志 或 `X-Cortex-Admin-Key` 匹配 `api.admin_key`) | `admin_auth` **不退化为普通 auth**:principal 已是 admin 则直接通过;否则若配置了 `api.admin_key`,`X-Cortex-Admin-Key` 必须匹配;两者都不满足则 `403 admin capability required`。开发态(`api.allow_insecure_dev`)默认返回带 `admin=true` 的 dev principal |
 
 > 开发态 `api.key=""` 时不做 token 校验,便于 `EventSource`(无法发自定义头)直连 SSE 端点。
 
@@ -116,7 +116,7 @@
 | `/v1/feedback` | POST | auth | 提交对某 fact/belief/event 的反馈信号 | `scope`, `target_layer=fact|belief|event`, `target_id`, `signal_type=relevant|irrelevant|wrong|partial`, `signal_durable=task_temporary|scenario_specific|long_term`, `reason`, `pack_id`, `idempotency_key` |
 | `/v1/feedback` | GET | auth | 列出反馈(按 scope,可按 target_id 过滤) | `scope`, `target_id`, `limit` |
 | `/v1/admin/dreaming` | POST | admin | 触发 dreaming 离线巩固(可同步跑或入队) | `scope`, `dry_run`, `async_enqueue`(true 返回 `{status:queued, job_id}`) |
-| `/v1/admin/dreaming/{run_id}` | GET | auth | 查询某次 dreaming 运行结果 | path: `run_id` |
+| `/v1/admin/dreaming/{run_id}` | GET | admin | 查询某次 dreaming 运行结果 | path: `run_id` |
 | `/v1/admin/higher-order` | POST | admin | 触发高阶归纳;或 `seed_predicates=true` 预置谓词定义 | `{scope, entity_id, seed_predicates}` |
 | `/v1/higher-order` | GET | auth | 列出已生成的高阶 facts | `scope`, `entity_id`, `limit` |
 
@@ -161,9 +161,29 @@
 | `/v1/cases/{episode_id}` | GET | auth | 获取单个 case | path: `episode_id` |
 | `/v1/cases/{episode_id}` | PATCH | auth | 更新 case 字段 | `title`, `phase`, `status`, `root_cause`, `resolution`, `equipment`, `lot`, `recipe`, `metadata` |
 | `/v1/cases/{episode_id}/events` | POST | auth | 把已有 event 挂到 case 上 | `{event_id}` |
+| `/v1/cases/{episode_id}/workspace-graph` | GET | auth | 返回 case 工作区图谱(facts/beliefs/events/关联证据),供前端 workspace 渲染 | path: `episode_id` |
+| `/v1/cases/{episode_id}/promote` | POST | admin | 把 case 推导出的 fact 提升为正式断言(reviewer 取自认证 principal) | `fact_ids[]`, `note` |
 | `/v1/cases/search` | POST | auth | 按 query 搜索 cases | `scope`, `query` |
 
 `phase ∈ observation|scoping|investigation|correlation|root_cause|remediation|regression`;`status ∈ open|investigating|resolved|closed`。
+
+### 9.1 诊断召回
+
+诊断专用检索入口,接受资产/腔体/配方/批号/症状等结构化约束,内部走与通用 recall 相同的 6 通道融合但按 `goal` 裁剪结果:
+
+| Endpoint | Method | Auth | Description | 关键字段 |
+|----------|--------|------|-------------|---------|
+| `/v1/diagnosis/recall` | POST | auth | 诊断召回(按资产/症状/时间窗检索相关事实与机制) | `scope`, `query`, `asset`, `chamber`, `recipe`, `lot`, `time_from`, `time_to`, `symptoms[]`, `actions_taken[]`, `goal=history|mechanism|root_cause|next_test|full`, `applicability_mode=strict|allow_unknown`, `case_id`, `top_k` |
+
+### 9.2 Evidence(外部证据)
+
+外部证据目录:登记指向权威系统(记录 id / URI)的证据,再把它作为 `supports`/`refutes`/`context`/`causal_direction`/`applicability` 关系挂到某条 fact 上。payload 始终留在权威系统,本系统只存引用与质量元数据。
+
+| Endpoint | Method | Auth | Description | 关键字段 |
+|----------|--------|------|-------------|---------|
+| `/v1/evidence` | POST | auth | 登记外部证据引用 | `scope`, `reference{uri, source_record_id, hash, query, version, quality}` |
+| `/v1/evidence/{evidence_id}` | GET | auth | 取单个证据记录(scope 校验) | path: `evidence_id` |
+| `/v1/evidence/{evidence_id}/claims` | POST | auth | 把证据挂到某 fact 上(证据与 fact 必须同 scope) | `fact_id`, `role=supports|refutes|context|causal_direction|applicability`, `weight`, `span`, `quality` |
 
 ---
 
@@ -195,9 +215,9 @@
 
 | Endpoint | Method | Auth | Description | 关键字段 |
 |----------|--------|------|-------------|---------|
-| `/v1/temporal/phrases` | POST | auth | 注册时间短语(自动 seed 默认值) | `name`, `expression`(ISO8601 dur..dur,如 `-P7D..P0D`), `anchor` |
+| `/v1/temporal/phrases` | POST | admin | 注册时间短语(自动 seed 默认值) | `name`, `expression`(ISO8601 dur..dur,如 `-P7D..P0D`), `anchor` |
 | `/v1/temporal/phrases` | GET | auth | 列出所有时间短语 | — |
-| `/v1/temporal/phrases/{name}` | DELETE | auth | 删除时间短语 | path: `name` |
+| `/v1/temporal/phrases/{name}` | DELETE | admin | 删除时间短语 | path: `name` |
 
 ---
 
@@ -205,14 +225,16 @@
 
 | Endpoint | Method | Auth | Description | 关键字段 |
 |----------|--------|------|-------------|---------|
-| `/v1/admin/config` | GET | auth | 读取运行配置(脱敏:`api_key`/`url` 替换为 `***`,加 `has_key`) | — |
+| `/v1/admin/config` | GET | admin | 读取运行配置(脱敏:`api_key`/`url` 替换为 `***`,加 `has_key`) | — |
 | `/v1/admin/config` | POST | admin | 白名单深合并修改配置;`persist=true` 写回 YAML | body=patch dict, query: `persist` |
-| `/v1/admin/jobs` | GET | auth | 任务队列明细(不返回 payload) | `scope`, `status`, `job_type`, `limit` |
-| `/v1/admin/metrics` | GET | auth | 存储指标(各表行数 + jobs 按 status 计数) | `scope` |
+| `/v1/admin/jobs` | GET | admin | 任务队列明细(不返回 payload) | `scope`, `status`, `job_type`, `limit` |
+| `/v1/admin/metrics` | GET | admin | 存储指标(各表行数 + jobs 按 status 计数) | `scope` |
 | `/v1/admin/version` | GET | auth | cortex 版本 + schema 表数 | — |
-| `/v1/admin/maintenance` | POST | auth | 维护操作(取代旧 `maintenance/*` 三端点) | `action=methylation|consolidation`, `scope`, `older_than_days=30` |
+| `/v1/admin/maintenance` | POST | admin | 维护操作(取代旧 `maintenance/*` 三端点) | `action=methylation|consolidation`, `scope`, `older_than_days=30` |
 | `/v1/admin/retrieval/effective` | GET | admin | 配置值 + 依赖就绪状态 + 预测生效态(每通道 configured/effective enabled、weight、top_k) | `profile` |
 | `/v1/admin/retrieval/preview` | POST | auth | 无副作用 Active-vs-Draft A/B 预览(不递增 retrieval_count、不写缓存) | body:`scope`/`query`/`variants[]` |
+| `/v1/admin/evolution-candidates` | GET | admin | 列出 Dreaming/Higher-Order 产出的演化候选(facts/谓词定义等,待人工审批) | `scope`, `status=pending`, `limit` |
+| `/v1/admin/evolution-candidates/{candidate_id}/review` | POST | admin | 审批单个候选(`approve`/`reject`,reviewer 取自认证 principal) | `decision=approve|reject`, `note` |
 
 > `POST /v1/admin/dreaming` 与 `POST /v1/admin/higher-order` 见第6节(记忆自演化)。
 
@@ -303,6 +325,7 @@ class RetrievalPreviewRequest(BaseModel):
 | `BulkItem` | 批量写入的单项 | 同上,无 `scope` |
 | `BulkExperienceRequest` | 批量写入 | `scope`, `items[]`, `ordering`, `directives` |
 | `RecallRequest` | 检索请求 | `scope`, `query`, `view`, `top_k`, `as_of`, `include_superseded`, `recorded_during`, `budgets`, `citation_mode`, `exclude_content`, `temporal` |
+| `DiagnosisRecallRequest` | 诊断召回请求 | `scope`, `query`, `asset`, `chamber`, `recipe`, `lot`, `time_from`, `time_to`, `symptoms[]`, `actions_taken[]`, `goal`, `applicability_mode`, `case_id`, `top_k` |
 | `AnswerRequest` | 问答请求 | `scope`, `query`, `use_pack_id` |
 | `ForgetRequest` | 遗忘请求 | `scope`, `layers`, `predicate`, `about_entity`, `cascade`, `confirm_all` |
 | `IngestDocumentRequest` | 文档切块入库 | `scope`, `text`, `intent`, `min_chars`, `max_chars` |
@@ -311,15 +334,19 @@ class RetrievalPreviewRequest(BaseModel):
 | `ErasureSelector` | 擦除选择器 | `memory_ids[]`, `about_entity`, `predicate` |
 | `ErasurePreviewRequest` | 擦除预览 | `scope`, `selector` |
 | `ErasureExecuteRequest` | 擦除执行 | `scope`, `selector`, `from_preview_id` |
+| `EvidenceRegisterRequest` | 外部证据登记 | `scope`, `reference{uri, source_record_id, hash, query, version, quality}` |
+| `EvidenceAttachmentRequest` | 证据挂到 fact | `fact_id`, `role`, `weight`, `span`, `quality` |
 | `CaseCreateRequest` | 创建 case | `scope`, `title`, `case_id`, `equipment`, `lot`, `recipe`, `metadata` |
 | `CaseUpdateRequest` | 更新 case | `title`, `phase`, `status`, `root_cause`, `resolution`, `equipment`, `lot`, `recipe`, `metadata` |
 | `CaseAddEventRequest` | case 加 event | `event_id` |
+| `CasePromotionRequest` | case 推导断言提升 | `fact_ids[]`, `note` |
 | `CaseSearchRequest` | 搜索 case | `scope`, `query` |
 | `VocabValueIn` | 词表单项 | `canonical`, `aliases[]` |
 | `VocabCreateRequest` | 创建词表 | `scope`, `name`, `kind`, `values[]` |
 | `VocabReplaceRequest` | 替换词表 | `scope`, `kind`, `values[]` |
 | `TemporalPhraseRequest` | 时间短语 | `name`, `expression`, `anchor` |
 | `MaintenanceRequest` | 维护操作 | `action`, `scope`, `older_than_days` |
+| `EvolutionReviewRequest` | 演化候选审批 | `decision=approve|reject`, `note` |
 | `ImportJsonlRequest` | JSONL 导入 | `scope`, `scope_template`, `lines` |
 | `ImportMem0Request` | Mem0 导入 | `scope`, `scope_template`, `memories[]` |
 | `ImportZepRequest` | Zep 导入 | `scope`, `facts[]` |
@@ -352,6 +379,6 @@ class RetrievalPreviewRequest(BaseModel):
 
 删除的失效端点:`GET /v1/context`、`GET /v1/timeline`(改为 `/v1/facts/timeline`)、所有 `/v1/layers/*` 路由、`/v1/erasures/execute`+`/v1/erasures/status`(改为 `/v1/erasures`+`/v1/erasures/{id}`)、`/v1/vocab`(改为 `/v1/vocabularies`)、`/v1/temporal`(改为 `/v1/temporal/phrases`)、`/v1/maintenance/*` 三端点(合并为 `POST /v1/admin/maintenance`)、`/v1/lifecycle`(改为 `/v1/lifecycle/stream`)、`GET /v1/experience/{id}`。
 
-新增端点:`POST/GET /v1/feedback`、`POST /v1/admin/dreaming`+`GET /v1/admin/dreaming/{run_id}`、`POST /v1/admin/higher-order`+`GET /v1/higher-order`、`GET/POST /v1/admin/config`、`GET /v1/admin/jobs`、`GET /v1/admin/version`、`POST /v1/recall/stream`、`GET /v1/answer/stream`、`GET /v1/beliefs/why`+`POST /v1/beliefs/build`、`POST /v1/cases/{episode_id}/events`、`GET /v1/import/{import_id}`、`GET /v1/health`(无鉴权)、`GET /v1/admin/retrieval/effective`+`POST /v1/admin/retrieval/preview`(检索控制面:有效态预览 + 无副作用 A/B)。
+新增端点:`POST/GET /v1/feedback`、`POST /v1/admin/dreaming`+`GET /v1/admin/dreaming/{run_id}`、`POST /v1/admin/higher-order`+`GET /v1/higher-order`、`GET/POST /v1/admin/config`、`GET /v1/admin/jobs`、`GET /v1/admin/version`、`POST /v1/recall/stream`、`GET /v1/answer/stream`、`GET /v1/beliefs/why`+`POST /v1/beliefs/build`、`POST /v1/cases/{episode_id}/events`、`GET /v1/import/{import_id}`、`GET /v1/health`(无鉴权)、`GET /v1/admin/retrieval/effective`+`POST /v1/admin/retrieval/preview`(检索控制面:有效态预览 + 无副作用 A/B)、`POST /v1/evidence`+`GET /v1/evidence/{id}`+`POST /v1/evidence/{id}/claims`(外部证据目录)、`POST /v1/diagnosis/recall`(诊断召回)、`GET /v1/cases/{episode_id}/workspace-graph`+`POST /v1/cases/{episode_id}/promote`(case 工作区 + 断言提升)、`GET /v1/admin/evolution-candidates`+`POST /v1/admin/evolution-candidates/{id}/review`(演化审批门)。
 
 > 端点总数:69 个非流式端点 + 3 个专用流式端点(`/v1/lifecycle/stream`、`/v1/recall/stream`、`/v1/answer/stream`),共 72 个。
