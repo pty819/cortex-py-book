@@ -475,13 +475,13 @@ sequenceDiagram
     Note over RET: 融合(rrf/weighted_rrf/priority)→ 候选集
     Note over RET,DB: 信号总线加权(四信号独立:salience/usage/usefulness/exploration)
     RET->>DB: 批量查 facts.salience + retrieval_count + retrieval_usefulness
-    RET->>RET: scores = scores·sal_mult + usage_bonus + usefulness_bonus;explore/exploit 分配
+    RET->>RET: 四信号加权 scores 重排 + explore/exploit 分配
     RET->>SVC: rerank (top-K → top-20, 会话外)
     Note over RET,DB: Phase 3: _assemble_pack(独立短事务 ×3 重试)
     RET->>DB: 加载 higher_order 层(is_higher_order=true facts)
     RET->>SVC: context_block LLM (会话外)
     RET-->>API: StratifiedPack (layers: events/facts/beliefs/higher_order)
-    Note over RET,DB: 隐式反馈环:recall 命中 → retrieval_count += 1(track_usage=true 时,独立短事务)
+    Note over RET,DB: 隐式反馈环 recall 命中写回 retrieval_count(track_usage=true)
 
     API-->>A: SSE event: phase(recall_done, pack_id, time_ms)
     API-->>A: SSE event: phase(llm_start, model)
