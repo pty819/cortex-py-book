@@ -185,6 +185,43 @@
 | `/v1/evidence/{evidence_id}` | GET | auth | 取单个证据记录(scope 校验) | path: `evidence_id` |
 | `/v1/evidence/{evidence_id}/claims` | POST | auth | 把证据挂到某 fact 上(证据与 fact 必须同 scope) | `fact_id`, `role=supports|refutes|context|causal_direction|applicability`, `weight`, `span`, `quality` |
 
+### 9.3 Diagnostic Playbooks（诊断剧本）
+
+诊断剧本的 CRUD 与版本管理（详见第 7b 章）。每个 playbook 是一个 DAG，有多个不可变版本（draft/active/retired）。
+
+| Endpoint | Method | Auth | Description | 关键字段 |
+|----------|--------|------|-------------|---------|
+| `/v1/diagnostic-playbooks` | POST | auth | 创建 playbook + v1 版本 | `scope`, `name`, `description`, `nodes[]{key,type,title,condition,recommendation,priority}`, `edges[]{from,to,outcome,condition,priority}`, `entry_nodes[]`, `status`, `applicability{}` |
+| `/v1/diagnostic-playbooks` | GET | auth | 列出 playbooks | `scope`, `status`, `view=local\|descend`, `limit`, `offset` |
+| `/v1/diagnostic-playbooks/{playbook_id}` | GET | auth | 获取单个 playbook（默认 active 版本） | `version`(可选,指定版本号) |
+| `/v1/diagnostic-playbooks/{playbook_id}` | PUT | auth | 追加新版本（不可变），可切换状态 | `nodes[]`, `edges[]`, `entry_nodes[]`, `status`, `description`, `applicability{}` |
+| `/v1/diagnostic-playbooks/{playbook_id}` | DELETE | auth | 退役 playbook（软删除，历史版本保留） | `note` |
+| `/v1/diagnostic-playbooks/{playbook_id}/export` | GET | auth | 导出 playbook 为 JSON（可迁移） | `version`(可选) |
+| `/v1/diagnostic-playbooks/import` | POST | auth | 从 JSON 导入 playbook | `playbook{...}`, `scope` |
+
+节点类型 ∈ {symptom, condition, test, action, recommendation, terminal}；边 outcome ∈ {matched, not_matched, unknown, always, default}。
+
+### 9.4 Forward Reasoning（正向推理）
+
+输入症状 + 观测数据，沿 playbook DAG 确定性遍历，返回下一步动作和推荐结论。
+
+| Endpoint | Method | Auth | Description | 关键字段 |
+|----------|--------|------|-------------|---------|
+| `/v1/forward-reasoning/query` | POST | auth | 执行正向推理 | `scope`, `playbook_id`(可选), `symptoms[]`, `observations{}`, `context{}`, `applicability_mode=strict\|allow_unknown` |
+| `/v1/forward-reasoning/runs/{run_id}` | GET | auth | 查询推理 run 结果（完整 trace + next_actions + recommendations） | path: `run_id` |
+
+若未指定 `playbook_id`，自动选择所有 `active` 状态且适用性匹配的 playbooks 并行推理，合并结果。返回 `{run_id, playbook_id, version, trace[], next_actions[], recommendations[], unresolved_inputs[]}`。
+
+### 9.5 Sensor Resolve（传感器解析）
+
+自然语言查询 → 向量检索匹配实体 → 沿结构谓词 BFS → 收集关联传感器。
+
+| Endpoint | Method | Auth | Description | 关键字段 |
+|----------|--------|------|-------------|---------|
+| `/v1/sensors/resolve` | POST | auth | 解析自然语言查询,返回关联传感器列表 | `scope`, `query` |
+
+返回 `{query, parsed_items[], matched_entities[], sensors[]}`。BFS 沿 8 个结构谓词出边最多 5 跳，`entity_type='sensor'` 的节点为终止符。
+
 ---
 
 ## 10. Understanding 层
@@ -379,6 +416,6 @@ class RetrievalPreviewRequest(BaseModel):
 
 删除的失效端点:`GET /v1/context`、`GET /v1/timeline`(改为 `/v1/facts/timeline`)、所有 `/v1/layers/*` 路由、`/v1/erasures/execute`+`/v1/erasures/status`(改为 `/v1/erasures`+`/v1/erasures/{id}`)、`/v1/vocab`(改为 `/v1/vocabularies`)、`/v1/temporal`(改为 `/v1/temporal/phrases`)、`/v1/maintenance/*` 三端点(合并为 `POST /v1/admin/maintenance`)、`/v1/lifecycle`(改为 `/v1/lifecycle/stream`)、`GET /v1/experience/{id}`。
 
-新增端点:`POST/GET /v1/feedback`、`POST /v1/admin/dreaming`+`GET /v1/admin/dreaming/{run_id}`、`POST /v1/admin/higher-order`+`GET /v1/higher-order`、`GET/POST /v1/admin/config`、`GET /v1/admin/jobs`、`GET /v1/admin/version`、`POST /v1/recall/stream`、`GET /v1/answer/stream`、`GET /v1/beliefs/why`+`POST /v1/beliefs/build`、`POST /v1/cases/{episode_id}/events`、`GET /v1/import/{import_id}`、`GET /v1/health`(无鉴权)、`GET /v1/admin/retrieval/effective`+`POST /v1/admin/retrieval/preview`(检索控制面:有效态预览 + 无副作用 A/B)、`POST /v1/evidence`+`GET /v1/evidence/{id}`+`POST /v1/evidence/{id}/claims`(外部证据目录)、`POST /v1/diagnosis/recall`(诊断召回)、`GET /v1/cases/{episode_id}/workspace-graph`+`POST /v1/cases/{episode_id}/promote`(case 工作区 + 断言提升)、`GET /v1/admin/evolution-candidates`+`POST /v1/admin/evolution-candidates/{id}/review`(演化审批门)。
+新增端点:`POST/GET /v1/feedback`、`POST /v1/admin/dreaming`+`GET /v1/admin/dreaming/{run_id}`、`POST /v1/admin/higher-order`+`GET /v1/higher-order`、`GET/POST /v1/admin/config`、`GET /v1/admin/jobs`、`GET /v1/admin/version`、`POST /v1/recall/stream`、`GET /v1/answer/stream`、`GET /v1/beliefs/why`+`POST /v1/beliefs/build`、`POST /v1/cases/{episode_id}/events`、`GET /v1/import/{import_id}`、`GET /v1/health`(无鉴权)、`GET /v1/admin/retrieval/effective`+`POST /v1/admin/retrieval/preview`(检索控制面:有效态预览 + 无副作用 A/B)、`POST /v1/evidence`+`GET /v1/evidence/{id}`+`POST /v1/evidence/{id}/claims`(外部证据目录)、`POST /v1/diagnosis/recall`(诊断召回)、`GET /v1/cases/{episode_id}/workspace-graph`+`POST /v1/cases/{episode_id}/promote`(case 工作区 + 断言提升)、`GET /v1/admin/evolution-candidates`+`POST /v1/admin/evolution-candidates/{id}/review`(演化审批门)、`POST/GET/PUT/DELETE /v1/diagnostic-playbooks` + import/export(诊断剧本 CRUD)、`POST /v1/forward-reasoning/query` + `GET /v1/forward-reasoning/runs/{run_id}`(正向推理)、`POST /v1/sensors/resolve`(传感器解析)、`POST /v1/synonyms` + synonym CRUD + import(同义词管理)、`POST /v1/ingest/document`(文档切块入库)。
 
-> 端点总数:69 个非流式端点 + 3 个专用流式端点(`/v1/lifecycle/stream`、`/v1/recall/stream`、`/v1/answer/stream`),共 72 个。
+> 端点总数：约 **90+** 个（含 REST + 流式），分布在 `app.py`（核心读写/检索）+ 10 个路由文件中。按功能域 13 节分类索引。精确数量以 FastAPI `/openapi.json` 为准。

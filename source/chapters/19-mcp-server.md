@@ -10,24 +10,18 @@ graph TB
         LLM[Agent / LLM]
     end
     
-    subgraph "cortex MCP Server (32 工具)"
-        T1[memory_store]
-        T2[memory_search]
-        T3[answer]
-        T4[memory_list/get]
-        T5[entity_list/entity_edges]
-        T6[facts_timeline]
-        T7[list_beliefs]
-        T8[bulk_ingest]
-        T9[memory_forget]
-        T10[erasure_preview/execute]
-        T11[episodes_build/list]
-        T12[case_create/update/get/list/search]
-        T13[vocab_create/list]
-        T14[temporal_register/list]
-        T15[health_check]
-        T16[admin_metrics]
-        T17[export_scope]
+    subgraph "cortex MCP Server (53 工具)"
+        T1[memory_store/search/answer]
+        T2[entity CRUD + edges]
+        T3[fact CRUD + timeline]
+        T4[bulk_ingest + forget]
+        T5[erasure_preview/execute]
+        T6[case CRUD + search]
+        T7[vocab CRUD + synonym CRUD]
+        T8[playbook CRUD + import/export]
+        T9[forward_reason + run_get]
+        T10[feedback + dreaming + higher-order]
+        T11[temporal + admin + export]
     end
     
     subgraph "Transport"
@@ -41,40 +35,106 @@ graph TB
     HTTP --> T2
 ```
 
-## 32 工具一览
+## 53 工具一览
 
-| 类别 | 工具 | 说明 |
-|------|------|------|
-| **核心** | `memory_store` | 存文本 + 同步抽取三元组 |
-| | `memory_search` | 6 通道混合检索 |
-| | `answer` | 检索 + LLM 回答 |
-| | `get_context` | holistic 检索（含祖先 scope） |
-| **查询** | `memory_list` | 列出 scope 的 events |
-| | `memory_get` | 获取单个 event 详情 |
-| | `entity_list` | 列出实体（图节点） |
-| | `entity_edges` | 实体的所有 live facts |
-| | `facts_timeline` | 双时态超替链 |
-| | `list_beliefs` | 概率断言列表 |
-| **写入** | `bulk_ingest` | 批量存文本 |
-| | `memory_forget` | 软遗忘（close recorded_to） |
-| **Erasure** | `erasure_preview` | GDPR 预演 |
-| | `erasure_execute` | GDPR 执行 |
-| **Case** | `case_create` | 创建诊断 case |
-| | `case_update` | 更新 case 阶段/状态 |
-| | `case_get` | 获取 case 详情 |
-| | `case_list` | 列出 cases |
-| | `case_search` | 搜索 cases |
-| **Vocab** | `vocab_create` | 创建词表 |
-| | `vocab_list` | 列出词表 |
-| **Temporal** | `temporal_register` | 注册时间短语 |
-| | `temporal_list` | 列出时间短语 |
-| **Admin** | `health_check` | 健康检查 |
-| | `admin_metrics` | 存储指标 |
-| | `export_scope` | 导出 JSONL |
-| **Feedback** | `feedback_submit` | 提交反馈信号（scope, target_layer, target_id, signal_type, signal_durable, reason）。调用时机：agent 拿到 answer 后，根据用户反馈调用此工具修正记忆权重 |
-| | `feedback_list` | 查询反馈信号（scope, target_id） |
-| **Dreaming** | `dreaming_run` | 触发离线巩固（scope, dry_run）。调用时机：低频周期性触发，非实时 |
-| | `higher_order_generate` | 触发高阶归纳（entity_id, scope）。调用时机：extract 后异步触发，通常不需要 agent 显式调用 |
+按功能域分组，共 **53 个工具**。
+
+### 核心读写（6 个）
+
+| 工具 | 说明 |
+|------|------|
+| `memory_store` | 存文本 + 同步抽取三元组 |
+| `memory_search` | 6 通道混合检索 |
+| `answer` | 检索 + LLM 回答 |
+| `get_context` | holistic 检索（含祖先 scope） |
+| `memory_list` | 列出 scope 的 events |
+| `memory_get` | 获取单个 event 详情 |
+
+### 实体与事实 CRUD（9 个）
+
+| 工具 | 说明 |
+|------|------|
+| `entity_list` | 列出实体（图节点），支持 q 模糊搜索 |
+| `entity_create` | 手动创建实体 |
+| `entity_update` | 更新实体字段（name/type/description/identity_context） |
+| `entity_delete` | 删除实体（可选级联） |
+| `entity_edges` | 实体的所有 live facts（出边） |
+| `fact_create` | 手动创建事实三元组 |
+| `fact_update` | 更新事实（predicate/object/status 等） |
+| `fact_delete` | 删除事实（软关 recorded_to） |
+| `facts_timeline` | 双时态超替链（同 S/P 的历史版本） |
+
+### 批量操作与擦除（5 个）
+
+| 工具 | 说明 |
+|------|------|
+| `bulk_ingest` | 批量存文本 + 入队抽取 |
+| `memory_forget` | 软遗忘（close recorded_to） |
+| `erasure_preview` | GDPR 擦除预演（返回 to_delete/to_redact） |
+| `erasure_execute` | GDPR 擦除执行（4 阶段引用计数真删） |
+| `export_scope` | 导出 scope 数据为 JSONL |
+
+### Episodes 与 Cases（8 个）
+
+| 工具 | 说明 |
+|------|------|
+| `episodes_build` | 触发 episode 自动分段 |
+| `episodes_list` | 列出 episodes |
+| `case_create` | 创建诊断 case |
+| `case_update` | 更新 case 阶段/状态/根因 |
+| `case_get` | 获取 case 详情（含 workspace graph） |
+| `case_list` | 列出 cases（可按 status/equipment 过滤） |
+| `case_search` | 语义搜索 cases |
+| `list_beliefs` | 列出 beliefs（可按 about_entity 过滤） |
+
+### 词表与同义词（7 个）
+
+| 工具 | 说明 |
+|------|------|
+| `vocab_list` | 列出词表 |
+| `vocab_create` | 创建/更新词表（含 values） |
+| `synonym_list` | 列出同义词组 |
+| `synonym_create` | 创建同义词组 |
+| `synonym_update` | 更新同义词组（aliases/status） |
+| `synonym_delete` | 删除同义词组 |
+| `synonym_import` | 批量导入同义词 |
+
+### 诊断 Playbook 与推理（9 个）
+
+| 工具 | 说明 |
+|------|------|
+| `diagnostic_playbook_create` | 创建诊断剧本（DAG + v1） |
+| `diagnostic_playbook_list` | 列出 playbooks（可按 status/view 过滤） |
+| `diagnostic_playbook_get` | 获取 playbook 详情（节点/边/版本） |
+| `diagnostic_playbook_update` | 追加新版本（不可变）+ 切换状态 |
+| `diagnostic_playbook_retire` | 退役 playbook（软删除） |
+| `diagnostic_playbook_export` | 导出 playbook 为 JSON（可迁移） |
+| `diagnostic_playbook_import` | 从 JSON 导入 playbook |
+| `diagnostic_forward_reason` | 正向推理：输入症状 → next_actions + recommendations |
+| `diagnostic_reasoning_run_get` | 查询推理 run 结果（完整 trace） |
+
+### 时间与运维（6 个）
+
+| 工具 | 说明 |
+|------|------|
+| `temporal_list` | 列出时间短语 |
+| `temporal_register` | 注册时间短语 |
+| `health_check` | 健康检查 |
+| `admin_metrics` | 存储指标（各表行数 + jobs 状态） |
+| `maintenance_enqueue` | 触发 maintenance 任务（methylation/consolidation） |
+| `feedback_submit` | 提交反馈信号（正/负反馈，调 salience/usefulness） |
+
+### 自演化（5 个）
+
+| 工具 | 说明 |
+|------|------|
+| `feedback_list` | 查询反馈信号历史 |
+| `dreaming_run` | 触发 Dreaming 离线巩固（dry_run 模式可预览） |
+| `higher_order_generate` | 触发高阶归纳（指定 entity_id） |
+| | |
+| | |
+
+> **注**：自演化的人工审批门（evolution_candidates 列表/审批）走 HTTP Admin API，未暴露为 MCP 工具——审批属于运维操作，不适合 LLM agent 直接调用。
 
 ## 双传输模式
 

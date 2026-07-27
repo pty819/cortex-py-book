@@ -4,12 +4,15 @@
 
 cortex 的谓词体系是整个知识图谱的**语言基础**。所有抽取三元组必须使用预定义的谓词，确保图谱关系的一致性和可遍历性。
 
+谓词体系经过 `0008_predicate_cleanup` 迁移清理，从早期 40+ 个谓词收敛为 **36 个核心谓词**，分为**四大类**（结构 / 因果 / 诊断 / 状态），消除了互逆冗余（如 `part_of` ↔ `has_component`、`symptom_of` ↔ `has_symptom` 不再并存，统一方向为父→子 / 结果→原因）。
+
 ```{mermaid}
 graph TB
-    subgraph 谓词三大类
-        S[结构/配置关系<br/>静态拓扑]
-        C[因果/级联关系<br/>故障传播]
-        D[诊断推理关系<br/>排查过程]
+    subgraph 谓词四大类（36 个）
+        S[结构/配置关系<br/>8 个，静态拓扑]
+        C[因果/级联关系<br/>5 个，故障传播]
+        D[诊断推理关系<br/>22 个，排查过程]
+        ST[状态关系<br/>1 个，单值超替]
     end
     
     subgraph 断言语义
@@ -24,107 +27,134 @@ graph TB
     S --> G
     C --> G
     D --> G
+    ST --> G
     P --> G
     A --> G
 ```
 
 ## Ontology 模块
 
-所有谓词在 `ontology.py` 中集中定义，是单一真相源：
+所有谓词在 `ontology.py` 的 `PREDICATE_DICTIONARY` 中集中定义，是单一真相源。分类集合（`STRUCTURAL_PREDICATES` 等）从词典动态派生，通过模块加载时的 assert 强校验保证一致性。
 
 ```python
-# 结构/配置关系（静态拓扑）
-STRUCTURAL_PREDICATES = {
-    "part_of", "has_component", "installed_on", "located_in", 
-    "monitored_by", "controlled_by", "regulates", "configured_as", "depends_on",
+PREDICATE_DICTIONARY = {
+    "has_component": PredicateDef("structural", "...", "...", "..."),
+    "caused_by":     PredicateDef("causal",     "...", "...", "..."),
+    "investigates":  PredicateDef("diagnostic", "...", "...", "..."),
+    "has_status":    PredicateDef("state",      "...", "...", "..."),
+    # ... 共 36 个
 }
 
-# 因果/级联关系（故障传播）
-CAUSAL_PREDICATES = {
-    "caused_by", "led_to", "cascades_to", "affects", "triggers", 
-    "contributes_to", "correlates_with", "suggests", "symptom_of", "has_symptom",
-}
+# 分类集合从词典派生（不再独立硬编码）
+STRUCTURAL_PREDICATES = frozenset(p for p, d in PREDICATE_DICTIONARY.items()
+                                    if d.category == "structural")  # 8 个
+CAUSAL_PREDICATES = frozenset(p for p, d in PREDICATE_DICTIONARY.items()
+                                 if d.category == "causal")       # 5 个
+DIAGNOSTIC_PREDICATES = frozenset(p for p, d in PREDICATE_DICTIONARY.items()
+                                     if d.category == "diagnostic") # 22 个
+STATE_PREDICATES = frozenset(p for p, d in PREDICATE_DICTIONARY.items()
+                                if d.category == "state")         # 1 个
 
-# 诊断推理关系（排查过程）
-DIAGNOSTIC_PREDICATES = {
-    "detected_by", "investigates", "investigated_by", "checked", "found", "normal",
-    "ruled_out", "no_correlation", "supports", "contradicts", "refines_to",
-    "alternative_to", "confirmed_by", "repaired_by", "observed_by", "references",
-    "preceded_by", "drifts_from", "measured_as", "deviates_from", "feedback_to",
-}
-
-# 状态关系（单值超替）
-STATE_PREDICATES = {"has_status", "deal_stage"}
-
-# 排除类（不进图）
-OPPOSING_PREDICATES = {"ruled_out"}
-RELATIONAL_EXCLUSION_PREDICATES = {"no_correlation", "contradicts"}
+# 排除类谓词（自动不入因果图）
+OPPOSING_PREDICATES = frozenset({"ruled_out"})
+RELATIONAL_EXCLUSION_PREDICATES = frozenset({"no_correlation", "contradicts"})
 GRAPH_EXCLUDED_PREDICATES = OPPOSING_PREDICATES | RELATIONAL_EXCLUSION_PREDICATES
 
-# 全部诊断谓词名
-DIAGNOSIS_PREDICATE_NAMES = (
-    STRUCTURAL_PREDICATES | CAUSAL_PREDICATES | DIAGNOSTIC_PREDICATES | STATE_PREDICATES
-)
+# 基数：state 类一律 single，其余 multi
+PREDICATE_CARDINALITY = {
+    predicate: ("single" if predicate in STATE_PREDICATES else "multi")
+    for predicate in DIAGNOSIS_PREDICATE_NAMES
+}
 ```
 
-## 三大类谓词详解
+> **谓词清理变更（0008 迁移）**：
+> - 移除互逆冗余：`part_of` → 统一用 `has_component`（方向：父→子）；`symptom_of` → 统一用 `has_symptom`（方向：故障→征兆）；`investigated_by` → 统一用 `investigates`（方向：假设→排查对象）；`led_to` → 统一用 `caused_by`（方向：结果→原因）
+> - 移除语义重叠：`contributes_to` 并入 `affects`；`deal_stage` 移除（用 state 表达即可）
+> - 方向统一原则：subject 是**整体/上层/结果**，object 是**部分/下层/原因**。遍历从故障出发向下游找原因、向上游找子系统
 
-### 1. 结构/配置关系（静态拓扑）
+## 四大类谓词详解
 
-描述设备的结构层级和传感器-控制链路。
+### 1. 结构/配置关系（8 个，静态拓扑）
+
+描述设备的结构层级、传感器布局和控制链路。**方向统一**：父→子、整体→部分。
 
 | 谓词 | 含义 | subject → object | 示例 |
 |------|------|-------------------|------|
-| `part_of` | A是B的组成部分 | component → subsystem | MFC-1 → 气体输送系统 |
-| `has_component` | A包含B | equipment → subsystem | 温控系统 → 加热器H-1 |
-| `installed_on` | A安装在B上 | sensor → component | T-101 → 腔体壁 |
-| `located_in` | A位于B | component → subsystem | 匹配网络 → 射频系统 |
-| `monitored_by` | A被B监测 | param/fault → sensor | 腔体温度 → T-101 |
-| `controlled_by` | A被B控制 | component → controller | 加热器功率 → 温度PID |
+| `has_component` | A包含B（整体→部分） | equipment/subsystem → component/subsystem | 气体输送系统 → MFC-1 |
+| `installed_on` | A安装在B上 | sensor/component → component/chamber | T-101 → 腔体壁 |
+| `located_in` | A位于B内 | component/subsystem → chamber/equipment | 匹配网络 → 射频系统腔体 |
+| `monitored_by` | A被B监测 | param/fault/component → sensor | 腔体压力 → P-02 |
+| `controlled_by` | A被B控制 | component/param → **controller** | 加热器H-1 → 温度PID |
 | `regulates` | A调节B | controller → param | 温度PID → 基底温度 |
-| `configured_as` | A配置为B | step → param | 主工艺步骤 → 射频功率1500W |
-| `depends_on` | A依赖B | step/param → step/param | 主工艺步骤 → 预真空步骤 |
+| `configured_as` | A（步骤/配方）配置为B | process_step/recipe → param | 主工艺步骤 → 射频功率1500W |
+| `depends_on` | A依赖B | step/param/subsystem → step/param/subsystem | 主工艺步骤 → 预真空步骤 |
+
+```{admonition} controlled_by 的 object 必须是 controller
+部件/参数"属于"哪个系统 → 用 `has_component` / `installed_on`
+部件/参数"被谁控制" → 用 `controlled_by`，且 object 必须是 `controller` 类型
+**禁止** `controlled_by` 指向 equipment（整机）——整机不直接控制单个传感器，控制经由局部 controller 实现
+```
 
 ```{mermaid}
 graph LR
-    PID[温度PID] -->|regulates| TEMP[基底温度]
-    TEMP -->|monitored_by| T101[T-101传感器]
-    T101 -->|installed_on| WALL[腔体壁]
-    HEATER[加热器H-1] -->|controlled_by| PID
-    HEATER -->|part_of| SYS[温控系统]
+    SYS[温控系统] -->|has_component| PID[温度PID<br/>controller]
+    SYS -->|has_component| HEATER[加热器H-1<br/>component]
+    PID -->|regulates| TEMP[基底温度<br/>process_param]
+    TEMP -->|monitored_by| T101[T-101<br/>sensor]
+    T101 -->|installed_on| WALL[腔体壁<br/>component]
+    HEATER -->|controlled_by| PID
 ```
 
-### 2. 因果/级联关系（故障传播）
+### 2. 因果/级联关系（5 个，故障传播）
 
-描述故障如何产生、传播和表现。
+描述故障如何产生、传播和表现。**方向统一**：结果→原因、故障→征兆。
 
-| 谓词 | 含义 | 示例 |
-|------|------|------|
-| `caused_by` | A的故障由B引起 | 腔体压力异常 → 密封圈老化 |
-| `led_to` | A导致B | 密封圈老化 → 气体泄漏 |
-| `cascades_to` | 级联传播（跨子系统） | 压力异常 → 等离子不稳定 |
-| `has_symptom` | A故障表现为B | MFC响应延迟 → 流量阶梯式偏差 |
-| `symptom_of` | A是B的征兆 | RF反射升高 → 匹配网络失调 |
-| `affects` | A影响了B | 温度漂移 → 刻蚀速率 |
-| `triggers` | A触发了B | 压力超限 → 互锁停机 |
-| `correlates_with` | A与B有相关性 | MFC-1偏差 → 刻蚀速率漂移(r=0.85) |
-| `suggests` | A暗示B | T-101周期性振荡 → PID参数失调 |
+| 谓词 | 含义 | subject → object | 示例 |
+|------|------|-------------------|------|
+| `caused_by` | A的故障由B引起（核心因果谓词） | fault → component/fault/phenomenon | 腔体压力异常 → 密封圈老化 |
+| `cascades_to` | A故障级联传播到B（跨子系统） | fault → fault | 压力异常 → 等离子不稳定 |
+| `has_symptom` | A故障表现为B征兆 | fault → symptom/fault | MFC响应延迟 → 流量阶梯式偏差 |
+| `affects` | A影响了B（宽泛因果） | fault/param → param/fault | 温度漂移 → 刻蚀速率 |
+| `triggers` | A触发了B（互锁/告警/自动动作） | fault/condition → event/action | 压力超限 → 互锁停机 |
 
-### 3. 诊断推理关系（排查过程）
+> **设计决策**：所有因果关系统一用 `caused_by` 作为主谓词（subject 为结果、object 为原因），不再区分 `led_to` / `causes` / `results_in` 等方向变体。这大幅简化了图遍历逻辑——找根因一律沿 `caused_by` 出边向下走，找影响一律沿入边向上走。
 
-描述工程师/agent 的排查过程和推理链。
+### 3. 诊断推理关系（22 个，排查过程）
+
+描述工程师/agent 的排查过程和推理链，是诊断知识图谱中最丰富的一类。
 
 | 谓词 | 含义 | 示例 |
 |------|------|------|
-| `investigates` | A排查了B | 怀疑真空泄漏 → 真空系统 |
-| `checked` | A检查了B | 对比MFC设定值 → MFC-1实测流量 |
-| `found` | A发现了B | 检查密封性 → T-101缓慢漂移5度 |
-| `normal` | A正常（排除项） | 检查射频系统 → 射频系统(正常) |
-| `ruled_out` | A被排除 | 假设射频故障 → 射频系统 |
-| `supports` | A支持B | 相关性r=0.85 → MFC-1是根因 |
-| `contradicts` | A反驳B | MFC-1校准合格 → 假设MFC校准漂移 |
-| `confirmed_by` | A被B确认 | MFC-1是根因 → 参考案例-007 |
-| `repaired_by` | A被B修复 | 密封失效 → 更换密封O-ring |
+| `investigates` | A（假设）排查了B（子系统/传感器/部件） | 怀疑真空泄漏 → 真空系统 |
+| `checked` | A（排查动作）检查了B | 对比MFC设定值 → MFC-1实测流量 |
+| `found` | A（排查动作）发现了B（发现/异常） | 拆检密封圈 → 密封圈磨损痕迹 |
+| `normal` | A排查时正常（排除项） | 检查射频系统 → 射频系统(正常) |
+| `ruled_out` | A（假设）被排除了 | 假设射频故障 → 射频系统 |
+| `no_correlation` | A与B无相关性（排除项） | 水温波动 → 刻蚀速率漂移 |
+| `contradicts` | A（证据）反驳了B（假设） | MFC-1校准合格 → 假设MFC校准漂移 |
+| `supports` | A（证据）支持B（假设/结论） | 压力历史数据 → 密封圈老化假设 |
+| `confirms`/`confirmed_by` | A被B确认 | MFC-1是根因 → 参考案例-007 |
+| `refines_to` | A（宽泛假设）细化为B（更具体的假设） | 气体系统问题 → MFC-1校准漂移 |
+| `alternative_to` | A和B是互斥的替代假设 | MFC校准漂移 vs 密封圈老化 |
+| `detected_by` | A（征兆）被B（传感器）检测到 | 压力波动 → P-02 |
+| `observed_by` | A（现象/故障）被B（人）发现 | 刻蚀不均 → 工程师A |
+| `references` | A引用了历史案例B | 当前排查 → 案例-007 |
+| `repaired_by` | A（故障）被B（措施）修复 | 密封失效 → 更换O-ring |
+| `preceded_by` | A发生在B之后（时序） | 压力异常 → 更换气体瓶之后 |
+| `drifts_from` | A（状态/参数）偏离B（基准/正常状态） | 腔壁温度 → 设定值偏差3度 |
+| `deviates_from` | A（量测结果）偏离B（规格/基准） | CD均匀性 → 规格±2nm |
+| `measured_as` | A（工艺/批次）的量测结果是B | 批次A123 → CD均匀性偏差3% |
+| `correlates_with` | A与B有相关性 | MFC-1流量波动 → 刻蚀速率漂移 |
+| `suggests` | A（信号/数据模式）暗示B（假设/故障） | T-101周期性振荡 → PID参数失调 |
+| `feedback_to` | A（量测结果）反馈到B（工艺步骤/参数） | CD偏差 → 主刻蚀步骤(需调补偿) |
+
+### 4. 状态关系（1 个，单值互斥）
+
+描述设备/腔室的运行状态，**single 基数**——新值到达自动超替旧值（recorded_to=now()）。
+
+| 谓词 | 含义 | subject → object | 示例 |
+|------|------|-------------------|------|
+| `has_status` | A的运行状态是B（单值互斥） | equipment/chamber/subsystem → status_value | 主腔体 → 正常运行 / 故障停机 / 维护中 |
 
 ## 断言语义
 

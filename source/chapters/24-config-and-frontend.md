@@ -629,18 +629,42 @@ const llmStatus = computed<LlmStatus>(() => {
 
 ## 10. 新增视图速览
 
-控制平面重构新增 6 个视图,覆盖此前缺失的后端能力面:
+控制平面重构后共 **12 个视图**,覆盖后端全部能力面:
 
-| 视图 | 路由 | 职责 |
-|------|------|------|
-| **OverviewView** | `/overview` | health/version/storage/queue/active features/pending governance 概览 + 快捷动作 |
-| **DataOpsView** | `/data` | 文档 ingest、批量 experience、import/export、Evidence 登记 |
-| **CasesView** | `/cases` | Case CRUD/lifecycle、workspace graph、promotion、diagnosis recall |
-| **UnderstandingView** | `/understanding` | 概念合成、coverage、detail、related concepts |
-| **GovernanceView** | `/governance` | evolution 审批、feedback、vocabularies、temporal phrases、Erasure preview/execute |
-| **ApiConsoleView** | `/api-console` | 全端点目录 + 认证原始调用(回退兜底,任何新端点无需等 UI 适配) |
+| 视图 | 分组 | 路由 | 职责 |
+|------|------|------|------|
+| **OverviewView** | Observe | `/overview` | health/version/storage/queue/active features/pending governance 概览 + 快捷动作 |
+| **OpsView** | Observe | `/ops` | jobs/worker 状态、Dreaming/Higher-Order 运行记录、维护操作入口 |
+| **IngestView** | Operate | `/ingest` | 单条/批量文档录入,modality/intent 选择 |
+| **DataOpsView** | Operate | `/data` | 文档 ingest、批量 experience、import/export、Evidence 登记 |
+| **CasesView** | Operate | `/cases` | Case CRUD/lifecycle、workspace graph、promotion、diagnosis recall |
+| **PlaybooksView** | Operate | `/playbooks` | 诊断剧本 DAG 管理:创建/版本/可视化/导入导出/正向推理调试 |
+| **QaView** | Operate | `/qa` | Ask 诊断面板 + 阶段事件瀑布流 + 卡住检测 |
+| **GraphView** | Inspect | `/graph` | 知识图谱可视化(vis-network),实体/事实浏览 |
+| **BrowseView** | Inspect | `/browse` | Memory Browser,分层级浏览事件/事实/信念 |
+| **UnderstandingView** | Inspect | `/understanding` | 概念合成、coverage、detail、related concepts |
+| **GovernanceView** | Govern | `/governance` | evolution 审批、feedback、vocabularies、synonyms、temporal phrases、Erasure |
+| **SettingsView** | Govern | `/settings` | 配置中心(检索调参/信号总线/feature flag)、连接凭据、检索控制面板 |
+| **ApiConsoleView** | Govern | `/api-console` | 全端点目录 + 认证原始调用(回退兜底) |
 
 **设计意图**:Observe/Operate/Inspect/Govern 四组对应运维生命周期 —— 观察 → 操作 → 审视 → 治理。API Console 作为"原始回退",保证任何后端能力(含尚未建专用 UI 的新端点)都能通过控制平面调用,不再需要 curl。
+
+### 10.1 PlaybooksView（诊断剧本管理）
+
+PlaybooksView 是诊断 playbook 的可视化编辑器,对应后端 `diagnostic_playbooks` + `forward_reasoning` 两套 API。
+
+**核心功能**:
+
+| 功能 | 说明 |
+|------|------|
+| **DAG 可视化** | 用 vis-network 渲染 playbook 节点和边,节点按类型着色(symptom=蓝/test=绿/action=橙/recommendation=紫/terminal=灰) |
+| **节点编辑** | 节点 CRUD、类型切换、条件表达式编辑器(JSON Schema 表单) |
+| **边编辑** | 拖拽连线创建边、outcome 选择、边条件编辑 |
+| **版本管理** | 版本列表、版本对比(diff)、激活/退役操作 |
+| **测试运行** | 内置 forward reasoning 调试面板——输入症状+观测数据,实时看到遍历 trace 和 next_actions |
+| **导入导出** | JSON 格式导入导出,便于跨环境迁移 playbook |
+
+**与 CasesView 的关系**:CasesView 处理"具体一次故障怎么查"(案例),PlaybooksView 处理"这类故障应该怎么查"(规程)。两者在 UI 中通过 Operate 分组下的 Tab 切换,数据层完全独立。
 
 ```{seealso}
 配置项的语义与默认值见 `src/cortex/infra/config.py` 的 Pydantic 模型定义(`RetrievalCfg` / `DreamingCfg` / `HigherOrderCfg` 等)。API 端点完整列表见第18章。前端控制平面的完整设计文档见主仓 `DESIGN.md`。

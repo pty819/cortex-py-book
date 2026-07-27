@@ -146,10 +146,10 @@ flowchart TD
 
 | 模块 | 文件 | 职责 |
 |------|------|------|
-| **Ontology** | `infra/ontology.py` | 谓词本体（结构/因果/诊断/状态）、图准入规则 |
-| **Prompt 体系** | `infra/prompts.py` | 半导体级诊断 prompts，10+ 实体类型，40+ 谓词 |
+| **Ontology** | `infra/ontology.py` | 谓词本体（结构/因果/诊断/状态四大类，共 36 个谓词）、图准入规则、`graph_eligible()` |
+| **Prompt 体系** | `infra/prompts.py` | 半导体级诊断 prompts，13 种实体类型，36 个谓词 |
 | **Understanding** | `memory/understanding.py` | 概念合成层，related 图遍历 |
-| **Maintenance** | `memory/maintenance.py` | methylation（软剪枝）+ consolidation（去重）+ `seed_predicate_definitions` |
+| **Maintenance** | `memory/maintenance.py` | methylation（软剪枝）+ consolidation（去重）+ 词表预置 + `seed_predicate_definitions` |
 | **Erasures** | `memory/erasures.py` | GDPR 4 阶段引用计数真删 |
 | **Ingest** | `memory/ingest.py` | bulk 写入 + 5 导入器 |
 | **Episodes/Case** | `memory/episodes.py` | 诊断 Case 全生命周期管理 |
@@ -158,6 +158,9 @@ flowchart TD
 | **Feedback** | `memory/feedback.py` | 反馈信号采集（salience/正负反馈/retrieval_usefulness），写入 `feedback_signals` 表 |
 | **Dreaming** | `memory/dreaming.py` | 离线巩固（Dreaming），周期性归纳 `dreaming_runs` |
 | **Higher-Order** | `memory/higher_order.py` | 高阶事实合成，从一阶 facts 产出抽象结论（`is_higher_order=true`） |
+| **Terminology** | `memory/terminology.py` | Vocabularies 词表 + Synonyms 同义词管理 |
+| **Diagnostics** | `diagnostics/engine.py` + `diagnostics/forward_reasoning.py` | 诊断 Playbook DAG 引擎 + 症状正向推理（versioned playbooks, forward reasoning runs） |
+| **Sensor Resolve** | `interfaces/api/routes/sensor_resolve.py` | 自然语言 → 向量检索 → BFS 出边 → 关联传感器解析 |
 | **Concurrency** | `infra/concurrency.py` | ThreadPoolExecutor 并行 I/O 工具:`parallel_map`(保序、异常→None)、`parallel_call`(异构函数并行)、`get_executor`(惰性单例) |
 
 ## 并行 I/O 优化
@@ -185,43 +188,82 @@ Cortex-PY 在五层记忆模型之上新增了**自演化能力**，使记忆层
 
 三条链路统一读写信号总线字段：Feedback 负责采集信号（写 salience/retrieval_usefulness）、Dreaming 负责巩固、Higher-Order 负责提升抽象层级。检索融合后的四信号加权（Salience/Usage/Usefulness/Exploration 各自可开关）让记忆系统可以通过 salience 软降权抑制噪声、用 usage 饱和加分放大高频记忆、用 exploration 槽位保证新记忆曝光。详细设计与配置见[第10章 信号总线](10-signal-bus)、[第11章 Feedback 信号](11-feedback)、[第12章 Dreaming 离线巩固](12-dreaming)与[第13章 Higher-Order 高阶事实](13-higher-order)。
 
+## 诊断推理（Playbook + Forward Reasoning）
+
+Cortex-PY 的 `diagnostics` 模块是独立于知识图谱的**诊断规程引擎**——facts 图描述"世界是什么样"，diagnostics 描述"排查该怎么走"。两者解耦：playbook 是人为审定的诊断流程图，不会被 LLM 抽取自动修改；forward reasoning 是确定性的 DAG 遍历，不产生幻觉。
+
+**核心设计**：
+
+- **Versioned Playbook DAG**：每个 playbook 是一个有向无环图，节点类型包括 `symptom` / `condition` / `test` / `action` / `recommendation` / `terminal`。每个 playbook 可有多版本（`draft` → `active` → `retired`），新版本不可变追加，历史版本与推理 run 永久保留。
+- **Forward Reasoning（正向推理）**：输入症状集合 + 观测数据 + 上下文，从 entry node 出发沿边遍历。每条边有 `outcome`（`matched` / `not_matched` / `unknown` / `always` / `default`）和条件表达式，节点条件支持 `all_symptoms` / `any_symptoms` / `none_symptoms` / `observations` / `context` 五种模式。输出 `next_actions`（下一步检查/动作）、`recommendations`（推荐结论）和完整 `trace`。
+- **传感器解析（Sensor Resolve）**：独立的自然语言 → 传感器查询通道。LLM 解析查询项 → 向量检索匹配实体 → 沿结构谓词 BFS 5 跳收集 sensor 类型节点 → 返回传感器名称列表。用于"把'压力异常'翻译成具体要看哪几个传感器"。
+
+> 诊断模块与 facts 图在数据上不相交（`diagnostic_*` 5 张表独立于 `facts`/`entities`），但在语义上协同：playbook 的 `recommendation.targets` 可以指向 facts 图中的实体（如"检查 MFC-1 校准"），forward reasoning 不会修改图谱。
+
 ## 代码结构
+
+> 5 子包分层（`infra` → `memory` → `graph` → `diagnostics` → `interfaces`，依赖单向无环）。完整架构说明见[第23章 架构视图](23-architecture-diagrams)。
 
 > 4 子包分层（`infra` → `memory` → `graph` → `interfaces`，依赖单向无环）。完整架构说明见[第23章 架构视图](23-architecture-diagrams)。
 
 ```
 src/cortex/
-├── schema.sql              # 全表 DDL（单一真相源,27 张表）
+├── migrations/             # Alembic 迁移（8 个版本，32 张表）
+│   └── versions/
+│       ├── 0001_current_schema.py    # 基础 schema（SQL 文件驱动，32 张表）
+│       ├── 0002_graph_editing_audit.py
+│       ├── 0003_pg_textsearch_bm25.py
+│       ├── 0004_bm25_projection_dirty_tracking.py
+│       ├── 0005_bm25_dirty_columns.py
+│       ├── 0006_entity_identity_unique.py
+│       ├── 0007_remove_access_control.py
+│       └── 0008_predicate_cleanup.py  # 谓词清理：消除互逆冗余
 ├── infra/                  # 基础设施（10 模块）
 │   ├── config.py           # YAML 配置 + 维度强校验 + 热更新白名单
 │   ├── db.py               # engine / session / schema 初始化（psycopg3 + QueuePool 连接池）
 │   ├── core.py             # WAL append(幂等) + 队列 + lifecycle + ?wait=
 │   ├── services.py         # embedding / rerank / LLM + think 剥离 + 流式
 │   ├── concurrency.py      # parallel_map / parallel_call(ThreadPoolExecutor 并行 I/O)
-│   ├── prompts.py          # 半导体级诊断 prompts（10+ 实体, 40+ 谓词）
-│   ├── ontology.py         # 谓词本体（结构/因果/诊断/状态）
+│   ├── prompts.py          # 半导体级诊断 prompts（13 种实体, 36 个谓词）
+│   ├── ontology.py         # 谓词本体（结构/因果/诊断/状态四大类，PREDICATE_DICTIONARY）
 │   ├── chunking.py         # 长文档分块
 │   ├── token_budget.py     # token 预算估算
 │   └── think_stream.py     # think 标签边界状态机
-├── memory/                 # 记忆写入与生命周期(12 模块)
+├── memory/                 # 记忆写入与生命周期(14 模块)
 │   ├── ingest.py           # 批量 + 5 导入器
 │   ├── episodes.py         # Episodes + 诊断 Case 管理
 │   ├── erasures.py         # GDPR 引用计数真删（4 阶段）
 │   ├── temporal.py         # NL 时间短语解析
+│   ├── terminology.py      # Vocabularies 词表 + Synonyms 同义词
 │   ├── export_data.py      # 导出 JSONL
-│   ├── maintenance.py      # methylation / consolidation / seed_predicate_definitions
+│   ├── maintenance.py      # methylation / consolidation / seed 词表 / seed_predicate_definitions
 │   ├── understanding.py    # 概念合成层
 │   ├── evidence.py         # 外部证据目录(URI/hash/query/version/quality)
 │   ├── evolution.py        # Dreaming/Higher-Order 人工审批门(evolution_candidates)
 │   ├── feedback.py         # Feedback 回灌(双轨软降权+硬归档)
 │   ├── dreaming.py         # Dreaming proposal 生成(不直接改 verified graph)
-│   └── higher_order.py     # Higher-Order candidate 生成
+│   ├── higher_order.py     # Higher-Order candidate 生成
+│   └── graph_mutations.py  # 实体/事实的 CRUD 突变（graph editing + audit）
 ├── graph/                  # 知识图谱
 │   ├── extraction/         # 抽取管线 + 实体链接 B over C(三阶段并行)
 │   └── retrieval/          # 6 通道 + RRF + rerank + StratifiedPack
+├── diagnostics/            # 诊断推理（2 模块，独立于 facts 图）
+│   ├── engine.py           # Playbook DAG 验证与遍历（纯函数，无 DB）
+│   └── forward_reasoning.py # Playbook 版本管理 + 症状正向推理 + run 持久化
 └── interfaces/             # 对外入口
-    ├── api/                # FastAPI 全端点(72 个)+ Pydantic schemas
-    ├── mcp_server.py       # MCP server(32 工具,双传输)
+    ├── api/                # FastAPI 全端点(90+, app.py + 10 个路由文件)+ Pydantic schemas
+    │   └── routes/
+    │       ├── admin.py            # 运维指标 + maintenance
+    │       ├── cases.py            # 诊断 Case 生命周期
+    │       ├── diagnostics.py      # Playbook CRUD + forward reasoning
+    │       ├── erasures.py         # GDPR 擦除
+    │       ├── graph.py            # 实体/事实/边/时间线 CRUD
+    │       ├── operations.py       # 记忆 store/search/forget/ingest/export
+    │       ├── sensor_resolve.py   # 自然语言 → 关联传感器解析
+    │       ├── temporal.py         # 时间短语管理
+    │       ├── terminology.py      # 词表 + 同义词
+    │       └── understanding.py    # Beliefs + Understanding
+    ├── mcp_server.py       # MCP server(53 工具, stdio + streamable-http 双传输)
     ├── cli.py              # CLI 入口
     ├── smoke.py            # 端到端冒烟
     └── worker/             # Postgres-as-queue worker 循环

@@ -14,37 +14,76 @@
 
 ## 完整表清单
 
-cortex schema 共 **27 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分列以 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 增量补加)。下表按逻辑层分组:
+cortex schema 共 **32 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分列以 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 增量补加),通过 Alembic 迁移管理（8 个版本）。下表按逻辑层分组:
+
+### 核心记忆层（5 张）
 
 | 表 | 角色 | 核心字段 |
 |----|------|----------|
 | `events` | WAL, 唯一真相源 | scope, content, context, idempotency_key, access_count, feedback_processed, last_recalled_at |
-| `entities` | 实体表, B-over-C 载体 | canonical_name, entity_type, embedding, identity_context |
+| `entities` | 实体表, B-over-C 载体 | canonical_name, entity_type, embedding, identity_context, context_key |
 | `entity_aliases` | 别名表 | entity_id, alias |
-| `facts` | **双时态三元组 + 图边** | subject_id, predicate, object, 双时态4字段, polarity, assertion_status, salience, retrieval_count, retrieval_usefulness, 正/负反馈计数, is_higher_order, evidence_fact_ids |
+| `facts` | **双时态三元组 + 图边** | subject_id, predicate, object_type/entity_id/value, 双时态4字段, polarity, assertion_status, salience, retrieval_count, retrieval_usefulness, 正/负反馈计数, is_higher_order, evidence_quality |
 | `beliefs` | 概率断言 + supports 链 | about_entity_id, claim, confidence, supports |
-| `episodes` | 有界事件序列 + Case | scope, event_ids, case_id, equipment, root_cause |
+
+### 组织与案例层（3 张）
+
+| 表 | 角色 | 核心字段 |
+|----|------|----------|
+| `episodes` | 有界事件序列 + Case | scope, event_ids, title, phase, status, equipment, root_cause |
 | `concepts` | Understanding 概念 | name, topic, summary, supports, related |
-| `evidence_artifacts` | **外部证据目录**(payload 留权威系统) | evidence_kind, uri/source_record_id, content_hash, source_system, observed_from/to, query_spec, quality |
-| `claim_evidence` | fact ↔ evidence 引用 | fact_id, evidence_id, role(supports/refutes), weight, span |
-| `assertion_case_links` | fact ↔ Case 关联 | fact_id, episode_id, relation(supports/refutes/reuses/workspace/promoted_from) |
-| `episode_evidence` | Case ↔ evidence 关联 | episode_id, evidence_id, role(regression) |
+| `assertion_case_links` | fact ↔ Case 关联 | fact_id, episode_id, relation |
+
+### 证据与审计层（6 张）
+
+| 表 | 角色 | 核心字段 |
+|----|------|----------|
+| `evidence_artifacts` | **外部证据目录** | evidence_kind, uri/source_record_id, content_hash, source_system, observed_from/to, query_spec, quality |
+| `claim_evidence` | fact ↔ evidence 引用 | fact_id, evidence_id, role, weight, span |
+| `episode_evidence` | Case ↔ evidence 关联 | episode_id, evidence_id, role |
 | `jobs` | Postgres-as-queue | job_type, status, payload |
-| `scopes` | scope 注册表 | scope_path, parent_path, policies |
 | `lifecycle_events` | 生命周期事件 | kind, scope, event_id, payload |
 | `audit_log` | 审计日志 | actor, scope, endpoint, action |
+
+### 基础设施层（6 张）
+
+| 表 | 角色 | 核心字段 |
+|----|------|----------|
+| `scopes` | scope 注册表 | scope_path, parent_path, policies |
 | `blobs` | 大对象存储 | sha256, content_type, storage, refcount |
-| `vocabularies` | 词表定义 | name, kind (closed/open), cardinality |
-| `vocabulary_values` | 词表值 | canonical_value, aliases, cardinality |
-| `synonyms` | 同义词扩展 | term, aliases |
-| `temporal_phrases` | 时间短语 | name, anchor, expression |
 | `import_jobs` | 导入任务 | source, status, accepted, failed |
 | `erasure_jobs` | 擦除任务 | selector, phase, manifest |
 | `recall_packs` | 检索结果缓存 | pack_id, query_hash, pack_json, expires_at |
-| `feedback_signals` | **反馈信号总线**(反馈回灌) | scope, target_layer, target_id, signal_type, signal_durable, strength, idempotency_key, applied |
-| `dreaming_runs` | **离线巩固运行记录**(Dreaming) | run_id, scope, status, phase0_closed, phase_a_clusters, phase_b_issues, phase_c_actions |
-| `evolution_candidates` | **人工审批门**(Dreaming/Higher-Order 候选) | source_type, proposed_action, subject_id, payload, source_fact_ids, status(pending/approved/rejected/applied), reviewer, reasoning |
-| `predicate_definitions` | **谓词本体表**(从 ontology.py 迁入 DB) | predicate, category, prop_order, cardinality, example |
+| `predicate_definitions` | **谓词本体表**(DB-backed) | predicate, category, prop_order, cardinality |
+
+### 术语与时态层（4 张）
+
+| 表 | 角色 | 核心字段 |
+|----|------|----------|
+| `vocabularies` | 词表定义 | name, kind (closed/open), cardinality |
+| `vocabulary_values` | 词表值 | canonical_value, aliases, cardinality |
+| `synonyms` | 同义词扩展 | scope, term, aliases, status |
+| `temporal_phrases` | 时间短语 | name, anchor, expression |
+
+### 自演化层（3 张）
+
+| 表 | 角色 | 核心字段 |
+|----|------|----------|
+| `feedback_signals` | **反馈信号总线** | scope, target_layer, target_id, signal_type, signal_durable, strength, idempotency_key, applied |
+| `dreaming_runs` | **离线巩固运行记录** | run_id, scope, status, phase0_closed, phase_a_clusters, phase_b_issues, phase_c_actions |
+| `evolution_candidates` | **人工审批门** | source_type, proposed_action, subject_id, payload, source_fact_ids, status, reviewer, reasoning |
+
+### 诊断推理层（5 张）
+
+> 独立于 facts 图的诊断规程数据。playbook 是人为审定的流程图，不会被 LLM 自动修改。
+
+| 表 | 角色 | 核心字段 |
+|----|------|----------|
+| `diagnostic_playbooks` | 诊断剧本元数据 | scope, name, description, status, active_version, applicability |
+| `diagnostic_playbook_versions` | 剧本版本（不可变追加） | playbook_id, version, status, description, applicability, entry_nodes |
+| `diagnostic_playbook_nodes` | 剧本节点 DAG | version_id, node_key, node_type, title, condition, recommendation, priority |
+| `diagnostic_playbook_edges` | 剧本边 | version_id, from_node_id, to_node_id, outcome, condition, priority |
+| `diagnostic_reasoning_runs` | 正向推理运行记录 | playbook_id, version, input_symptoms, observations, trace, next_actions, recommendations |
 
 ## 实体表 (entities)
 

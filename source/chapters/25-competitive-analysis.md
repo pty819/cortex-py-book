@@ -387,7 +387,7 @@ MindMemOS 不是为故障诊断设计的——它的目标是通用 agent 的长
   但在诊断意义上完全不同。
 ```
 
-**谁做到了**：Cortex-PY（21 种预定义类型 + 40+ 谓词约束）、Graphiti（可自定义 Pydantic 实体/边类型，但无约束机制）
+**谁做到了**：Cortex-PY（13 种实体类型 + 36 个标准谓词 + 四大类约束 + graph_eligible 准入规则）、Graphiti（可自定义 Pydantic 实体/边类型，但无约束强制执行机制）
 
 ### 需求 2：同名实体在不同设备中必须是不同实体
 
@@ -478,12 +478,12 @@ MindMemOS 不是为故障诊断设计的——它的目标是通用 agent 的长
 
 | 诊断需求 | **Cortex-PY** | **Mem0** | **Graphiti** | **OpenViking** | **agentmemory** | **MindMemOS** |
 |---------|:-----------:|:-------:|:-----------:|:-------------:|:--------------:|:------------:|
-| **实体类型体系**（21种专用+命名规范） | ✅✅ | ❌ | ⚠️ 自定义 Pydantic 但无约束 | ❌ | ❌ | ❌ |
+| **实体类型体系**（13种，含命名规范） | ✅✅ | ❌ | ⚠️ 自定义 Pydantic 但无约束 | ❌ | ❌ | ❌ |
 | **身份上下文隔离**（跨设备同名隔离） | ✅✅ 6字段 | ❌ user_id仅 | ❌ | ✅ URI路径 | ❌ | ❌ |
 | **断言认知状态**（hypothesis≠confirmed≠ruled_out） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **排除项不入因果图**（graph_eligible 过滤） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **因果链多跳遍历** | ✅ 递归CTE BFS | ❌ | ✅✅ Neo4j Cypher | ❌ | ⚠️ 关联图非语义图 | ⚠️ 通用图非诊断 |
-| **谓词闭集约束**（40+标准谓词，未命中隔离） | ✅✅ **唯一实现** | ❌ | ⚠️ 自定义但无强制执行 | ❌ | ❌ | ❌ |
+| **谓词闭集约束**（36标准谓词，四大类，未命中隔离） | ✅✅ **唯一实现** | ❌ | ⚠️ 自定义但无强制执行 | ❌ | ❌ | ❌ |
 | **双时态**（valid+recorded 4字段） | ✅✅ | ❌ | ✅✅ valid_at+invalid_at | ❌ | ❌ | ⚠️ status=archived 非真双时态 |
 | **排查时序重建**（case+phase+诊断谓词链） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **属性组合检索**（predicate+status 结构化过滤） | ✅✅ SQL WHERE | ❌ | ✅ Cypher | ❌ | ❌ | ⚠️ |
@@ -498,6 +498,7 @@ MindMemOS 不是为故障诊断设计的——它的目标是通用 agent 的长
 | **自演化：反馈驱动召回权重调整** | ✅✅ 正+负反馈，改 retrieval_usefulness/salience（显式）与 retrieval_count（隐式 recall 命中） | ❌ 仅写入时 LLM 判 ADD/UPDATE/DELETE | ❌ | ❌ | ❌ | ✅✅ 负反馈 3 层 durable（原型） |
 | **自演化：离线巩固（Dreaming）** | ✅✅ 两阶段+Phase0 复用 consolidation | ❌ | ❌ | ❌ | ⚠️ 4 层整合但非离线 Dreaming | ✅✅ relation_detect+action_plan（原型） |
 | **自演化：高阶归纳（Higher-Order）** | ✅✅ 证据驱动+类型约束 | ❌ | ❌ | ❌ | ❌ | ✅✅ `_schema_higher_order.py` 证据驱动（原型） |
+| **诊断规程引擎**（versioned playbook DAG + deterministic forward reasoning） | ✅✅ **唯一实现** | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 > ✅✅ = 强支持、且该场景下唯此家有；✅ = 支持但有局限；⚠️ = 有但不够；❌ = 不支持
 >

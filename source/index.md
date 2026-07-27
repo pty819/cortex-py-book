@@ -20,6 +20,7 @@ chapters/04-extraction-pipeline
 chapters/05-entity-linking
 chapters/06-ontology-and-assertion
 chapters/07-episodes-and-case
+chapters/07b-diagnostics
 chapters/08-beliefs-and-understanding
 chapters/09-vocabularies
 ```

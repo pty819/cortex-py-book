@@ -186,12 +186,93 @@ vocab_create(name="failure_mode", kind="closed",
 vocab_list(scope="equip:XXX-v1")
 ```
 
+## Synonyms（同义词扩展）
+
+Vocabularies 解决的是"值标准化"（所有对同一概念的表述归一为 canonical form）。**Synonyms** 解决的是反向问题——当用户用任意别名查询时，都能命中同一条记忆。
+
+### 与 Vocabularies 的区别
+
+| 维度 | Vocabularies（词表） | Synonyms（同义词） |
+|------|---------------------|-------------------|
+| 方向 | 写入时归一化（多 → 一） | 读取时扩展（一 → 多） |
+| 作用层 | 抽取/写入路径 | 检索/读取路径 |
+| 粒度 | 按词表分,每个词表一组值 | 全局 term → aliases 映射 |
+| 状态 | 只有 active/存在 | active / inactive / deprecated |
+| 触发 | 写入时 coerce 函数 | 检索时 synonym 通道自动扩展 |
+
+### 表结构
+
+```sql
+CREATE TABLE synonyms (
+    synonym_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scope       TEXT NOT NULL,
+    term        TEXT NOT NULL,           -- 主词（规范名）
+    aliases     TEXT[] NOT NULL DEFAULT '{}',  -- 别名数组
+    status      TEXT NOT NULL DEFAULT 'active',  -- active / inactive / deprecated
+    created_by  TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (scope, lower(term))
+);
+```
+
+### 归一化与重叠检测
+
+所有 term 和 alias 都经 `normalize_term()` 归一化（小写、去空白、全角转半角）。创建/更新时做**重叠检测**——如果新加入的 aliases 和已有同义词组的成员（term 或任一 alias）重叠，报错拒绝，防止同一个词出现在两个不同的同义词组里导致歧义。
+
+```python
+def _assert_no_active_overlap(conn, *, scope, members, exclude_synonym_id=None):
+    """检查 members 中任意一个是否已在其他同义词组里"""
+    # 对每个 member 做归一化,然后查 synonyms 表
+    # 有重叠则 raise ValueError
+```
+
+### 检索中的同义词扩展
+
+第 14 章的 **Synonym 通道**（6 通道之一）在检索时自动扩展查询词：
+
+```python
+def expanded_terms(conn, *, scope, view, query):
+    """返回 (expanded_terms_list, matched_groups)
+    expanded_terms = 原 query term + 所有命中同义词组的 aliases
+    matched_groups = 命中了哪些同义词组（用于调试/解释）
+    """
+```
+
+匹配方式是 `_query_contains`——子串双向匹配（query 包含 term 或 term 包含 query 都算命中），不是精确相等。这让"压力不稳"能命中"压力波动"这个同义词组。
+
+### API 与 MCP
+
+| 操作 | HTTP 端点 | MCP 工具 |
+|------|----------|----------|
+| 列出 | `GET /v1/synonyms` | `synonym_list` |
+| 创建 | `POST /v1/synonyms` | `synonym_create` |
+| 更新 | `PUT /v1/synonyms/{id}` | `synonym_update` |
+| 删除 | `DELETE /v1/synonyms/{id}` | `synonym_delete` |
+| 批量导入 | `POST /v1/synonyms/import` | `synonym_import` |
+
+### 典型用法
+
+```python
+# 创建同义词组
+synonym_create(
+    scope="equip:XXX-v1",
+    term="压力波动",
+    aliases=["压力不稳", "压力振荡", "压力跳动", "pressure oscillation"],
+    status="active",
+)
+
+# 检索时自动扩展:用户搜"压力不稳" → 扩展为 ["压力不稳", "压力波动", "压力振荡", ...]
+# → 提高召回率
+```
+
 ## 最佳实践
 
 | 场景 | 推荐模式 | 说明 |
 |------|---------|------|
-| 谓词约束 | closed + multi | 限制所有诊断关系为预定义 40+ 谓词 |
+| 谓词约束 | closed + multi | 限制所有诊断关系为预定义 36 个谓词 |
 | 故障类型 | closed + multi | 标准化故障分类 |
 | 设备状态 | closed + single | 每个设备只有一个当前状态 |
 | 设备名称 | open + multi | 不能限制太死 |
 | 阶段/步骤 | closed + single | 诊断阶段依次推进 |
+| 同义词扩展 | active + aliases 3-5 个 | 每个同义词组别太多,避免扩展过宽引入噪声 |

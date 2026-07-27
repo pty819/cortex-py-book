@@ -64,84 +64,64 @@ def _llm_extract(text_body: str, is_diagnosis: bool = False,
     # ... 调用 LLM
 ```
 
-## 10+ 实体类型
+## 13 种实体类型
 
-抽取 prompt 定义了三大类、10+ 种实体类型：
+抽取 prompt 定义了**13 种实体类型**，按语义层分为三组。实体类型是字符串而非枚举——抽取时自由标注，B-over-C 实体链接时 `entity_type` 作为匹配维度之一。
 
-### A. 物理层实体
+### A. 物理/工程层实体（10 种）
 
 | 类型 | 说明 | 命名规范 | 示例 |
 |------|------|----------|------|
 | `equipment` | 设备/整机 | 型号/代号 | "处理单元A"、"工艺模块PM-3" |
-| `subsystem` | 子系统 | 功能名+系统 | "温控系统"、"真空系统"、"气体输送系统" |
-| `component` | 具体部件 | 规格+部件名 | "质量流量控制器MFC-1"、"静电卡盘ESC" |
-| `sensor` | 传感器/仪表 | 编号+类型 | "温度传感器T-101"、"压力传感器P-02" |
-| `controller` | 控制单元 | 层级+功能 | "PLC主控"、"腔体温度PID" |
-| `process_param` | 工艺参数 | 参数名+单位 | "腔体压力3mTorr"、"射频功率1500W" |
-| `process_step` | 工艺步骤 | 阶段名 | "预真空步骤"、"主工艺步骤" |
-| `material` | 材料/介质 | 规范名 | "工艺气体A"、"密封O-ring" |
-| `phenomenon` | 物理/化学现象 | 现象描述 | "等离子体点火"、"沉积反应" |
-| `chamber_state` | 腔体状态 | 状态描述 | "腔体积碳"、"腔壁残留污染" |
-| `metrology_result` | 量测结果 | 指标+偏差 | "CD均匀性±2.1nm"、"缺陷密度15个/wafer" |
+| `subsystem` | 子系统/功能模块 | 功能名+系统 | "温控系统"、"真空系统"、"气体输送系统"、"射频系统"、"传输系统"、"排气系统" |
+| `component` | 具体部件 | 规格+部件名 | "质量流量控制器MFC-1"、"截止阀V-3"、"加热器H-1"、"静电卡盘ESC"、"匹配网络"、"喷淋头" |
+| `sensor` | 传感器/仪表 | 编号+类型 | "温度传感器T-101"、"压力传感器P-02"、"光学端点检测器EPD-1"、"振动传感器V-1"、"电压传感器"、"流量计" |
+| `controller` | 控制单元 | 层级+功能 | "PLC主控"、"腔体温度PID"、"安全互锁SIS"、"射频匹配控制器"、"MCU固件v2.1"、"节流阀压力控制器" |
+| `process_param` | 工艺参数 | 参数名+单位 | "腔体压力3mTorr"、"射频功率1500W"、"气体流量A:50sccm"、"基底温度80度"、"刻蚀速率1200A/min"、"DC偏压200V"、"沉积速率" |
+| `process_step` | 工艺步骤/阶段 | 阶段名 | "预真空步骤"、"稳定步骤"、"主工艺步骤"、"吹扫步骤"、"升温步骤"、"除气步骤"、"预沉积步骤" |
+| `material` | 材料/介质 | 规范名 | "工艺气体A"、"前驱体B"、"密封O-ring"、"冷却液"、"靶材C"、"反应副产物" |
+| `phenomenon` | 物理/化学现象 | 现象描述 | "等离子体点火"、"沉积反应"、"反应副产物累积"、"热膨胀"、"气体击穿"、"离子轰击"、"溅射"、"等离子体模式转换" |
+| `chamber_state` | 腔体状态/条件 | 状态描述 | "腔体积碳(seasoning漂移)"、"腔壁残留污染"、"腔体conditioning未完成"、"腔体清洁后首次工艺"、"等离子体清洗状态" |
+| `metrology_result` | 量测/计量结果 | 指标+偏差 | "CD均匀性±2.1nm"、"套刻精度overlay偏差3nm"、"缺陷密度15个/wafer"、"薄膜厚度偏差"、"刻蚀深度偏差" |
 
-### B. 故障层实体
-
-| 类型 | 说明 | 示例 |
-|------|------|------|
-| `fault` | 故障/异常状态 | "腔体压力异常"、"MFC响应延迟" |
-| `symptom` | 可观测征兆 | "压力读数波动±0.5mTorr"、"RF反射功率升高" |
-| `signal_pattern` | 信号特征模式 | "T-101温度呈周期性振荡(周期约30s)" |
-
-### C. 诊断推理层实体
+### B. 故障层实体（2 种）
 
 | 类型 | 说明 | 示例 |
 |------|------|------|
-| `hypothesis` | 诊断假设/嫌疑方向 | "怀疑真空系统泄漏" |
-| `evidence` | 诊断证据 | "T-101趋势显示72小时内缓慢漂移5度" |
-| `diagnostic_action` | 排查动作 | "检查真空系统密封性" |
-| `correlation` | 相关性发现 | "MFC-1流量偏差与刻蚀速率漂移相关系数0.85" |
-| `measure` | 维修/处理措施 | "更换密封O-ring"、"重新校准MFC-1" |
-| `historical_ref` | 历史案例引用 | "参考2025-11类似事件(案例-007)" |
+| `fault` | 故障/异常状态 | "腔体压力异常"、"MFC响应延迟"、"温控超调"、"等离子不稳定"、"均匀性偏差"、"刻蚀速率漂移" |
+| `symptom` | 可观测征兆 | "压力读数波动±0.5mTorr"、"RF反射功率升高"、"温度振荡幅度±3度"、"信号基线漂移" |
 
-## 40+ 谓词三大类
+### C. 关于"假设/证据/动作"在哪里
 
-所有谓词定义在 `ontology.py` 中，分为三大类：
+```{admonition} 关键设计：诊断推理用谓词表达，不用实体类型
+早期设计中，`hypothesis` / `evidence` / `diagnostic_action` / `measure` 等曾作为实体类型存在。但在谓词清理（0008 迁移）后，**诊断推理的语义完全由谓词承载**：
 
-### A. 结构谓词（STRUCTURAL_PREDICATES）
+- "假设" → `investigates` / `refines_to` / `suggests`（谓词 + assertion_status=hypothesized）
+- "证据" → `supports` / `contradicts` / `confirmed_by`（谓词 + claim_evidence 链接）
+- "排查动作" → `checked` / `found` / `repaired_by`（谓词，subject 是动作，object 是对象）
+- "历史案例" → `references`（谓词，指向 episode/case）
 
-```python
-# ontology.py
-STRUCTURAL_PREDICATES = {
-    "part_of", "has_component", "installed_on", "located_in", "monitored_by",
-    "controlled_by", "regulates", "configured_as", "depends_on",
-}
+这样实体类型只剩下 13 种物理/工程概念，诊断推理的丰富语义通过 22 个诊断谓词 + assertion_status 组合表达，减少了实体类型爆炸。
 ```
 
-### B. 因果谓词（CAUSAL_PREDICATES）
+## 36 个谓词四大类
 
-```python
-CAUSAL_PREDICATES = {
-    "caused_by", "led_to", "cascades_to", "affects", "triggers", "contributes_to",
-    "correlates_with", "suggests", "symptom_of", "has_symptom",
-}
-```
+所有谓词定义在 `ontology.py` 的 `PREDICATE_DICTIONARY` 中，分为**四大类**（结构 8 + 因果 5 + 诊断 22 + 状态 1 = 36 个）。经 0008_predicate_cleanup 迁移清理，消除了互逆冗余，方向统一。
 
-### C. 诊断谓词（DIAGNOSTIC_PREDICATES）
+| 大类 | 数量 | 核心谓词示例 | 详见 |
+|------|------|-------------|------|
+| 结构谓词 | 8 | has_component, installed_on, monitored_by, controlled_by, regulates | 第6章 第1节 |
+| 因果谓词 | 5 | caused_by, cascades_to, has_symptom, affects, triggers | 第6章 第2节 |
+| 诊断谓词 | 22 | investigates, checked, found, ruled_out, supports, contradicts, refines_to | 第6章 第3节 |
+| 状态谓词 | 1 | has_status（单值互斥） | 第6章 第4节 |
 
-```python
-DIAGNOSTIC_PREDICATES = {
-    "detected_by", "investigates", "investigated_by", "checked", "found", "normal",
-    "ruled_out", "no_correlation", "supports", "contradicts", "refines_to",
-    "alternative_to", "confirmed_by", "repaired_by", "observed_by", "references",
-    "preceded_by", "drifts_from", "measured_as", "deviates_from", "feedback_to",
-}
-```
-
-| 大类 | 数量 | 核心谓词示例 |
-|------|------|-------------|
-| 结构谓词 | 9 | part_of, has_component, installed_on, monitored_by, controlled_by |
-| 因果谓词 | 10 | caused_by, led_to, cascades_to, affects, triggers, correlates_with |
-| 诊断谓词 | 21 | investigated_by, checked, found, normal, ruled_out, supports, contradicts |
+> **谓词清理变更要点**：
+> - 移除 `part_of` → 统一用 `has_component`（父→子方向）
+> - 移除 `led_to` / `symptom_of` / `investigated_by` → 方向统一：结果→原因、故障→征兆、假设→排查对象
+> - 移除 `contributes_to` → 并入 `affects`
+> - `correlates_with` 和 `suggests` 从因果类移入诊断类（它们是排查发现，不是物理因果）
+> - 新增 `confirmed_by` 归为诊断类，`feedback_to` 归为诊断类
+> - 总数量从 40+ 收敛到 36，分类从 3 类变为 4 类（新增 state 类）
 
 ## 8 条连接准则
 
