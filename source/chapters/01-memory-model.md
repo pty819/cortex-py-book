@@ -246,31 +246,31 @@ CREATE TABLE facts (
 
 ### 谓词本体（Ontology）
 
-所有谓词在 `ontology.py` 中集中定义，三大类：
+所有谓词在 `ontology.py` 的 `PREDICATE_DICTIONARY` 中集中定义，共 **36 个**，四大类（每类只保留单一方向谓词，互逆谓词对不共存）：
 
-**结构/配置关系**（静态拓扑）：
+**结构/配置关系**（静态拓扑，8 个，统一父→子方向，反向可达由 RRF 图多跳扩展的双向遍历补偿）：
 ```
-part_of, has_component, installed_on, located_in,
+has_component, installed_on, located_in,
 monitored_by, controlled_by, regulates, configured_as, depends_on
 ```
 
-**因果/级联关系**（故障传播）：
+**因果/级联关系**（故障传播，5 个）：
 ```
-caused_by, led_to, cascades_to, affects, triggers,
-contributes_to, correlates_with, suggests, symptom_of, has_symptom
+caused_by, cascades_to, has_symptom, affects, triggers
 ```
 
-**诊断推理关系**（排查过程）：
+**诊断推理关系**（排查过程，22 个）：
 ```
-investigates, checked, found, normal, ruled_out,
-supports, contradicts, refines_to, alternative_to,
-confirmed_by, repaired_by, references, drifts_from,
-measured_as, deviates_from, feedback_to, preceded_by
+detected_by, investigates, checked, found, normal, ruled_out,
+correlates_with, no_correlation, supports, contradicts,
+refines_to, alternative_to, confirmed_by, suggests, repaired_by,
+observed_by, references, preceded_by, drifts_from, measured_as,
+deviates_from, feedback_to
 ```
 
 **状态谓词**（单值超替）：
 ```
-has_status, deal_stage
+has_status
 ```
 
 ### 图准入规则

@@ -64,11 +64,11 @@ def _llm_extract(text_body: str, is_diagnosis: bool = False,
     # ... 调用 LLM
 ```
 
-## 13 种实体类型
+## 21 种实体类型
 
-抽取 prompt 定义了**13 种实体类型**，按语义层分为三组。实体类型是字符串而非枚举——抽取时自由标注，B-over-C 实体链接时 `entity_type` 作为匹配维度之一。
+抽取 prompt 定义了**21 种实体类型**，按语义层分为三组。实体类型是字符串而非枚举——抽取时自由标注，B-over-C 实体链接时 `entity_type` 作为匹配维度之一。
 
-### A. 物理/工程层实体（10 种）
+### A. 物理/工程层实体（11 种）
 
 | 类型 | 说明 | 命名规范 | 示例 |
 |------|------|----------|------|
@@ -84,24 +84,37 @@ def _llm_extract(text_body: str, is_diagnosis: bool = False,
 | `chamber_state` | 腔体状态/条件 | 状态描述 | "腔体积碳(seasoning漂移)"、"腔壁残留污染"、"腔体conditioning未完成"、"腔体清洁后首次工艺"、"等离子体清洗状态" |
 | `metrology_result` | 量测/计量结果 | 指标+偏差 | "CD均匀性±2.1nm"、"套刻精度overlay偏差3nm"、"缺陷密度15个/wafer"、"薄膜厚度偏差"、"刻蚀深度偏差" |
 
-### B. 故障层实体（2 种）
+### B. 故障层实体（3 种）
 
 | 类型 | 说明 | 示例 |
 |------|------|------|
 | `fault` | 故障/异常状态 | "腔体压力异常"、"MFC响应延迟"、"温控超调"、"等离子不稳定"、"均匀性偏差"、"刻蚀速率漂移" |
 | `symptom` | 可观测征兆 | "压力读数波动±0.5mTorr"、"RF反射功率升高"、"温度振荡幅度±3度"、"信号基线漂移" |
+| `signal_pattern` | 信号特征模式 | "T-101温度呈周期性振荡(周期约30s)"、"P-02压力有阶跃式下降"、"EPD信号斜率偏离基准15%" |
 
-### C. 关于"假设/证据/动作"在哪里
+### C. 诊断推理层实体（7 种）
 
-```{admonition} 关键设计：诊断推理用谓词表达，不用实体类型
-早期设计中，`hypothesis` / `evidence` / `diagnostic_action` / `measure` 等曾作为实体类型存在。但在谓词清理（0008 迁移）后，**诊断推理的语义完全由谓词承载**：
+诊断推理的**载体实体**（不只是谓词）——假设、证据、排查动作等作为图谱节点，让排查历史可被图遍历追溯：
 
-- "假设" → `investigates` / `refines_to` / `suggests`（谓词 + assertion_status=hypothesized）
-- "证据" → `supports` / `contradicts` / `confirmed_by`（谓词 + claim_evidence 链接）
-- "排查动作" → `checked` / `found` / `repaired_by`（谓词，subject 是动作，object 是对象）
-- "历史案例" → `references`（谓词，指向 episode/case）
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| `hypothesis` | 诊断假设/嫌疑方向 | "怀疑真空系统泄漏"、"假设MFC校准漂移"、"气体输送系统嫌疑" |
+| `evidence` | 诊断证据 | "T-101趋势显示72小时内缓慢漂移5度"、"P-02与EPD信号呈0.82相关" |
+| `diagnostic_action` | 排查动作 | "检查真空系统密封性"、"对比MFC-1设定值与实测值"、"执行腔体烘烤除气" |
+| `correlation` | 相关性发现 | "MFC-1流量偏差与刻蚀速率漂移相关系数0.85" |
+| `measure` | 维修/处理措施 | "更换密封O-ring"、"重新校准MFC-1"、"修改PID增益参数" |
+| `person` | 相关人员 | "工程师李某"、"维护班组" |
+| `historical_ref` | 历史案例引用 | "参考2025-11类似事件(案例-007)" |
 
-这样实体类型只剩下 13 种物理/工程概念，诊断推理的丰富语义通过 22 个诊断谓词 + assertion_status 组合表达，减少了实体类型爆炸。
+### 关于"假设/证据/动作"的双重表达
+
+```{admonition} 关键设计：诊断推理既用实体也用谓词承载
+早期设计中，`hypothesis` / `evidence` / `diagnostic_action` / `measure` 等只作为谓词语义存在；后来它们**同时作为实体类型回归**（C 组 7 种），让排查产物成为图谱中的可追溯节点：
+
+- **实体维度**：假设、证据、排查动作、相关性、措施各为一个节点，命名即其语义（"怀疑真空系统泄漏"）
+- **谓词维度**：节点之间用 `investigates` / `refines_to` / `suggests`（假设）、`supports` / `contradicts` / `confirmed_by`（证据）、`checked` / `found` / `repaired_by`（动作）、`references`（历史）等连接，配合 `assertion_status=hypothesized` 表达确认状态
+
+这样，一条排查记录既保留"做了什么"（C 组实体节点），又保留"证明了什么"（诊断谓词 + 断言语义），下游 agent 沿图即可重放完整排查链。
 ```
 
 ## 36 个谓词四大类
@@ -219,16 +232,16 @@ MFC-1偏差 --correlates_with--> {literal: "r=0.85 with 刻蚀速率漂移"}
 
 ## Assertion Semantics 断言语义规则
 
-`_assertion_semantics` 函数根据谓词类型和 fact 属性，自动推导断言的**极性（polarity）**和**认知状态（assertion_status）**：
+`assertion_semantics` 函数根据谓词类型和 fact 属性，自动推导断言的**极性（polarity）**和**认知状态（assertion_status）**：
 
 ```python
 # extraction/pipeline.py
-def _assertion_semantics(predicate: str, fact: Dict[str, Any], *,
-                         trusted: bool = False,
-                         source_text: Optional[str] = None) -> Tuple[str, str]:
+def assertion_semantics(predicate: str, fact: Dict[str, Any], *,
+                        trusted: bool = False,
+                        source_text: Optional[str] = None) -> Tuple[str, str]:
     polarity = "negative" if fact.get("negation") else fact.get("polarity", "positive")
     requested = fact.get("assertion_status")
-    
+
     if predicate in OPPOSING_PREDICATES:        # ruled_out
         return "negative", "ruled_out"
     if predicate in RELATIONAL_EXCLUSION_PREDICATES:  # no_correlation, contradicts
@@ -327,12 +340,12 @@ def _identity_context_for_type(context, entity_type):
 
 ## B-over-C 实体链接调用
 
-抽取管线的实体链接阶段实现了 B-over-C 三层策略（详见[第5章](05-entity-linking)）。为了支持灰区 LLM 裁决的并行化，`_resolve_or_create` 已拆分为**查询阶段**和**写入阶段**两个函数：
+抽取管线的实体链接阶段实现了 B-over-C 三层策略（详见[第5章](05-entity-linking)）。为了支持灰区 LLM 裁决的并行化，`resolve_or_create` 已拆分为**查询阶段**和**写入阶段**两个函数：
 
 ```python
-# extraction/pipeline.py
-def _resolve_lookup(conn, scope, name, etype, description, thresholds,
-                    identity_context=None, precomputed_emb=None):
+# extraction/entity_resolution.py
+def resolve_lookup(conn, scope, name, etype, description, thresholds,
+                   identity_context=None, precomputed_emb=None):
     """DB 查询阶段(只读):别名精确匹配 + 向量召回 + 阈值分类。
 
     返回三态之一:
@@ -343,13 +356,13 @@ def _resolve_lookup(conn, scope, name, etype, description, thresholds,
     # A层：别名精确命中
     # C层：向量召回 top-5
     # 阈值判断：merge_thr(0.85)直接合并 / new_thr(0.30)灰区LLM / 以下新建
-    # 身份敏感匹配：传感器/部件编号必须一致
+    # 身份敏感匹配：传感器/部件编号必须一致(identity_candidate_compatible)
 
-def _resolve_write(conn, scope, name, etype, description, emb, identity_context=None):
+def resolve_write(conn, scope, name, etype, description, emb, identity_context=None):
     """写入阶段:新建 entity + alias,返回 entity_id。仅在 Phase 3 调用。"""
 ```
 
-`_resolve_or_create` 仍保留，内部调 `_resolve_lookup` + `_resolve_write`，供 triple 直写等**单步路径**复用。`extract_event` 主流程不走它——而是走下面的三阶段并行路径。
+`resolve_or_create` 仍保留，内部调 `resolve_lookup` + `resolve_write`，供 triple 直写等**单步路径**复用。`extract_event` 主流程不走它——而是走下面的三阶段并行路径。
 
 ```{mermaid}
 sequenceDiagram
@@ -362,13 +375,13 @@ sequenceDiagram
     LLM->>LLM: 按 intent 选 prompt
     LLM-->>LLM: 结构化输出 JSON
 
-    Note over DB: Phase 1 — lookup(只读短事务)<br/>逐 entity 跑 _resolve_lookup<br/>分类:resolved / grey / new
+    Note over DB: Phase 1 — lookup(只读短事务)<br/>逐 entity 跑 resolve_lookup<br/>分类:resolved / grey / new
     DB->>DB: A层别名 + C层向量召回
 
     Note over PL: Phase 2 — 灰区 LLM 并行(会话外)<br/>N 个 grey entity 并发调 _llm_entity_link
     PL->>PL: parallel_map(_decide_grey)
 
-    Note over DB: Phase 3 — write(写入短事务)<br/>_resolve_write + 插入 facts<br/>超替闭合 + Belief 聚合
+    Note over DB: Phase 3 — write(写入短事务)<br/>resolve_write + 插入 facts<br/>超替闭合 + Belief 聚合
     DB->>DB: 落库 entity + facts + beliefs
 ```
 
@@ -437,7 +450,7 @@ def extract_event(event_id: str) -> Dict[str, Any]:
     # Step 3c: 三阶段实体链接 + 建 facts + belief 聚合
     # Phase 1: lookup(会话内,只读)→ 分类 resolved/grey/new
     # Phase 2: 灰区 LLM 并发(会话外)→ parallel_map(_decide_grey)
-    # Phase 3: write(会话内,短事务)→ _resolve_write + facts + belief
+    # Phase 3: write(会话内,短事务)→ resolve_write + facts + belief
 ```
 
 Step 3c 的三阶段是并行化的核心——把灰区 LLM 裁决从 session 内串行改为 session 外并行，详见[第5章](05-entity-linking)。
@@ -457,11 +470,11 @@ flowchart LR
         E --> F{kind=triple?}
         F -->|是| G[direct_write_triple]
         F -->|否| H[LLM_extract]
-        H --> P1[Phase1: _resolve_lookup<br/>会话内只读分类]
+        H --> P1[Phase1: resolve_lookup<br/>会话内只读分类]
         P1 --> P2{有 grey entity?}
         P2 -->|是| P2L[Phase2: parallel_map LLM<br/>会话外并发]
         P2 -->|否| P3
-        P2L --> P3[Phase3: _resolve_write<br/>+ facts + belief]
+        P2L --> P3[Phase3: resolve_write<br/>+ facts + belief]
         P3 --> J[insert_fact]
         J --> K[close_superseded]
         K --> L[aggregate_belief]
@@ -497,19 +510,30 @@ if cfg.higher_order.enabled:
                              "trigger_event_id": event_id})
 ```
 
+## 结构边收敛（idempotent 写入）
+
+抽取落库时，**结构谓词**（8 个：has_component, installed_on, located_in, monitored_by, controlled_by, regulates, configured_as, depends_on）与诊断/因果谓词遵循不同的写入语义：
+
+- **结构谓词**：按 `scope + subject + predicate + object + polarity` 折叠为**单条活跃图边**，忽略 case_id、operating_regime、valid_from/valid_to。重复写入会合并证据（`supports` 并集、`confidence` 取 max），更强的确认（更高 assertion_status / knowledge_tier）产生新的 recorded-time 修订，否则保留既有更强状态。`POST /v1/facts/batch` 与 `create_fact` 都走这条幂等路径——结构边已存在则返回 `reuse`/`existing`。
+- **诊断/因果/时间谓词**：**保留** case / event-time 感知身份，多值历史共存（如多次排查的 `checked` / `found` 记录不会被覆盖）。
+
+> 这是旧"多值谓词共存"规则的刻意细化：多条值 ≠ 结构谓词的重复拓扑边。物理拓扑（"A 安装在 B 上"）是唯一真相，不随每次事件重复；诊断推理是历史记录，逐条保留。详见[第6章 §结构边收敛](06-ontology-and-assertion)。
+
 ## 关键代码结构
 
 | 函数 | 位置 | 职责 |
 |------|------|------|
 | `extract_event` | `extraction/pipeline.py` | 主入口，编排整个抽取流程(含三阶段实体链接) |
-| `_llm_extract` | `extraction/pipeline.py` | LLM 调用 + R1 fallback 链 |
-| `_resolve_lookup` | `extraction/pipeline.py` | B-over-C 实体链接·查询阶段(只读,返回三态) |
-| `_resolve_write` | `extraction/pipeline.py` | B-over-C 实体链接·写入阶段(新建 entity+alias) |
-| `_resolve_or_create` | `extraction/pipeline.py` | 单步兼容包装(lookup+write),供 triple 直写路径 |
-| `_insert_fact` | `extraction/pipeline.py` | 插入事实三元组 |
-| `_close_superseded` | `extraction/pipeline.py` | 单值谓词超替闭合 |
-| `_assertion_semantics` | `extraction/pipeline.py` | 断言语义规则 |
-| `coerce_value` | `extraction/pipeline.py` | 词表约束 |
-| `_aggregate_belief` | `extraction/pipeline.py` | Belief 聚合 |
+| `assertion_semantics` | `extraction/semantics.py` | 断言语义规则 |
+| `_llm_extract` | `extraction/llm_extraction.py` | LLM 调用 + R1 fallback 链 |
+| `resolve_lookup` | `extraction/entity_resolution.py` | B-over-C 实体链接·查询阶段(只读,返回三态) |
+| `resolve_write` | `extraction/entity_resolution.py` | B-over-C 实体链接·写入阶段(新建 entity+alias) |
+| `resolve_or_create` | `extraction/entity_resolution.py` | 单步兼容包装(lookup+write),供 triple 直写路径 |
+| `lock_and_find_structural_fact` | `extraction/fact_store.py` | 结构边幂等查找(advisory lock 收敛) |
+| `_insert_fact` | `extraction/fact_store.py` | 插入事实三元组(结构边合并证据) |
+| `_close_superseded` | `extraction/fact_store.py` | 超替闭合(含 operating_regime/case 过滤) |
+| `coerce_value` | `extraction/pipeline.py` | 词表约束(closed 强制收窄) |
+| `canonical_identity_context` / `identity_context_for_type` | `extraction/semantics.py` | 身份上下文规范化与按类型收窄 |
+| `_aggregate_belief` | `extraction/beliefs.py` | Belief 聚合 |
 | `_direct_write_triple` | `extraction/pipeline.py` | 三元组直写（不经 LLM） |
 | `_quarantine` | `extraction/pipeline.py` | 不合格数据隔离 |

@@ -64,6 +64,7 @@ def claim_next_job(conn, worker_id):
                         started_at=now(), attempts=attempts+1
         WHERE job_id = (SELECT job_id FROM jobs
                         WHERE status='queued' AND run_after <= now()
+                          AND attempts < max_attempts
                         ORDER BY priority DESC, run_after, created_at
                         FOR UPDATE SKIP LOCKED LIMIT 1)
         RETURNING job_id, job_type, scope, event_id, attempts, max_attempts, payload
@@ -75,41 +76,61 @@ def claim_next_job(conn, worker_id):
 
 **SKIP LOCKED** 是 PostgreSQL 9.5+ 的特性，允许多个 worker 并发抢任务而不互相阻塞。
 
+> 抢任务的 `WHERE` 子句额外带 `attempts < max_attempts`——已耗尽重试次数、被 reaper 判死的 job 不会被再次领取（见"僵尸回收"）；它与 `run_after` 一起构成"可领取"的完整条件。
+
 ## 完成与失败处理
 
 ### 成功完成
 
 ```python
-def complete_job(conn, job_id, result=None):
-    conn.execute(text("""
+def complete_job(conn, job_id, worker_id, result=None):
+    """owner-fenced 完成:只有持有该 job lease 的 worker 才能标记完成。"""
+    r = conn.execute(text("""
         UPDATE jobs SET status='completed', completed_at=now(), 
-                        result=CAST(:r AS jsonb)
-        WHERE job_id=CAST(:j AS uuid)
-    """), {"r": json.dumps(result) if result else None, "j": job_id})
+                        result=CAST(:r AS jsonb),
+                        locked_by=NULL, locked_at=NULL
+        WHERE job_id=CAST(:j AS uuid) AND status='running' AND locked_by=:worker
+    """), {"r": json.dumps(result) if result else None, "j": job_id, "worker": worker_id})
+    return bool(r.rowcount)
 ```
+
+`complete_job` 带 **worker_id owner-fencing**：`WHERE ... AND locked_by=:worker` 保证只有当前持有 lease 的 worker 能完成该 job。若返回 `False`，说明 lease 已被抢占（如 reaper 重置后另一 worker 接手），调用方应停止并丢弃本地结果。
 
 ### 失败 + 退避重试
 
 ```python
-def fail_job(conn, job_id, error, backoff_base=4, terminal=False):
+def fail_job(conn, job_id, error, *, backoff_base=4, terminal=False,
+             error_kind="processing_error", worker_id=None):
+    """失败:未超 max_attempts → queued+退避;超限 → failed(死信)。"""
     info = conn.execute(text("""
-        SELECT attempts, max_attempts FROM jobs WHERE job_id=CAST(:j AS uuid)
-    """), {"j": job_id}).fetchone()
-    
+        SELECT attempts,max_attempts FROM jobs WHERE job_id=CAST(:j AS uuid) AND status='running'
+          AND ((CAST(:worker AS text) IS NULL AND locked_by IS NULL) OR locked_by=:worker)
+        FOR UPDATE
+    """), {"j": job_id, "worker": worker_id}).fetchone()
+    if not info:
+        return False
     if terminal or (info and info.attempts >= info.max_attempts):
-        # 死信：标记为 failed
+        # 死信:标记为 failed,并记录 error_kind
         conn.execute(text("""
-            UPDATE jobs SET status='failed', error=:e, completed_at=now()
+            UPDATE jobs SET status='failed', error=:e, completed_at=now(),
+                            result=CAST(:r AS jsonb), locked_by=NULL, locked_at=NULL
             WHERE job_id=CAST(:j AS uuid)
-        """), {"e": error[:500], "j": job_id})
+              AND ((CAST(:worker AS text) IS NULL AND locked_by IS NULL) OR locked_by=:worker)
+        """), {"e": error[:500], "r": json.dumps({"error_kind": error_kind}), "j": job_id,
+               "worker": worker_id})
     else:
-        # 指数退避：下次执行时间 = now + 4^attempts 秒
+        # 指数退避：下次执行时间 = now + backoff_base^attempts 秒
         conn.execute(text("""
             UPDATE jobs SET status='queued', locked_by=NULL, locked_at=NULL,
                             run_after=now() + make_interval(secs => :backoff), error=:e
             WHERE job_id=CAST(:j AS uuid)
-        """), {"backoff": float(backoff_base ** info.attempts), "e": error[:500], "j": job_id})
+              AND ((CAST(:worker AS text) IS NULL AND locked_by IS NULL) OR locked_by=:worker)
+        """), {"backoff": float(backoff_base ** info.attempts), "e": error[:500],
+               "j": job_id, "worker": worker_id})
+    return True
 ```
+
+`fail_job` 同样带 owner-fencing：`locked_by=:worker` 条件（当 `worker_id=None` 时退化为"无持有者"的宽松匹配）。死信分支会写入 `result={"error_kind": ...}`——`config_error`（配错、不可重试的 `ExtractionConfigurationError`）与 `processing_error`（可重试的一般处理错误）区分，便于死信队列按原因分流。失败处理位于 `_handle_job_failure`，它先调用 `fail_job`，仅当返回 `True`（我方仍持有 lease）时才继续写生命周期事件。
 
 **退避策略**：
 - 第 1 次失败：4 秒后重试
@@ -118,20 +139,35 @@ def fail_job(conn, job_id, error, backoff_base=4, terminal=False):
 
 ## 僵尸回收
 
-当 worker 崩溃时，正在 running 的 job 会变成僵尸：
+当 worker 崩溃时，正在 running 的 job 会变成僵尸。`reap_zombies` 按下述两分支处理——关键在**按 attempts 是否超限分流**：
 
 ```python
 def reap_zombies(conn, visibility_secs=300):
-    """回收超时的 running jobs"""
+    """visibility timeout 双分支:
+    1) attempts >= max_attempts → 死信(failed)
+    2) attempts <  max_attempts → 重置回 queued 重新排队"""
+    # 分支 1:已耗尽重试次数 → 死信
+    conn.execute(text("""
+        UPDATE jobs SET status='failed', completed_at=now(), locked_by=NULL, locked_at=NULL,
+                        error='visibility timeout exhausted max_attempts',
+                        result='{"error_kind":"visibility_timeout"}'::jsonb
+        WHERE status='running' AND attempts >= max_attempts
+          AND locked_at < now() - make_interval(secs => :v)
+          AND pg_try_advisory_xact_lock(hashtext('job:'||job_id::text))
+    """), {"v": float(visibility_secs)})
+    # 分支 2:未超限 → 重置回 queued
     r = conn.execute(text("""
         UPDATE jobs SET status='queued', locked_by=NULL, locked_at=NULL
-        WHERE status='running' 
+        WHERE status='running' AND attempts < max_attempts
           AND locked_at < now() - make_interval(secs => :v)
+          AND pg_try_advisory_xact_lock(hashtext('job:'||job_id::text))
     """), {"v": float(visibility_secs)})
     return r.rowcount or 0
 ```
 
-默认 visibility timeout 来自 `cfg.worker.visibility_timeout_secs`（默认 300 秒）。reaper 的触发间隔来自 `cfg.worker.reaper_interval_secs`（默认 60 秒）。超过 `visibility_timeout_secs` 未完成的任务自动回到队列。
+默认 visibility timeout 来自 `cfg.worker.visibility_timeout_secs`（默认 300 秒）。reaper 的触发间隔来自 `cfg.worker.reaper_interval_secs`（默认 60 秒）。超过 `visibility_timeout_secs` 未完成的任务**按 attempts 是否超限分流**：未超限的重置回队列重跑，超限的判为死信（`error_kind="visibility_timeout"`）。
+
+> 两个分支都用 `pg_try_advisory_xact_lock(hashtext('job:'||job_id::text))` 做**事务内 advisory 锁**——它与 worker 侧 `_JobExecutionLock` 的 `pg_advisory_lock` 互斥：真正还在执行的 job（持有执行锁）不会被 reaper 误判回收，只有锁空闲（worker 已崩溃/放弃）的僵尸才被重置。`try_` 版本在锁被占时不阻塞，直接跳过该行。
 
 ## Worker 主循环
 

@@ -54,28 +54,55 @@ sequenceDiagram
 ### 实现
 
 ```python
-def append_event(*, scope, modality, content, context, caller, idempotency_key, **kwargs):
+def append_event(*, scope, modality, content, context, caller, observed_actor=None,
+                 subject=None, directives=None, idempotency_key, observed_at=None):
     """append 一个 event。幂等:同 key+同 body → 返回既有;同 key+异 body → raise IdempotencyConflict。"""
+    oactor = observed_actor or caller
+    sub = subject or oactor
+    obs_at = observed_at or context.get("observed_at")
     with session_scope() as c:
         # 先查幂等
         existing = c.execute(text(
             "SELECT event_id, wal_offset FROM events WHERE scope=:s AND idempotency_key=:k"
         ), {"s": scope, "k": idempotency_key}).fetchone()
         if existing:
-            # 对比 body hash
-            ex_body = _body_hash(existing.modality, existing.content, existing.context)
+            # 用 Python 端重算 body hash 对比(避免 PG jsonb 与 Python dict 的键序差异)
+            ex_content = c.execute(text("SELECT content FROM events WHERE event_id=:id"),
+                                   {"id": existing.event_id}).scalar()
+            ex_context = c.execute(text("SELECT context FROM events WHERE event_id=:id"),
+                                   {"id": existing.event_id}).scalar()
+            ex_modality = c.execute(text("SELECT modality FROM events WHERE event_id=:id"),
+                                    {"id": existing.event_id}).scalar()
+            ex_body = _body_hash(ex_modality, ex_content, ex_context)
             if ex_body == _body_hash(modality, content, context):
                 return str(existing.event_id), existing.wal_offset
-            raise IdempotencyConflict(...)
-        
+            raise IdempotencyConflict(f"idempotency_key={idempotency_key} 已存在且 body 不同")
+
+        # 并发下用 ON CONFLICT DO NOTHING 兜底,避免竞态双写
         row = c.execute(text("""
             INSERT INTO events (scope, modality, content, context, caller, observed_actor, subject,
-                                observed_at, directives, idempotency_key)
-            VALUES (...) RETURNING event_id, wal_offset
-        """), {...}).fetchone()
-        _auto_provision_scope(c, scope)
-        emit_lifecycle(c, kind="captured", scope=scope, event_id=row.event_id)
-        return str(row.event_id), row.wal_offset
+                                observed_at, directives, idempotency_key, case_id)
+            VALUES (:scope,:modality,CAST(:content AS jsonb),CAST(:context AS jsonb),:caller,:oa,:subj,
+                    COALESCE(:observed_at, now()), CAST(:directives AS jsonb), :ik, :case_id)
+            ON CONFLICT (scope,idempotency_key) DO NOTHING
+            RETURNING event_id, wal_offset
+        """), {"scope": scope, "modality": modality, "content": json.dumps(content),
+               "context": json.dumps(context), "caller": caller, "oa": oactor, "subj": sub,
+               "observed_at": obs_at, "directives": json.dumps(directives) if directives else None,
+               "ik": idempotency_key, "case_id": context.get("case_id")}).fetchone()
+        if not row:
+            # 并发中另一事务已写入 → 重查并做幂等判定
+            existing = c.execute(text("""
+                SELECT event_id,wal_offset,modality,content,context FROM events
+                WHERE scope=:s AND idempotency_key=:k
+            """), {"s": scope, "k": idempotency_key}).one()
+            if _body_hash(existing.modality, existing.content, existing.context) == _body_hash(modality, content, context):
+                return str(existing.event_id), existing.wal_offset
+            raise IdempotencyConflict(f"idempotency_key={idempotency_key} 已存在且 body 不同")
+        else:
+            _auto_provision_scope(c, scope)
+            emit_lifecycle(c, kind="captured", scope=scope, event_id=row.event_id)
+            return str(row.event_id), row.wal_offset
 ```
 
 ## Experience Envelope
@@ -187,15 +214,16 @@ stateDiagram-v2
 
 ```python
 def claim_next_job(conn, worker_id):
-    """原子抢一个到期 job (SKIP LOCKED)。"""
+    """原子抢一个到期且未超重试上限的 job (SKIP LOCKED)。"""
     row = conn.execute(text("""
         UPDATE jobs SET status='running', locked_by=:w, locked_at=now(), 
                         started_at=now(), attempts=attempts+1
         WHERE job_id = (SELECT job_id FROM jobs
                         WHERE status='queued' AND run_after <= now()
+                              AND attempts < max_attempts
                         ORDER BY priority DESC, run_after, created_at
-                        LIMIT 1 FOR UPDATE SKIP LOCKED)
-        RETURNING job_id, job_type, scope, event_id, payload
+                        FOR UPDATE SKIP LOCKED LIMIT 1)
+        RETURNING job_id, job_type, scope, event_id, attempts, max_attempts, payload
     """), {"w": worker_id}).fetchone()
     return dict(row) if row else None
 ```
@@ -212,7 +240,30 @@ def _auto_provision_scope(conn, scope):
             INSERT INTO scopes (scope_path, parent_path, auto_provisioned)
             VALUES (:p, :parent, true) ON CONFLICT (scope_path) DO NOTHING
         """), {"p": p, "parent": parent})
+    # 每个可写 scope 自动获得 closed predicate vocabulary;
+    # 机器端对谓词的约束不再依赖 demo 手工 seed。
+    from .ontology import DIAGNOSIS_PREDICATE_NAMES, PREDICATE_CARDINALITY
+    existing_vocab = conn.execute(text(
+        "SELECT vocab_id FROM vocabularies WHERE scope=:scope AND name='predicate'"
+    ), {"scope": scope}).scalar()
+    if existing_vocab:
+        return
+    vocab_id = conn.execute(text("""
+        INSERT INTO vocabularies(scope,name,kind,description,cardinality)
+        VALUES(:scope,'predicate','closed','Machine-enforced diagnostic predicates','multi')
+        ON CONFLICT(scope,name) DO UPDATE SET kind='closed'
+        RETURNING vocab_id
+    """), {"scope": scope}).scalar()
+    for predicate in sorted(DIAGNOSIS_PREDICATE_NAMES):
+        conn.execute(text("""
+            INSERT INTO vocabulary_values(vocab_id,canonical_value,aliases,cardinality)
+            VALUES(CAST(:v AS uuid),:predicate,'{}',:cardinality)
+            ON CONFLICT(vocab_id,canonical_value) DO UPDATE SET cardinality=EXCLUDED.cardinality
+        """), {"v": str(vocab_id), "predicate": predicate,
+               "cardinality": PREDICATE_CARDINALITY.get(predicate, "multi")})
 ```
+
+> Scope 自动注册现在不只建层级:它同时为该 scope 初始化一个 **closed** 的 `predicate` vocabulary,并用 `DIAGNOSIS_PREDICATE_NAMES` 预填全部诊断谓词、按 `PREDICATE_CARDINALITY` 标注单值/多值。这样谓词约束在第一个 event 写入时就已就位,下游 `coerce_value` 的强制收窄与批量 fact 写入的谓词白名单都以它为基准。
 
 ## Lifecycle Events
 
@@ -245,7 +296,12 @@ CREATE TABLE lifecycle_events (
 | `forgotten` | 记忆被遗忘（salience 长期过低或 methylation 升级为真删前的标记） |
 | `failed` | 某个 job（抽取/归纳/巩固等）最终失败，超 过重试上限 |
 | `indexed` | 向量/全文索引构建完成（embed_status='done'） |
+| `consolidated` | 在线 Consolidation 对该 event 的派生层完成一次巩固（`wait_for_stage` 的最终阶段） |
 | `erasure_complete` | GDPR 擦除 4 阶段全部完成，相关引用已真删 |
+
+### 通知与同步等待
+
+`emit_lifecycle` 在写入 `lifecycle_events` 的同时发送 `pg_notify('cortex_lc', 'kind|event_id')`，让 `?wait=` 的调用方无需轮询即可立刻感知阶段推进。`wait_for_stage(event_id, target_stage)` 用独立连接 `LISTEN cortex_lc`，配合阶段序号（`captured=0, extracted=1, indexed=2, consolidated=3`）做覆盖判断——已到更后阶段也算达成目标；超时则降级为异步返回 `reached=False`。
 
 ## 完整写入流程
 

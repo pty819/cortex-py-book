@@ -114,18 +114,32 @@ Case 是一个诊断事件的**全生命周期管理**，从发现到根因确�
 open → investigating → resolved → closed
 ```
 
+状态迁移受**白名单校验**约束（`_STATUS_TRANSITIONS`），不允许跳级回退：
+
+| 当前状态 | 可迁移到 |
+|----------|----------|
+| `open` | `open`, `investigating` |
+| `investigating` | `investigating`, `resolved` |
+| `resolved` | `resolved`, `closed` |
+| `closed` | `closed`（终态） |
+
 ### 诊断阶段
 
 ```
 observation → scoping → investigation → correlation → root_cause → remediation → regression
 ```
 
+phase 同样按 `_PHASE_ORDER` **单调推进**，不允许回退到更早阶段。状态与阶段相互约束：
+
+- `status = resolved/closed` 时**必须**已有 `root_cause` 与 `resolution`
+- `status = closed` 时 phase 必须推进到 `regression`，且 `metadata.regression_evidence` 需提供**本 scope 的 measurement/external 证据 ID**（写入 `episode_evidence`，role=`regression`）
+
 ### API
 
 ```python
 # 创建 Case
 @mcp.tool()
-def case_create(title, equipment=None, lot=None, recipe=None, scope=None):
+def case_create(title=None, equipment=None, lot=None, recipe=None, scope=None):
     """创建一个诊断 case"""
     return episodes.create_case(scope=scope, title=title, 
                                 equipment=equipment, lot=lot, recipe=recipe)
@@ -133,7 +147,7 @@ def case_create(title, equipment=None, lot=None, recipe=None, scope=None):
 # 更新 Case
 @mcp.tool()
 def case_update(episode_id, phase=None, status=None, root_cause=None, resolution=None):
-    """更新 case 的阶段/状态/根因"""
+    """更新 case 的阶段/状态/根因；迁移与阶段推进受校验约束"""
     return episodes.update_case(episode_id, phase=phase, status=status,
                                root_cause=root_cause, resolution=resolution)
 
@@ -148,59 +162,71 @@ def case_list(status=None, equipment=None, scope=None):
 
 @mcp.tool()
 def case_search(query, scope=None):
-    """按根因/标题/设备模糊搜索"""
+    """按标题/根因/设备/修复措施模糊搜索"""
 ```
 
 ### Case 创建与更新
 
 ```python
-def create_case(scope, title=None, equipment=None, lot=None, recipe=None):
+def create_case(*, scope, title=None, case_id=None, equipment=None, lot=None,
+                recipe=None, metadata=None):
+    """创建一个诊断 case(空 episode,待关联 events)。返回 {episode_id, case_id}。"""
     with session_scope() as conn:
-        case_id = f"CASE-{uuid.uuid4().hex[:8].upper()}"
         row = conn.execute(text("""
-            INSERT INTO episodes (scope, title, event_ids, actors, started_at,
-                case_id, equipment, lot, recipe, status, phase)
-            VALUES (:s, :t, '{}', '{}', now(), :c, :e, :l, :r, 'open', 'observation')
+            INSERT INTO episodes (scope, title, case_id, equipment, lot, recipe, metadata,
+                                  started_at, valid_from, sealed, status, phase)
+            VALUES (:s, :t, :cid, :eq, :lot, :rec, CAST(:meta AS jsonb),
+                    now(), now(), false, 'open', 'observation')
             RETURNING episode_id
-        """), {"s": scope, "t": title or case_id, "c": case_id,
-               "e": equipment, "l": lot, "r": recipe}).fetchone()
-    return {"episode_id": str(row.episode_id), "case_id": case_id}
+        """), {"s": scope, "t": title, "cid": case_id, "eq": equipment, "lot": lot,
+               "rec": recipe, "meta": json.dumps(metadata or {})}).fetchone()
+    return {"episode_id": str(row.episode_id), "case_id": case_id,
+            "scope": scope, "status": "open", "phase": "observation"}
 
 
-def update_case(episode_id, phase=None, status=None, 
-                root_cause=None, resolution=None):
+def update_case(episode_id, **fields):
+    """更新 case 的 phase/status/root_cause/resolution/equipment/lot/recipe/title。
+    校验:phase 合法、status 迁移白名单、phase 单调推进、
+    resolved/closed 需 root_cause+resolution、closed 需 regression 证据。"""
     with session_scope() as conn:
-        updates = []
-        params = {"e": episode_id}
+        current = conn.execute(text("""
+            SELECT status, phase, root_cause, resolution, scope FROM episodes
+            WHERE episode_id=CAST(:e AS uuid) AND recorded_to IS NULL FOR UPDATE
+        """), {"e": episode_id}).fetchone()
+        if not current:
+            return {"error": "case not found"}
+        if status and status not in _STATUS_TRANSITIONS.get(current.status, set()):
+            return {"error": f"invalid status transition: {current.status} -> {status}"}
         if phase:
-            updates.append("phase=:p"); params["p"] = phase
-        if status:
-            updates.append("status=:s"); params["s"] = status
-        if root_cause:
-            updates.append("root_cause=:rc"); params["rc"] = root_cause
-        if resolution:
-            updates.append("resolution=:res"); params["res"] = resolution
-        conn.execute(text(f"""
-            UPDATE episodes SET {', '.join(updates)} 
-            WHERE episode_id=CAST(:e AS uuid)
-        """), params)
+            cur = _PHASE_ORDER.index(current.phase or "observation")
+            nxt = _PHASE_ORDER.index(phase)
+            if nxt < cur:
+                return {"error": f"invalid phase transition: {current.phase} -> {phase}"}
+        if status in {"resolved", "closed"} and (not root_cause or not resolution):
+            return {"error": "resolved/closed case requires root_cause and resolution"}
+        if status == "closed" and phase != "regression":
+            return {"error": "closed case requires regression phase"}
+        # status=='closed' 需 scope 内 measurement/external 回归证据 → episode_evidence
+        ...
+        conn.execute(text(f"UPDATE episodes SET {', '.join(sets)} WHERE episode_id=CAST(:e AS uuid)"), params)
     return {"updated": True}
 ```
 
 ### Case 搜索
 
 ```python
-def search_cases(scope, query):
+def search_cases(scope, query, limit=20):
+    """按标题/根因/设备/修复措施 ILIKE 模糊搜 cases（不含 case_id）。"""
     with session_scope() as conn:
         rows = conn.execute(text("""
-            SELECT episode_id::text, case_id, title, status, phase,
-                   equipment, root_cause, resolution
+            SELECT episode_id::text, title, equipment, phase, root_cause,
+                   resolution, status, started_at::text
             FROM episodes WHERE scope=:s AND recorded_to IS NULL
-              AND (title ILIKE :q OR root_cause ILIKE :q 
-                   OR equipment ILIKE :q OR case_id ILIKE :q)
-            ORDER BY started_at DESC LIMIT 20
-        """), {"s": scope, "q": f"%{query}%"}).fetchall()
-    return [dict(zip(cols, r)) for r in rows]
+              AND (title ILIKE :q OR root_cause ILIKE :q
+                   OR equipment ILIKE :q OR resolution ILIKE :q)
+            ORDER BY started_at DESC LIMIT :lim
+        """), {"s": scope, "q": f"%{query}%", "lim": limit}).fetchall()
+    return [dict(...) for r in rows]
 ```
 
 ## Case 完整数据流
@@ -215,12 +241,19 @@ sequenceDiagram
     C->>DB: INSERT episodes (status=open, phase=observation)
     C-->>A: {episode_id, case_id}
     
-    A->>C: memory_store(text="发现腔体压力异常...")
-    Note over A,C: 自动携带 case_id
+    A->>C: POST /v1/cases/{id}/events (memory_store 自动携带 case_id)
+    C->>DB: 回写 events.case_id + 追加 episodes.event_ids
     
     A->>C: case_update(phase="investigation")
     A->>C: memory_store(text="检查MFC-1...")
     A->>C: case_update(phase="root_cause", root_cause="密封圈老化")
+    
+    A->>C: GET /v1/cases/{id}/workspace-graph
+    C-->>A: case-local 图（候选/反证，与 verified 分层）
+    
+    A->>C: case_update(status="resolved", phase="regression", regression_evidence=[...])
+    A->>C: POST /v1/cases/{id}/promote (reviewer=...)
+    C->>DB: workspace fact → verified tier 晋升（claim_evidence/assertion_case_links 复制）
     
     A->>C: case_search(query="密封圈")
     C-->>A: [case_id=C001, root_cause="密封圈老化"]
@@ -230,10 +263,24 @@ sequenceDiagram
 
 | 工具 | 说明 | 关键参数 |
 |------|------|----------|
-| `episodes_build` | 自动分段 | scope |
+| `episodes_build` | 自动分段 | scope, async_enqueue |
 | `episodes_list` | 列出已封存的 episodes | scope |
 | `case_create` | 创建诊断 case | title, equipment, lot, recipe, scope |
-| `case_update` | 更新 case | episode_id, phase, status, root_cause, resolution |
-| `case_get` | 获取 case 详情 | episode_id |
+| `case_update` | 更新 case（含状态/阶段迁移校验） | episode_id, phase, status, root_cause, resolution |
+| `case_get` | 获取 case 详情（events + facts + beliefs） | episode_id |
 | `case_list` | 筛选 cases | status, equipment, scope |
-| `case_search` | 模糊搜索 | query, scope |
+| `case_search` | 模糊搜索（标题/根因/设备/修复） | query, scope |
+
+此外，Case 的 HTTP 端点还提供三个 MCP 未直接暴露、但 REST 层完整实现的流程：
+
+- `POST /v1/cases/{episode_id}/events` → `add_event_to_case`：把 event 关联进 case（回写 `events.case_id` + 追加 `episodes.event_ids`，要求同 scope）
+- `GET /v1/cases/{episode_id}/workspace-graph` → `get_case_workspace_graph`：返回 Case-local 的 workspace 图（候选/反证可遍历，但与 verified graph 明确分层）
+- `POST /v1/cases/{episode_id}/promote` → `promote_case_assertions`：把闭环 Case 中经确认且有证据的 assertion 版本化晋升到 verified graph（需 `closed` + `regression` 阶段 + 回归证据 + reviewer）
+
+### Case-local 图与结构边收敛
+
+Case 的 workspace 图（`get_case_workspace_graph`）只取属于该 case 的 facts（`case_id` 命中或 `assertion_case_links` 关联），供诊断 agent 在**未晋升前**探索候选与反证，与 verified 全局图隔离。
+
+**结构边收敛**：结构谓词（`has_component` / `installed_on` / `located_in` / `monitored_by` / `controlled_by` / `regulates` / `configured_as` / `depends_on`）的 identity 仅由**图的边本身**决定——`scope + subject + predicate + object + polarity`。case、工况、事件时间只描述观测/证据，不会产生重复的拓扑边：同一结构三元组始终收敛为**一条 live edge**，多次观测通过合并 `supports`（并集）、`confidence=max`、`assertion_case_links` 复制来累积证据。更强确认（`hypothesized→confirmed`、`workspace→verified`）会生成单一 live recorded revision。
+
+非结构谓词（因果/诊断/promote 出的 workspace 断言）则保留 case/事件时间维度，同身份的变化按 recorded-time revision 处理，不做拓扑去重。

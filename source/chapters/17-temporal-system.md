@@ -58,7 +58,7 @@ class RecallRequest(BaseModel):
     temporal: Optional[Dict] = None  # {natural: "last week", reference_date: "2026-06-01"}
 ```
 
-系统将 NL 短语解析为 ISO 时间范围后，应用到所有检索通道的时态过滤中。
+系统将 NL 短语解析为 ISO 时间范围后，作为 `valid_during` 传给 `recall()`，在**候选 pack 加载阶段**应用到最终事实过滤（`valid_from <= :vt AND (valid_to IS NULL OR valid_to >= :vf)`）。注意：它作用于 pack 装配（`_assemble_pack` 前的 `temporal_where`），而非各检索通道内部的 `_temporal_clause`（后者由 `as_of` 控制）。
 
 ## REST API
 
@@ -95,7 +95,7 @@ curl -X DELETE /v1/temporal/phrases/this_quarter
 # → {"deleted":"this_quarter"}
 ```
 
-> 注意：MCP 工具 `temporal_register(name, expression)` 当前签名不含 `anchor`；REST 端点通过 `TemporalPhraseRequest` 额外接受可选 `anchor` 字段。
+> 注意：MCP 工具 `temporal_register(name, expression)` 当前签名不含 `anchor`；REST 的 `TemporalPhraseRequest` schema 虽保留可选 `anchor` 字段，但当前 `POST /v1/temporal/phrases` 路由只把 `name`/`expression` 转发给 `register_phrase()`，`anchor` 暂未生效（`register_phrase` 内部仍用 `now()` 作锚点）。
 
 ## MCP 工具
 

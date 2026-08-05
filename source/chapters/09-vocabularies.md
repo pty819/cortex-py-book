@@ -82,20 +82,15 @@ CREATE INDEX idx_vocab_values_aliases ON vocabulary_values USING gin (aliases);
 诊断谓词的 cardinality 在 `ontology.py` 中统一定义：
 
 ```python
+# 唯一 single 的来源是 STATE_PREDICATES(当前仅 has_status);
+# 其余全部 multi。cardinality 不是手写字典,而是由类别推导。
+STATE_PREDICATES = frozenset(
+    p for p, d in PREDICATE_DICTIONARY.items() if d.category == "state"
+)
+
 PREDICATE_CARDINALITY = {
-    # 结构关系（multi）
-    "part_of": "multi", "has_component": "multi", 
-    "installed_on": "multi", "located_in": "multi",
-    
-    # 因果关系（multi）
-    "caused_by": "multi", "led_to": "multi", 
-    "cascades_to": "multi", "affects": "multi",
-    
-    # 状态关系（single — 超替）
-    "has_status": "single", "deal_stage": "single",
-    
-    # 默认 multi
-    ...: "multi" for all other predicates
+    predicate: ("single" if predicate in STATE_PREDICATES else "multi")
+    for predicate in DIAGNOSIS_PREDICATE_NAMES
 }
 ```
 
@@ -136,7 +131,7 @@ def coerce_value(conn, scope, vocab_name, raw):
 uv run python -m cortex.interfaces.cli maintenance --action seed-vocab --scope equip:XXX-v1
 ```
 
-预置后，该 scope 的抽取管线会自动约束谓词为 40+ 个预定义值。
+预置后，该 scope 的抽取管线会自动约束谓词为 36 个预定义值（8 结构 + 5 因果 + 22 诊断 + 1 状态）。
 
 > **配套函数**：`maintenance.py` 还提供 `seed_predicate_definitions()`，把 `ontology.py` 的一阶谓词 upsert 到 `predicate_definitions` 表（统一标记 `prop_order=1` 并写入 `category`、`cardinality`）。两者互补：`seed_diagnosis_vocab` 预置抽取期的 closed 词表约束，`seed_predicate_definitions` 则填充可查询的本体元数据。详见第 6 章。
 
@@ -197,7 +192,7 @@ Vocabularies 解决的是"值标准化"（所有对同一概念的表述归一�
 | 方向 | 写入时归一化（多 → 一） | 读取时扩展（一 → 多） |
 | 作用层 | 抽取/写入路径 | 检索/读取路径 |
 | 粒度 | 按词表分,每个词表一组值 | 全局 term → aliases 映射 |
-| 状态 | 只有 active/存在 | active / inactive / deprecated |
+| 状态 | 只有 active/存在 | draft / active / retired |
 | 触发 | 写入时 coerce 函数 | 检索时 synonym 通道自动扩展 |
 
 ### 表结构
@@ -208,11 +203,17 @@ CREATE TABLE synonyms (
     scope       TEXT NOT NULL,
     term        TEXT NOT NULL,           -- 主词（规范名）
     aliases     TEXT[] NOT NULL DEFAULT '{}',  -- 别名数组
-    status      TEXT NOT NULL DEFAULT 'active',  -- active / inactive / deprecated
+    status      TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN ('draft','active','retired')),
+    locale      TEXT NOT NULL DEFAULT 'und',   -- 语言/区域限定
+    domain      TEXT NOT NULL DEFAULT 'general',  -- 领域限定
+    source      TEXT NOT NULL DEFAULT 'manual',   -- manual | imported | ...
+    metadata    JSONB NOT NULL DEFAULT '{}',
     created_by  TEXT,
+    reviewed_by TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (scope, lower(term))
+    UNIQUE (scope, term)
 );
 ```
 
@@ -247,9 +248,11 @@ def expanded_terms(conn, *, scope, view, query):
 |------|----------|----------|
 | 列出 | `GET /v1/synonyms` | `synonym_list` |
 | 创建 | `POST /v1/synonyms` | `synonym_create` |
+| 取单个 | `GET /v1/synonyms/{id}` | `synonym_get` |
 | 更新 | `PUT /v1/synonyms/{id}` | `synonym_update` |
 | 删除 | `DELETE /v1/synonyms/{id}` | `synonym_delete` |
 | 批量导入 | `POST /v1/synonyms/import` | `synonym_import` |
+| 导出 | `GET /v1/synonyms/export` | `synonym_export` |
 
 ### 典型用法
 

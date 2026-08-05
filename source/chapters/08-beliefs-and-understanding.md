@@ -46,7 +46,8 @@ CREATE TABLE beliefs (
     valid_to       TIMESTAMPTZ,
     recorded_from  TIMESTAMPTZ NOT NULL DEFAULT now(),
     recorded_to    TIMESTAMPTZ,
-    last_revised_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    last_revised_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    operating_regime JSONB NOT NULL DEFAULT '{}'   -- 工况限定:不同工况下信念可独立成立
 );
 ```
 

@@ -61,7 +61,7 @@ graph LR
 
 salience 是 `facts` 表上的召回权重浮点字段，反馈在 `[salience_floor, salience_ceiling]` 区间内做**钳位增减**：
 
-- **正反馈上调**（`feedback.py` L130-134）：
+- **正反馈上调**（`feedback.py` L124-130）：
 
 ```python
 UPDATE facts SET positive_feedback_count = positive_feedback_count + 1,
@@ -71,7 +71,7 @@ WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND recorded_to IS NULL AND valid_to
 
 用 `least(...)` 钳顶，默认 `:w=0.5`、`:ceil=2.0`，保证 salience 不会无限膨胀。
 
-- **负反馈下调**（`feedback.py` L140-144、L151-156）：
+- **负反馈下调**（`feedback.py` L136-142、L147-152）：
 
 ```python
 UPDATE facts SET negative_feedback_count = negative_feedback_count + 1,
@@ -83,7 +83,7 @@ WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND recorded_to IS NULL AND valid_to
 
 ### 3.2 硬轨：recorded_to 软关
 
-只有 `wrong + task_temporary` 才触发硬轨（`feedback.py` L160-163）：
+只有 `wrong + task_temporary` 才触发硬轨（`feedback.py` L149-151）：
 
 ```python
 UPDATE facts SET recorded_to=now()
@@ -181,7 +181,7 @@ elif signal_type == "wrong":
 
 无论是否归档,最后都对 `revised_id` 走 `_check_methylation`。
 
-### 4.4 partial 分支（L166-168）
+### 4.4 partial 分支（L203）
 
 ```python
 elif signal_type == "partial":
@@ -259,7 +259,7 @@ graph TB
 
 ### 6.1 行锁：`SELECT ... FOR UPDATE`
 
-函数开头（L114-118）锁住目标活跃 fact：
+函数开头（L117-120）锁住目标活跃 fact：
 
 ```python
 locked = conn.execute(text(f"""
@@ -321,7 +321,7 @@ _LIVE_FACT = "recorded_to IS NULL AND valid_to IS NULL"
 
 ## 7. `feedback_signals` 表
 
-DDL 来自 `src/cortex/schema.sql`（L394-414）：
+DDL 来自 `src/cortex/schema.sql`（L853-872）：
 
 ```sql
 CREATE TABLE IF NOT EXISTS cortex.feedback_signals (
@@ -359,7 +359,7 @@ CREATE INDEX IF NOT EXISTS idx_feedback_pack ON cortex.feedback_signals (pack_id
 | `signal_durable` | TEXT        | 持久化分级：三值之一，默认 `long_term`                        |
 | `strength`       | FLOAT       | 信号强度，默认 1.0（当前未参与加权，预留扩展）                |
 | `reason`         | TEXT        | 可选的修正理由                                                |
-| `actor`          | TEXT        | 提交者标识（API 层注入 `actor=Depends(auth)`）                |
+| `actor`          | TEXT        | 提交者标识（API 层注入 `actor="api"`）                |
 | `idempotency_key`| TEXT        | 幂等键，UNIQUE 约束，用于原子去重                             |
 | `created_at`     | TIMESTAMPTZ | 创建时间                                                      |
 | `applied`        | BOOLEAN     | 是否已应用即时动作，默认 false（submit_feedback 写入时设 true）|
@@ -373,19 +373,25 @@ CREATE INDEX IF NOT EXISTS idx_feedback_pack ON cortex.feedback_signals (pack_id
 
 ### 8.1 REST API
 
-**POST /v1/feedback** — 提交反馈（`src/cortex/interfaces/api/app.py` L797-803）：
+**POST /v1/feedback** — 提交反馈（`src/cortex/interfaces/api/routes/operations.py` L24-36）：
 
 ```python
-@app.post("/v1/feedback")
-def submit_feedback(body: schemas.FeedbackRequest, actor: str = Depends(auth)):
-    from ...memory.feedback import submit_feedback as _submit
-    return _submit(scope=body.scope, target_layer=body.target_layer, target_id=body.target_id,
-                   signal_type=body.signal_type, signal_durable=body.signal_durable,
-                   reason=body.reason, actor=actor, pack_id=body.pack_id,
-                   idempotency_key=body.idempotency_key)
+@router.post("/v1/feedback")
+def submit_feedback(body: schemas.FeedbackRequest):
+    return submit_feedback_signal(
+        scope=body.scope,
+        target_layer=body.target_layer,
+        target_id=body.target_id,
+        signal_type=body.signal_type,
+        signal_durable=body.signal_durable,
+        reason=body.reason,
+        actor="api",
+        pack_id=body.pack_id,
+        idempotency_key=body.idempotency_key,
+    )
 ```
 
-请求体 `FeedbackRequest`（`src/cortex/interfaces/api/schemas.py` L332-340）：
+请求体 `FeedbackRequest`（`src/cortex/interfaces/api/schemas.py` L618-627）：
 
 ```python
 class FeedbackRequest(BaseModel):
@@ -399,13 +405,12 @@ class FeedbackRequest(BaseModel):
     idempotency_key: Optional[str] = None
 ```
 
-`actor` 从 `Depends(auth)` 注入，记录是哪个用户提交的反馈。`Literal` 类型校验保证 `signal_type` / `signal_durable` 取值合法，非法值在 Pydantic 层即被拒。
+`actor` 由路由层硬编码为 `"api"`（不再有 `Depends(auth)` 注入——operations 路由挂在 `app.include_router(operations_router)` 上，未套任何鉴权依赖）。`Literal` 类型校验保证 `signal_type` / `signal_durable` 取值合法，非法值在 Pydantic 层即被拒。
 
 请求示例：
 
 ```bash
 curl -X POST http://localhost:8000/v1/feedback \
-  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "scope": "proj_a",
@@ -434,14 +439,16 @@ curl -X POST http://localhost:8000/v1/feedback \
 }
 ```
 
-**GET /v1/feedback** — 查询反馈（L806-810）：
+**GET /v1/feedback** — 查询反馈（`operations.py` L39-45）：
 
 ```python
-@app.get("/v1/feedback")
-def list_feedback(scope: str, target_id: Optional[str] = Query(None),
-                  limit: int = Query(50, le=200), actor: str = Depends(auth)):
-    from ...memory.feedback import list_feedback as _list
-    return {"items": _list(scope=scope, target_id=target_id, limit=limit)}
+@router.get("/v1/feedback")
+def list_feedback(
+    scope: str,
+    target_id: Optional[str] = Query(None),
+    limit: int = Query(50, le=200),
+):
+    return {"items": list_feedback_signals(scope=scope, target_id=target_id, limit=limit)}
 ```
 
 支持 `scope`（必填）、`target_id`（可选）、`limit`（≤200）三个查询参数。
@@ -450,7 +457,7 @@ def list_feedback(scope: str, target_id: Optional[str] = Query(None),
 
 两个工具位于 `src/cortex/interfaces/mcp_server.py`：
 
-**feedback_submit**（L357-376）：
+**feedback_submit**（L666-684）：
 
 ```python
 @mcp.tool()
@@ -475,7 +482,7 @@ def feedback_submit(target_id: str, signal_type: str,
                            signal_durable=signal_durable, reason=reason)
 ```
 
-**feedback_list**（L379-384）：
+**feedback_list**（L688-692）：
 
 ```python
 @mcp.tool()
@@ -492,7 +499,7 @@ MCP 工具与 REST API 的差异：MCP 的 `scope` 可选，缺省时由 `_eff_s
 
 ## 9. 配置
 
-`FeedbackCfg` 位于 `src/cortex/infra/config.py`（L124-132）：
+`FeedbackCfg` 位于 `src/cortex/infra/config.py`（L213-221）：
 
 ```python
 class FeedbackCfg(BaseModel):

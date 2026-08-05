@@ -48,7 +48,7 @@ graph LR
 
 ## 13.2 一阶 vs 高阶事实
 
-`facts` 表通过三列扩展实现**同表两级结构**（`schema.sql:431-435`）：
+`facts` 表通过三列扩展实现**同表两级结构**（`schema.sql:891-893`）：
 
 ```sql
 -- facts 表加高阶标记
@@ -67,7 +67,7 @@ ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS evidence_fact_ids UUID[] NOT N
 
 高阶事实的写入见 `higher_order.py` 的 generate_higher_order 写入段的 INSERT 语句——`confidence=candidate_confidence`(默认 0.5)、`assertion_status='hypothesized'`、`knowledge_tier='candidate'`、`object_type='literal'`，并显式填入 `is_higher_order=true`、`higher_order_reasoning`、`evidence_fact_ids`。注意生成阶段只产 candidate tier 待审 fact,需人工审批(`evolution.review_candidate`)通过后才晋升 `verified`(见 13.4.5)。
 
-为加速热路径检索，`schema.sql:448-450` 专门建了部分索引：
+为加速热路径检索，`schema.sql:907-908` 专门建了部分索引：
 
 ```sql
 CREATE INDEX IF NOT EXISTS idx_facts_higher_order
@@ -76,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_facts_higher_order
 
 ## 13.3 predicate_definitions 表
 
-高阶归纳需要一个**谓词本体**告诉 LLM"哪些是 `order=2` 的高阶谓词、它们的语义和示例"。这个本体从 `ontology.py` 的硬编码迁移到了 DB 可配表（`schema.sql:437-445`）：
+高阶归纳需要一个**谓词本体**告诉 LLM"哪些是 `order=2` 的高阶谓词、它们的语义和示例"。这个本体从 `ontology.py` 的硬编码迁移到了 DB 可配表（`schema.sql:896-903`）：
 
 ```sql
 CREATE TABLE IF NOT EXISTS cortex.predicate_definitions (
@@ -392,53 +392,53 @@ Higher-Order 默认**禁用**(`HigherOrderCfg.enabled=False`)。质量保护不�
 
 ### 13.8.1 管理接口 `POST /v1/admin/higher-order`
 
-`app.py` 的 higher-order admin 端点，需要 `admin_auth`，承担两种职责：
+`routes/operations.py` 的 higher-order admin 端点（`operations.py:69-82`），挂载于 `app.include_router(operations_router)`，**无鉴权**（actor 固定 `"api"`），承担两种职责：
 
 ```python
-@app.post("/v1/admin/higher-order")
-def admin_higher_order(body: dict, actor: str = Depends(admin_auth)):
-    from ...memory.higher_order import generate_higher_order, list_higher_order_facts
-    from ...memory.maintenance import seed_predicate_definitions
+@router.post("/v1/admin/higher-order")
+def admin_higher_order(body: dict):
     scope = body.get("scope")
     entity_id = body.get("entity_id")
     if not scope:
         raise HTTPException(422, "scope required")
     if body.get("seed_predicates"):
-        n = seed_predicate_definitions()
-        return {"seeded": n}
+        return {"seeded": seed_predicate_definitions()}
     if not entity_id:
         raise HTTPException(422, "entity_id required (or seed_predicates=true)")
+    entity_scope = resource_scope("entity", entity_id)
+    if entity_scope != scope:
+        raise HTTPException(409, "entity and requested scope do not match")
     return generate_higher_order(entity_id)
 ```
 
-- **`seed_predicates=true`**：调用 `seed_predicate_definitions()` 把 `ontology.py` 一阶谓词 upsert 到 `predicate_definitions` 表。启用 Higher-Order 前的初始化步骤。
-- **`entity_id=...`**：同步触发某实体的 `generate_higher_order`（通常用于调试或手动补归纳，生产路径走异步 job）。
+- **`seed_predicates=true`**：调用 `seed_predicate_definitions()` 把 `ontology.py` 的 36 个一阶谓词 upsert 到 `predicate_definitions` 表。启用 Higher-Order 前的初始化步骤。
+- **`entity_id=...`**：`resource_scope("entity", entity_id)` 校验实体归属的 scope 与请求 scope 一致（不一致返回 409），再同步触发 `generate_higher_order`（通常用于调试或手动补归纳，生产路径走异步 job）。
 
 请求示例：
 
 ```bash
 # 初始化谓词本体
 curl -X POST http://localhost:8000/v1/admin/higher-order \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
   -d '{"scope":"default","seed_predicates":true}'
-# {"seeded":42}
+# {"seeded":36}
 
 # 手动触发某实体高阶归纳
 curl -X POST http://localhost:8000/v1/admin/higher-order \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
   -d '{"scope":"default","entity_id":"<uuid>"}'
 # {"synthesized":1,"entity_id":"...","entity_name":"device_X"}
 ```
 
 ### 13.8.2 查询接口 `GET /v1/higher-order`
 
-`app.py` 的 higher-order 查询端点，普通 `auth` 即可，委托 `list_higher_order_facts`（`higher_order.py`）：
+`routes/operations.py` 的 higher-order 查询端点（`operations.py:85-91`），同样无鉴权，委托 `list_higher_order_facts`（`higher_order.py`）：
 
 ```python
-@app.get("/v1/higher-order")
-def higher_order_list(scope: str, entity_id: Optional[str] = Query(None),
-                      limit: int = Query(50, le=200), actor: str = Depends(auth)):
-    from ...memory.higher_order import list_higher_order_facts
+@router.get("/v1/higher-order")
+def higher_order_list(
+    scope: str,
+    entity_id: Optional[str] = Query(None),
+    limit: int = Query(50, le=200),
+):
     return {"items": list_higher_order_facts(scope, entity_id, limit)}
 ```
 
@@ -446,7 +446,7 @@ def higher_order_list(scope: str, entity_id: Optional[str] = Query(None),
 
 ### 13.8.3 MCP 工具 `higher_order_generate`
 
-`mcp_server.py` 的 higher-order MCP 工具：
+`mcp_server.py` 的 higher-order MCP 工具（`mcp_server.py:710-721`）：
 
 ```python
 @mcp.tool()
@@ -460,14 +460,15 @@ def higher_order_generate(entity_id: str,
     Requires higher_order.enabled=true and LLM key configured.
     """
     from ...memory.higher_order import generate_higher_order
+    _resource_scope(ctx, scope, "entities", "entity_id", entity_id)
     return generate_higher_order(entity_id)
 ```
 
-MCP 工具语义与 admin API 的 `entity_id` 路径一致，供 agent 主动触发归纳。MCP server 详见第19章。
+MCP 工具语义与 admin API 的 `entity_id` 路径一致，多了一步 `_resource_scope` 校验实体归属 scope，供 agent 主动触发归纳。MCP server 详见第19章。
 
 ## 13.9 配置
 
-`HigherOrderCfg`（`config.py:146-152`）：
+`HigherOrderCfg`（`config.py:240-247`）：
 
 ```python
 class HigherOrderCfg(BaseModel):
@@ -502,8 +503,8 @@ higher_order:
 
 调参直觉：
 
-- **想更保守**（生产、防幻觉）→ 抬高 `min_access_count`（如 5-10），让只有高频验证过的事实才进归纳。
-- **想更激进**（实验、快速抽象）→ 降低 `min_evidence_count` 到 2、`min_access_count` 到 0，但注意会放大抽取噪声。
+- **想更保守**（生产、防幻觉）→ 抬高 `min_evidence_count`（如 3-5），只有更多独立证据支撑的事实才进归纳。
+- **想更激进**（实验、快速抽象）→ 降低 `min_evidence_count` 到 2，但注意会放大抽取噪声。
 - **长周期模式**（月度故障规律）→ 抬高 `lookback_facts` 到 30-50，让证据窗覆盖更长时间跨度。
 
 ---

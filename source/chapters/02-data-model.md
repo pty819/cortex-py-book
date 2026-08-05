@@ -14,16 +14,18 @@
 
 ## 完整表清单
 
-cortex schema 共 **32 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分列以 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 增量补加),通过 Alembic 迁移管理（8 个版本）。下表按逻辑层分组:
+cortex schema 共 **34 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分列以 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 增量补加),通过 Alembic 迁移管理（8 个版本）。下表按逻辑层分组:
 
-### 核心记忆层（5 张）
+### 核心记忆层（7 张）
 
 | 表 | 角色 | 核心字段 |
 |----|------|----------|
 | `events` | WAL, 唯一真相源 | scope, content, context, idempotency_key, access_count, feedback_processed, last_recalled_at |
 | `entities` | 实体表, B-over-C 载体 | canonical_name, entity_type, embedding, identity_context, context_key |
 | `entity_aliases` | 别名表 | entity_id, alias |
-| `facts` | **双时态三元组 + 图边** | subject_id, predicate, object_type/entity_id/value, 双时态4字段, polarity, assertion_status, salience, retrieval_count, retrieval_usefulness, 正/负反馈计数, is_higher_order, evidence_quality |
+| `facts` | **双时态三元组 + 图边** | subject_id, predicate, object_type/entity_id/value, 双时态4字段, polarity, assertion_status, knowledge_tier, operating_regime, case_id, salience, retrieval_count, retrieval_usefulness, 正/负反馈计数, is_higher_order, evidence_quality |
+| `fact_search_documents` | **BM25 全文检索投影**(facts 派生) | fact_id, raw_text, tokenized_text, content_hash, dictionary_revision, 双时态, updated_at |
+| `fact_search_dirty_scopes` | **BM25 脏 scope 追踪**(增量重建) | scope, generation, dirty_at |
 | `beliefs` | 概率断言 + supports 链 | about_entity_id, claim, confidence, supports |
 
 ### 组织与案例层（3 张）
@@ -83,7 +85,7 @@ cortex schema 共 **32 张表**(全部幂等 `CREATE TABLE IF NOT EXISTS`,部分
 | `diagnostic_playbook_versions` | 剧本版本（不可变追加） | playbook_id, version, status, description, applicability, entry_nodes |
 | `diagnostic_playbook_nodes` | 剧本节点 DAG | version_id, node_key, node_type, title, condition, recommendation, priority |
 | `diagnostic_playbook_edges` | 剧本边 | version_id, from_node_id, to_node_id, outcome, condition, priority |
-| `diagnostic_reasoning_runs` | 正向推理运行记录 | playbook_id, version, input_symptoms, observations, trace, next_actions, recommendations |
+| `diagnostic_reasoning_runs` | 正向推理运行记录 | playbook_id, version, input JSONB, result JSONB, case_id, created_by |
 
 ## 实体表 (entities)
 
@@ -162,13 +164,18 @@ CREATE TABLE facts (
     valid_to         TIMESTAMPTZ,
     recorded_from    TIMESTAMPTZ NOT NULL DEFAULT now(),
     recorded_to      TIMESTAMPTZ,
-    confidence       FLOAT NOT NULL DEFAULT 0.5,
+    confidence       FLOAT NOT NULL DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
     polarity         TEXT NOT NULL DEFAULT 'positive',
     assertion_status TEXT NOT NULL DEFAULT 'observed',
     evidence_span    TEXT,
+    operating_regime JSONB NOT NULL DEFAULT '{}',   -- 工况维度隔离
+    case_id          TEXT,                          -- 关联诊断 Case
+    knowledge_tier   TEXT NOT NULL DEFAULT 'workspace',  -- workspace/verified/candidate
     supports         UUID[] NOT NULL DEFAULT '{}',
     extracted_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    extraction_model TEXT
+    extraction_model TEXT,
+    CHECK (object_type = 'entity' AND object_entity_id IS NOT NULL
+        OR object_type = 'literal' AND object_value IS NOT NULL)
 );
 ```
 
@@ -264,38 +271,51 @@ flowchart TD
 
 ## Ontology 模块
 
-`src/cortex/infra/ontology.py` 是**谓词本体的单一真相源**(其内容由 `predicate_definitions` 表镜像,DB 版本支持 `prop_order`/`cardinality` 可配):
+`src/cortex/infra/ontology.py` 是**谓词本体的单一真相源**(其内容由 `predicate_definitions` 表镜像,DB 版本支持 `prop_order`/`cardinality` 可配)。谓词分类集合由 `PREDICATE_DICTIONARY` 派生,共 **36 个**:
 
 ```python
-STRUCTURAL_PREDICATES = {
-    "part_of", "has_component", "installed_on", "located_in", "monitored_by",
+STRUCTURAL_PREDICATES = frozenset({
+    "has_component", "installed_on", "located_in", "monitored_by",
     "controlled_by", "regulates", "configured_as", "depends_on",
-}
+})  # 8 个,统一父→子方向
 
-CAUSAL_PREDICATES = {
-    "caused_by", "led_to", "cascades_to", "affects", "triggers", "contributes_to",
-    "correlates_with", "suggests", "symptom_of", "has_symptom",
-}
+CAUSAL_PREDICATES = frozenset({
+    "caused_by", "cascades_to", "has_symptom", "affects", "triggers",
+})  # 5 个
 
-DIAGNOSTIC_PREDICATES = {
-    "detected_by", "investigates", "investigated_by", "checked", "found", "normal",
-    "ruled_out", "no_correlation", "supports", "contradicts", "refines_to",
-    "alternative_to", "confirmed_by", "repaired_by", "observed_by", "references",
-    "preceded_by", "drifts_from", "measured_as", "deviates_from", "feedback_to",
-}
+DIAGNOSTIC_PREDICATES = frozenset({
+    "detected_by", "investigates", "checked", "found", "normal",
+    "ruled_out", "correlates_with", "no_correlation", "supports", "contradicts",
+    "refines_to", "alternative_to", "confirmed_by", "suggests", "repaired_by",
+    "observed_by", "references", "preceded_by", "drifts_from", "measured_as",
+    "deviates_from", "feedback_to",
+})  # 22 个
+
+STATE_PREDICATES = frozenset({"has_status"})  # 1 个,单值超替
+
+# 图排除谓词:对立 + 关系互斥
+OPPOSING_PREDICATES = frozenset({"ruled_out"})
+RELATIONAL_EXCLUSION_PREDICATES = frozenset({"no_correlation", "contradicts"})
+GRAPH_EXCLUDED_PREDICATES = OPPOSING_PREDICATES | RELATIONAL_EXCLUSION_PREDICATES
 ```
 
 ### Cardinality
 
 ```python
+# 仅状态谓词为单值(新值超替旧值),其余全部多值共存
 PREDICATE_CARDINALITY = {
-    "has_status": "single",      # 新值超替旧值
-    "deal_stage": "single",
-    "part_of": "multi",          # 多值共存
-    "has_component": "multi",
-    "caused_by": "multi",
-    # ...
+    predicate: ("single" if predicate in STATE_PREDICATES else "multi")
+    for predicate in PREDICATE_DICTIONARY
 }
+```
+
+### 图准入
+
+```python
+def graph_eligible(predicate, polarity, assertion_status) -> bool:
+    # polarity 必须为正;不在 GRAPH_EXCLUDED 之列
+    # 因果谓词 → 必须 assertion_status == 'confirmed'
+    # 其余谓词 → assertion_status ∈ {'observed', 'confirmed'}
 ```
 
 ## Vocabularies 词表系统

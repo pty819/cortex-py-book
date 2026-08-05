@@ -47,29 +47,30 @@ graph TB
 
 ### 精确匹配 + 身份上下文
 
-为支持灰区 LLM 裁决的并行化，B-over-C 链接逻辑已拆分为查询阶段（`_resolve_lookup`，只读）和写入阶段（`_resolve_write`）。`extract_event` 主流程走三阶段并行路径（见本章末尾），`_resolve_or_create` 保留为单步兼容包装供 triple 直写路径使用。
+为支持灰区 LLM 裁决的并行化，B-over-C 链接逻辑已拆分为查询阶段（`resolve_lookup`，只读）和写入阶段（`resolve_write`）。`extract_event` 主流程走三阶段并行路径（见本章末尾），`resolve_or_create` 保留为单步兼容包装供 triple 直写路径使用。
 
-`_resolve_lookup` 的 A 层逻辑——别名精确命中 + 身份上下文匹配——返回三态之一：
+`resolve_lookup` 的 A 层逻辑——别名精确命中 + 身份上下文匹配——返回三态之一：
 
 ```python
-# extraction/pipeline.py
-def _resolve_lookup(conn, scope, name, etype, description, thresholds,
-                    identity_context=None, precomputed_emb=None):
+# extraction/entity_resolution.py
+def resolve_lookup(conn, scope, name, entity_type, description, thresholds,
+                   identity_context=None, precomputed_emb=None):
     """DB 查询阶段(只读)。返回:
       ("resolved", entity_id) / ("grey", candidates) / ("new", None)
     """
-    canonical_ctx = _identity_context_for_type(identity_context, etype)
+    canonical_ctx = identity_context_for_type(identity_context, entity_type)
     ctx_key = json.dumps(canonical_ctx, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
-    # A 层: 别名精确命中
+    # A 层: 别名精确命中(排除已删除/已合并实体)
     exact = conn.execute(text("""
         SELECT DISTINCT e.entity_id, e.context_key FROM entities e
         LEFT JOIN entity_aliases a ON a.entity_id=e.entity_id
-        WHERE e.scope=:s AND e.merged_into IS NULL
-          AND (lower(e.canonical_name)=lower(:n) OR lower(a.alias)=lower(:n))
-          AND ((CAST(:t AS text) IS NULL AND e.entity_type IS NULL) OR e.entity_type=:t)
+        WHERE e.scope=:scope AND e.merged_into IS NULL AND e.deleted_at IS NULL
+          AND (lower(e.canonical_name)=lower(:name) OR lower(a.alias)=lower(:name))
+          AND ((CAST(:entity_type AS text) IS NULL AND e.entity_type IS NULL)
+               OR e.entity_type=:entity_type)
         ORDER BY e.entity_id
-    """), {"s": scope, "n": name, "t": etype}).fetchall()
+    """), {"scope": scope, "name": name, "entity_type": entity_type}).fetchall()
 
     # 身份上下文匹配
     if canonical_ctx:
@@ -99,38 +100,48 @@ def _resolve_lookup(conn, scope, name, etype, description, thresholds,
 向量查询时强制 `context_key` 过滤：
 
 ```python
-# _resolve_lookup 的 B 层(仍在同一函数内,紧接 A 层之后)
+# resolve_lookup 的 B 层(仍在同一函数内,紧接 A 层之后)
+embedding = precomputed_emb
+if embedding is None:
+    embedding = services.embed_one(
+        load_config().extraction.embedding_text.format(name=name, description=description),
+        role="passage",
+    )
 cands = conn.execute(text("""
     SELECT entity_id, canonical_name, description, entity_type, context_key,
-           1-(embedding <=> CAST(:q AS vector)) AS cos
-    FROM entities WHERE scope=:s AND merged_into IS NULL AND embedding IS NOT NULL
-      AND ((CAST(:t AS text) IS NULL AND entity_type IS NULL) OR entity_type=:t)
-      AND context_key=:ck
-    ORDER BY embedding <=> CAST(:q AS vector) LIMIT 5
-"""), {"q": str(emb), "s": scope, "t": etype, "ck": ctx_key}).fetchall()
+           1-(embedding <=> CAST(:query AS vector)) AS cos
+    FROM entities WHERE scope=:scope AND merged_into IS NULL AND deleted_at IS NULL AND embedding IS NOT NULL
+      AND ((CAST(:entity_type AS text) IS NULL AND entity_type IS NULL) OR entity_type=:entity_type)
+      AND context_key=:context_key
+    ORDER BY embedding <=> CAST(:query AS vector) LIMIT 5
+"""), {"query": str(embedding), "scope": scope,
+       "entity_type": entity_type, "context_key": context_key}).fetchall()
+# 召回后按身份敏感兼容性二次过滤
+cands = [c for c in cands if identity_candidate_compatible(name, c.canonical_name, entity_type)]
 ```
 
-### 身份敏感匹配 (`_identity_candidate_compatible`)
+### 身份敏感匹配 (`identity_candidate_compatible`)
 
 ```python
-_IDENTITY_SENSITIVE_TYPES = {
+# extraction/semantics.py
+IDENTITY_SENSITIVE_TYPES = {
     "component", "sensor", "controller", "process_param", "measurement",
     "metrology_result", "recipe", "recipe_revision",
 }
 
-def _critical_identity_tokens(value):
+def critical_identity_tokens(value):
     """提取关键身份标识符（编号+量纲）"""
     normalized = unicodedata.normalize("NFKC", value).casefold()
     identifiers = re.findall(r"[a-z]+(?:[-_][a-z]+)*[-_]?\d+(?:\.\d+)?[a-z%°μ]*", normalized)
     quantities = re.findall(r"\d+(?:\.\d+)?\s*(?:kw|w|v|a|ma|pa|torr|mtorr|sccm|slm|°?c|nm|um|μm|%|hz|khz|mhz)", normalized)
     return tuple(sorted(set(identifiers + quantities)))
 
-def _identity_candidate_compatible(name, candidate_name, entity_type):
+def identity_candidate_compatible(name, candidate_name, entity_type):
     """身份敏感类型:关键标识符必须一致"""
-    if _canonical_text(entity_type or "") not in _IDENTITY_SENSITIVE_TYPES:
+    if canonical_text(entity_type or "") not in IDENTITY_SENSITIVE_TYPES:
         return True
-    incoming = _critical_identity_tokens(name)
-    existing = _critical_identity_tokens(candidate_name)
+    incoming = critical_identity_tokens(name)
+    existing = critical_identity_tokens(candidate_name)
     return not (incoming or existing) or incoming == existing
 ```
 
@@ -147,13 +158,14 @@ def _identity_candidate_compatible(name, candidate_name, entity_type):
 当相似度在灰区时，调用 LLM 判定：
 
 ```python
-def _llm_entity_link(name, etype, description, candidates, context_text):
+# extraction/entity_resolution.py
+def llm_entity_link(name, etype, description, candidates, context_text):
     """LLM 灰区判定:决定复用哪个候选还是新建"""
     from ..prompts import ENTITY_LINK_SYSTEM
     payload = json.dumps({
         "new_entity": {"name": name, "type": etype, "description": description},
         "candidates": candidates,
-        "context": context_text[:2000],
+        "context": context_text,
     }, ensure_ascii=False)
     raw = services.llm_chat("extraction", ENTITY_LINK_SYSTEM, payload, max_tokens=1024)
     data = services.parse_llm_json(raw)
@@ -186,19 +198,19 @@ ENTITY_LINK_SYSTEM = PROJECT_CONTEXT + """【本次任务:实体灰区判定 —
 ```{mermaid}
 flowchart TD
     subgraph Phase1["Phase 1: lookup(会话内,只读短事务)"]
-        L1[逐 entity 调 _resolve_lookup] --> L2{分类}
+        L1[逐 entity 调 resolve_lookup] --> L2{分类}
         L2 -->|resolved| L3[直接记下 entity_id]
         L2 -->|grey| L4[收集待裁决]
         L2 -->|new| L5[标记待新建]
     end
 
     subgraph Phase2["Phase 2: 灰区 LLM 并行(会话外)"]
-        P1[parallel_map _decide_grey] --> P2[N 个灰区 entity<br/>同时调 _llm_entity_link]
+        P1[parallel_map _decide_grey] --> P2[N 个灰区 entity<br/>同时调 llm_entity_link]
         P2 --> P3[裁决:reuse 或新建]
     end
 
     subgraph Phase3["Phase 3: write(会话内,短事务)"]
-        W1[_resolve_write 新建] --> W2[插入 facts]
+        W1[resolve_write 新建] --> W2[插入 facts]
         W2 --> W3[超替闭合]
         W3 --> W4[Belief 聚合]
     end
@@ -213,10 +225,10 @@ flowchart TD
 # extraction/pipeline.py — extract_event Step 3c(简化)
 from cortex.infra.concurrency import parallel_map
 
-# Phase 1: 会话内只读,对每个 entity 跑 _resolve_lookup,按三态分类
+# Phase 1: 会话内只读,对每个 entity 跑 resolve_lookup,按三态分类
 with session_scope() as conn:
     for ent, emb in zip(ents_to_resolve, ent_embeddings):
-        category, payload = _resolve_lookup(conn, ...)
+        category, payload = resolve_lookup(conn, ...)
         if category == "resolved":
             ent_map[ent["name"].lower()] = payload
         elif category == "grey":
@@ -225,21 +237,21 @@ with session_scope() as conn:
 # Phase 2: 会话外并行,N 个灰区 entity 同时调 LLM
 def _decide_grey(item):
     idx, ent, emb, cands = item
-    decision = _llm_entity_link(ent["name"], ...)
+    decision = llm_entity_link(ent["name"], ...)
     if decision.get("reuse"):
         return (idx, find_reuse_id(cands, decision))
     return (idx, None)
 
 results = parallel_map(_decide_grey, grey_entities)  # N 路并发,保序
 
-# Phase 3: 会话内短事务,_resolve_write + facts + belief
+# Phase 3: 会话内短事务,resolve_write + facts + belief
 with session_scope() as conn:
     for idx, (ent, emb) in enumerate(zip(ents_to_resolve, ent_embeddings)):
         reuse_id = grey_decisions.get(idx)
         if reuse_id:
             ent_map[ent["name"].lower()] = reuse_id
         elif ent["name"].lower() not in ent_map:
-            ent_map[ent["name"].lower()] = _resolve_write(conn, ...)
+            ent_map[ent["name"].lower()] = resolve_write(conn, ...)
     # 接着插入 facts + 超替 + belief 聚合...
 ```
 
@@ -247,44 +259,76 @@ with session_scope() as conn:
 
 1. **LLM 移出 session**：`_decide_grey` 在 `session_scope()` 外执行。持着 DB 连接等 LLM HTTP 响应（1-3s）是典型的 session 占用浪费——N 个灰区实体会串行占用连接。移出后，Phase 1 和 Phase 3 各自是只读/写入的短事务，连接持有时间降到毫秒级。
 2. **`parallel_map` 保序**：来自 `cortex.infra.concurrency`，基于 `ThreadPoolExecutor`。GIL 在网络 I/O 的 `recv()` 处释放，所以 LLM/embed/rerank 这类 HTTP 调用能实现真正的并行。结果按输入顺序返回，单项异常返回 `None` 不阻断其余。
-3. **写入仍串行**：Phase 3 的 `_resolve_write` + fact 插入 + belief 聚合在单个事务内串行执行，保证事务一致性。`_resolve_write` 的签名是纯写入，不回查不判定。
+3. **写入仍串行**：Phase 3 的 `resolve_write` + fact 插入 + belief 聚合在单个事务内串行执行，保证事务一致性。`resolve_write` 的签名是纯写入，不回查不判定——它内部用 `pg_advisory_xact_lock` 做身份锁防并发双建。
 
 ## Fact 超替机制
 
-单值谓词的新事实到达时，超替旧值：
+单值谓词的新事实到达时，超替旧值（`cardinality` 从 scope 级 DB vocabularies 查询，无词表时用代码级 fallback）：
 
 ```python
-def _close_superseded(conn, scope, subject_id, predicate, valid_from):
-    """超替:仅对单值谓词,把同 (subject,predicate) 的当前活 fact 闭合"""
+# extraction/fact_store.py
+def _close_superseded(conn, scope, subject_id, predicate, valid_from,
+                      object_value=None, operating_regime=None, case_id=None):
+    """超替:仅对单值谓词,把同 (subject,predicate) 的当前活 fact 的 valid_to 闭合。
+    多值谓词不按 subject+predicate 超替,因此可连接不同 object;相同 structural
+    三元组仍由 lock_and_find_structural_fact 收敛为一条 live edge。"""
     if not _is_single_value(conn, scope, predicate):
         return None
-    
+    regime_json = json.dumps(canonical_operating_regime(operating_regime),
+                             ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
     rows = conn.execute(text("""
-        SELECT fact_id::text, valid_from::text FROM facts 
-        WHERE scope=:s AND subject_id=CAST(:sub AS uuid) AND predicate=:p
+        SELECT fact_id::text, valid_from::text, valid_to::text
+        FROM facts WHERE scope=:s AND subject_id=CAST(:sub AS uuid) AND predicate=:p
           AND recorded_to IS NULL AND polarity='positive'
+          AND operating_regime=CAST(:reg AS jsonb) AND coalesce(case_id,'')=:cid
           AND assertion_status IN ('observed','confirmed')
-        ORDER BY valid_from FOR UPDATE
-    """), {"s": scope, "sub": subject_id, "p": predicate}).fetchall()
-    
+        ORDER BY valid_from, recorded_from
+        FOR UPDATE
+    """), {"s": scope, "sub": subject_id, "p": predicate,
+           "reg": regime_json, "cid": case_id or ""}).fetchall()
+
     target = _parse_timestamp(valid_from)
+    predecessor = None
+    successor = None
     for row in rows:
         point = _parse_timestamp(row.valid_from)
         if point == target:
             conn.execute(text("UPDATE facts SET recorded_to=now() WHERE fact_id=CAST(:f AS uuid)"),
-                        {"f": row.fact_id})
+                         {"f": row.fact_id})
             return row.valid_to
-    # 闭合前驱
-    ...
+        if point < target:
+            predecessor = row
+        elif successor is None:
+            successor = row
+    if predecessor and (predecessor.valid_to is None or
+                        _parse_timestamp(predecessor.valid_to) > target):
+        conn.execute(text("UPDATE facts SET recorded_to=now() WHERE fact_id=CAST(:f AS uuid)"),
+                     {"f": predecessor.fact_id})
+        # 复制前驱为新的有效区间,copy-on-write 保留历史
+        conn.execute(text("""
+            INSERT INTO facts(scope,subject_id,predicate,object_type,object_entity_id,object_value,
+                              valid_from,valid_to,confidence,polarity,assertion_status,evidence_span,
+                              operating_regime,case_id,knowledge_tier,supports,extraction_model,extracted_at,
+                              salience,retrieval_usefulness,evidence_quality,diagnostic_correctness,population_prevalence)
+            SELECT scope,subject_id,predicate,object_type,object_entity_id,object_value,
+                   valid_from,CAST(:vf AS timestamptz),confidence,polarity,assertion_status,evidence_span,
+                   operating_regime,case_id,knowledge_tier,supports,extraction_model,extracted_at,
+                   salience,retrieval_usefulness,evidence_quality,diagnostic_correctness,population_prevalence
+            FROM facts WHERE fact_id=CAST(:f AS uuid)
+        """), {"vf": valid_from, "f": predecessor.fact_id})
+    return successor.valid_from if successor else None
 ```
+
+> 超替现在带 **operating_regime + case_id 过滤**：同一单值谓词在不同操作制度/案例下各自独立演进，不会互相误闭合。结构谓词的单值收敛则由 `_insert_fact` 内调用的 `lock_and_find_structural_fact` 负责（见[第6章 §结构边收敛](06-ontology-and-assertion)）。
 
 ## 完整实体链接流程
 
-下图展示**单个实体**在 `_resolve_lookup` 内的决策树（Phase 1 的逐 entity 逻辑）。N 个实体的编排（三阶段并行）见上一节。
+下图展示**单个实体**在 `resolve_lookup` 内的决策树（Phase 1 的逐 entity 逻辑）。N 个实体的编排（三阶段并行）见上一节。
 
 ```{mermaid}
 flowchart TD
-    EXT[抽取管线 extract_event] -->|Phase 1| LINK[_resolve_lookup]
+    EXT[抽取管线 extract_event] -->|Phase 1| LINK[resolve_lookup]
     LINK --> A[别名查询 entity_aliases]
     A --> HIT{精确命中?}
     HIT -->|是| CTX{context_key 匹配?}
@@ -300,12 +344,12 @@ flowchart TD
     SIM -->|0.30 - 0.85| GREY[返回 grey + candidates]
     SIM -->|< 0.30| NEW
 
-    GREY -->|Phase 2 会话外并行| LLM[_decide_grey → _llm_entity_link]
+    GREY -->|Phase 2 会话外并行| LLM[_decide_grey → llm_entity_link]
     LLM --> DECIDE{LLM 判定}
     DECIDE -->|同一实体| REUSE[复用 entity_id]
     DECIDE -->|不同/无key| NEW
 
-    RES --> W[Phase 3: _resolve_write / 直接记下]
+    RES --> W[Phase 3: resolve_write / 直接记下]
     RES2 --> W
     REUSE --> W
     NEW --> W

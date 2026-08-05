@@ -61,7 +61,7 @@ flowchart LR
 
 **目的**：合并**完整语义身份**相同的 legacy duplicates——不同工况/Case/状态/层级永不折叠。
 
-**分组维度**（~16 列完整语义身份）：`subject_id, predicate, object_type, object_entity_id/object_value, polarity, assertion_status, knowledge_tier, operating_regime, case_id, valid_from, valid_to, confidence, salience, positive_feedback_count, negative_feedback_count, retrieval_usefulness, evidence_quality, diagnostic_correctness, population_prevalence, retrieval_count`。任一列不同即视为不同 fact，不合并。这与早期"同 S/P/O 三列去重"的简化描述完全不同——三列分组会把不同工况/状态的正负反馈混成一组，破坏双时态语义。
+**分组维度**（20 列完整语义身份）：`subject_id, predicate, object_type, object_entity_id/object_value, polarity, assertion_status, knowledge_tier, operating_regime, case_id, valid_from, valid_to, confidence, salience, positive_feedback_count, negative_feedback_count, retrieval_usefulness, evidence_quality, diagnostic_correctness, population_prevalence, retrieval_count`。任一列不同即视为不同 fact，不合并。这与早期"同 S/P/O 三列去重"的简化描述完全不同——三列分组会把不同工况/状态的正负反馈混成一组，破坏双时态语义。
 
 ```python
 def consolidation_run(scope, min_age_hours=24):
@@ -79,7 +79,11 @@ def consolidation_run(scope, min_age_hours=24):
             FROM facts
             WHERE scope=:s AND recorded_to IS NULL
               AND extracted_at < now() - make_interval(secs => :secs)
-            GROUP BY <完整语义身份 16 列>
+            GROUP BY subject_id, predicate, object_type, oe, ov, polarity, assertion_status,
+                     knowledge_tier, operating_regime, case_id, valid_from, valid_to,
+                     confidence, salience, positive_feedback_count, negative_feedback_count,
+                     retrieval_usefulness, evidence_quality, diagnostic_correctness,
+                     population_prevalence, retrieval_count
             HAVING count(*) > 1
         """), {"s": scope, "secs": float(min_age_hours * 3600)}).fetchall()
         closed = 0
@@ -144,25 +148,22 @@ def seed_diagnosis_vocab(scope):
 
 ```python
 def seed_predicate_definitions() -> int:
-    """把 ontology.py 的硬编码谓词预置到 predicate_definitions 表(一阶,order=1)。幂等。"""
-    # 从 STRUCTURAL/CAUSAL/DIAGNOSTIC/STATE 四集合构建 cat_map
-    cat_map = {}
-    for p in STRUCTURAL_PREDICATES:  cat_map[p] = "structural"
-    for p in CAUSAL_PREDICATES:      cat_map[p] = "causal"
-    for p in DIAGNOSTIC_PREDICATES:  cat_map[p] = "diagnostic"
-    for p in STATE_PREDICATES:       cat_map[p] = "state"
+    """把 ontology.PREDICATE_DICTIONARY 预置到 predicate_definitions 表(一阶,order=1)。幂等。"""
     n = 0
     with session_scope() as conn:
-        for pred, cat in cat_map.items():
+        for pred, d in PREDICATE_DICTIONARY.items():
             card = PREDICATE_CARDINALITY.get(pred, "multi")
             r = conn.execute(text("""
-                INSERT INTO predicate_definitions (predicate, category, prop_order, cardinality)
-                VALUES (:p, :c, 1, :card)
-                ON CONFLICT (predicate) DO UPDATE SET category=:c, cardinality=:card
-            """), {"p": pred, "c": cat, "card": card})
+                INSERT INTO predicate_definitions (predicate, category, prop_order, cardinality, description, example)
+                VALUES (:p, :c, 1, :card, :desc, :ex)
+                ON CONFLICT (predicate) DO UPDATE
+                SET category=:c, cardinality=:card, description=:desc, example=:ex
+            """), {"p": pred, "c": d.category, "card": card, "desc": d.meaning, "ex": d.example})
             n += r.rowcount or 0
     return n
 ```
+
+**不再是手工 cat_map**：早期实现从 `STRUCTURAL_PREDICATES`/`CAUSAL_PREDICATES`/`DIAGNOSTIC_PREDICATES`/`STATE_PREDICATES` 四个独立集合手工构建 `cat_map`。现在 `seed_predicate_definitions` 直接遍历单一真相源 `PREDICATE_DICTIONARY.items()`——`category` 取自 `PredicateDef.category`，并顺带把 `description`（`meaning`）和 `example` 一并 upsert 进 `predicate_definitions` 表。这套设计下四个分类集合（`STRUCTURAL_PREDICATES` 等）只是从词典 `frozenset` 派生，不再需要手工同步；prompt 中的谓词表格也由 `render_predicate_table` 从同一词典动态生成，消灭手工漂移。
 
 **作用**：开启 DB-backed ontology——谓词不再只是代码里的 `Enum`，而是表里带 `category`（因果/观测/诊断/状态…）和 `prop_order` 的可查元数据。extract 环节可据此做闭集校验，未命中的谓词走 quarantine 而非直接入图。
 

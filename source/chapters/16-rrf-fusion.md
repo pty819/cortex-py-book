@@ -101,7 +101,7 @@ flowchart LR
 
 ## Rerank 后处理
 
-RRF 融合后,top-N(默认 40)走 Prism rerank。rerank 现在有正式的运行时开关与预算控制(`RerankRuntimeCfg`):
+RRF 融合后,取 `rerank.top_n`(默认 25)个候选走 Prism rerank。rerank 现在有正式的运行时开关与预算控制(`RerankRuntimeCfg`):
 
 ```python
 class RerankRuntimeCfg(BaseModel):
@@ -113,24 +113,37 @@ class RerankRuntimeCfg(BaseModel):
 
 `rerank.enabled=false` 时 pipeline 直接用融合 + 信号加权后的分数排序,不经 HTTP rerank 调用。这对无 rerank 服务的部署是硬性开关。每个命名 Profile 还可以有自己的 `rerank` 覆盖(见下文)。
 
-rerank 调用本身:
+rerank 调用本身（`services.rerank`，走 `_cached_http_client`，`top_n` 由 `RerankCfg` 控制）：
 
 ```python
-def rerank(query, documents):
-    """Prism rerank:语义重排序"""
-    cfg = load_config().rerank
+def rerank(query, documents, cfg=None):
+    """调 prism rerank → 返回 [{"index","relevance_score","document"}, ...] 按 score 降序。"""
+    cfg = cfg or load_config().rerank
     url = cfg.api_base.rstrip("/") + "/rerank"
-    with httpx.Client(timeout=cfg.timeout) as cli:
-        r = cli.post(url, json={
-            "model": cfg.model,
-            "query": query,
-            "documents": documents
-        }, headers={"Authorization": f"Bearer {cfg.api_key}"})
-        r.raise_for_status()
-        return r.json()["data"]  # [{index, relevance_score, document}]
+    cli = _cached_http_client("rerank", api_base=cfg.api_base,
+                              api_key=cfg.api_key, timeout=cfg.timeout)
+    body = {"model": cfg.model, "query": query,
+            "documents": documents, "top_n": cfg.top_n}
+    if cfg.extra_body:
+        body.update(cfg.extra_body)          # extra_body 透传合并进请求体
+    r = cli.post(url, json=body,
+                 headers={"Authorization": f"Bearer {cfg.api_key}"})
+    r.raise_for_status()
+    out = r.json()
+    results = out.get("results") or out.get("data") or []   # 兼容 results/data 两种返回
+    results.sort(key=lambda d: d.get("relevance_score", 0), reverse=True)
+    return results
 ```
 
-rerank 后按 `relevance_score` 降序排列,低于 `threshold` 的丢弃,取最终 top_k。
+pipeline 侧 rerank 的**运行时决策**（`recall` Phase 2，会话外）：
+- `rerank_cfg.enabled=false` → 跳过 HTTP 调用，直接用融合 + 信号加权后的顺序；
+- `rerank` 服务未就绪（缺 `api_base`/`model`/`api_key`）→ 同样跳过，`status="dependency_not_ready"`；
+- 调用成功 → 按 `relevance_score` 保留下限 `threshold` 之上的候选（`keep_idx` 为空时兜底取前 10），`status="completed"`；
+- 调用抛异常 → **离线兜底**：退回融合顺序，`status="failed_open"`，不阻断召回。
+
+即 rerank 层是**尽力而为**的：除了 `enabled=false` 是硬开关，其余情况下 rerank 服务的缺失或失败都不会让召回挂掉，而是退回融合排序。
+
+rerank 后按 `relevance_score` 降序排列，低于 `threshold` 的丢弃，取最终 top_k。
 
 ## StratifiedPack 组装
 
@@ -181,7 +194,7 @@ sequenceDiagram
         R->>DB: _chan_bm25 (tsvector)
         R->>DB: _chan_graph (递归 CTE)
         R->>DB: _chan_entity_name (pg_trgm)
-        R->>DB: _chan_synonym (synonyms 表)
+        R->>DB: _expand_synonyms (synonyms 表)
         R->>DB: _chan_temporal_decay
     end
     
@@ -190,8 +203,8 @@ sequenceDiagram
     R->>DB: 信号总线再加权 (4 信号独立)
     Note over R: salience·usage·usefulness·exploration,见第14章
 
-    R->>LLM: Prism rerank (top-40)
-    LLM-->>R: reranked top-20
+    R->>LLM: Prism rerank (top_n=25, 会话外/尽力而为)
+    LLM-->>R: reranked top-20 (缺失/失败则退回融合顺序)
     
     R->>LLM: Synthesis context block
     LLM-->>R: context_block

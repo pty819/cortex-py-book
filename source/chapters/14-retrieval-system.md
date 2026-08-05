@@ -78,7 +78,7 @@ def _scope_filter(scope, view):
 def _temporal_clause(as_of, include_superseded):
     """返回通道 SQL 的时间过滤片段。
     
-    默认(无 as_of): valid_to IS NULL AND recorded_to IS NULL (当前 live facts)
+    默认(无 as_of): valid_from<=now() AND valid_to IS NULL AND recorded_to IS NULL (当前 live facts)
     as_of: valid_from<=t<valid_to AND recorded_to IS NULL (当时为真+当前认知)
     as_of + include_superseded: 含历史认知版本
     """
@@ -89,8 +89,8 @@ def _temporal_clause(as_of, include_superseded):
                     "AND (recorded_to IS NULL OR CAST(:ao AS timestamptz) < recorded_to)")
         return base + " AND recorded_to IS NULL"
     if not include_superseded:
-        return "valid_to IS NULL AND recorded_to IS NULL"
-    return "valid_to IS NULL"
+        return "valid_from <= now() AND (valid_to IS NULL OR now() < valid_to) AND recorded_to IS NULL"
+    return "valid_from <= now() AND (valid_to IS NULL OR now() < valid_to)"
 ```
 
 ## 图准入 SQL
@@ -100,7 +100,8 @@ def _graph_eligible_sql(alias="f"):
     """生成图遍历的 eligibility 条件"""
     causal = ",".join(f"'{p}'" for p in sorted(CAUSAL_PREDICATES))
     excluded = ",".join(f"'{p}'" for p in sorted(GRAPH_EXCLUDED_PREDICATES))
-    return (f"{alias}.polarity='positive' AND {alias}.predicate NOT IN ({excluded}) "
+    return (f"{alias}.knowledge_tier='verified' AND {alias}.polarity='positive' "
+            f"AND {alias}.predicate NOT IN ({excluded}) "
             f"AND (({alias}.predicate IN ({causal}) AND {alias}.assertion_status='confirmed') "
             f"OR ({alias}.predicate NOT IN ({causal}) AND {alias}.assertion_status IN ('observed','confirmed')))")
 ```
@@ -236,7 +237,8 @@ def recall(*, scope, query=None, view="local", top_k=None, as_of=None, ...):
     # ← session 关闭——下面 rerank 不持有 DB 连接
 
     # Phase 2: Rerank(会话外,纯 HTTP)
-    reranked_rows = _rerank(query, ordered_rows)
+    #   rerank_cfg.enabled=false 或服务未就绪 → 跳过;服务调用抛异常 → 离线兜底退回融合顺序
+    reranked_rows = services.rerank(query, docs, cfg=rerank_cfg)  # 失败时 pipeline 兜底为 ordered_rows
 
     # Phase 3: Pack 装配(独立短事务,3 次重试)
     pack = None
@@ -350,7 +352,7 @@ salience_multiplier = (1 - weight) + weight · sal
 
 ```python
 ranked_all = sorted(scores, key=lambda fid: scores[fid], reverse=True)
-explore_slots = (math.ceil(top_k * adv.exploration_ratio)
+explore_slots = (min(top_k, max(0, math.ceil(top_k * float(adv.exploration_ratio))))
                  if adv.exploration_enabled else 0)
 exploit_slots = max(0, top_k - explore_slots)
 exploit = ranked_all[:exploit_slots]                          # 高分热门 fact
@@ -360,6 +362,9 @@ explore_pool = sorted(                                        # 从未被召回(
     key=lambda fid: base_scores.get(fid, 0.0), reverse=True,
 )
 ranked = exploit + explore_pool[:explore_slots]               # 拼 final top_k
+if len(ranked) < top_k:
+    ranked.extend(fid for fid in ranked_all if fid not in ranked)  # 名额不足时补齐
+ranked = ranked[:top_k]
 ```
 
 效果:默认 10% 的名额预留给"从未被召回过的新 assertion",保证新鲜记忆有曝光机会,而不是被热门 fact 永远压在下面。`exploration_enabled=false` 时退化为纯 exploit(全按分数排序)。

@@ -39,7 +39,7 @@ def apply_config_patch(patch: dict) -> AppConfig:
     return cfg
 ```
 
-白名单**不含 `api`**:`api` 是认证边界(principals/token_hash/admin_key),改它会让运行中进程的鉴权状态与磁盘/部署不一致。注释明确"认证边界 `api` 与 `database`/`embedding.dimension` 禁止运行时修改",必须通过受控部署更新并重启。
+白名单**不含 `api`**:`ApiCfg` 现在只承载传输层设置 `cors_origins`(认证已归属上游应用,见 `config.py` 的 `ApiCfg` 注释),运行中改它会让 CORS 与部署不一致。注释明确"传输配置 `api` 与 `database`/`embedding.dimension` 禁止运行时修改",必须通过受控部署更新并重启。
 
 为什么不替换 `_CACHE`?因为 `app.py` 等模块在启动时通过 `cfg = load_config()` 拿到单例引用,并在闭包/装饰器里长期持有。如果热更新走 `load_config(reload=True)` 路径重建实例,旧的 `cfg` 引用就指向了一个孤儿对象,新配置对它们永远不可见。原地改字段让所有持有引用的代码立刻看到新值。
 
@@ -88,42 +88,46 @@ def _deep_merge(target, patch: dict, root_path: str) -> None:
 | `embedding.dimension` | **否** | 与 `vector(N)` 强绑定 |
 | `embedding.api_key` | 否(不在白名单) | 走环境变量 |
 | `database.*` | **否** | 整棵子树禁 |
-| `api` | **否** | 认证边界,禁止运行时修改,需重启 |
+| `api` | **否** | 传输设置(`cors_origins`),禁止运行时修改,需重启 |
 | `worker` / `retrieval` / `extraction` | 是 | |
 | `feedback` / `dreaming` / `higher_order` | 是 | 含 `enabled` 开关 |
 
 ### 2.3 持久化
 
-`save_config()` 的真实行为与直觉相反:**它不会把 env 注入的 secret 明文落盘**。docstring 直写"原子写回 YAML;环境变量注入的 secret 永不落盘"。流程是先 `model_dump()` 拿到当前内存配置(其中已被 env 覆盖成真实 key 的字段),再调 `_restore_persisted_secrets(data, raw)` 把这些字段替换回**磁盘 YAML 里的原值或占位符**:
+`save_config()` 的真实行为与直觉相反:**它不会把 env 注入的 secret 明文落盘**。docstring 直写"原子写回 YAML;环境变量注入的 secret 永不落盘"。流程是先 `model_dump()` 拿到当前内存配置(其中已被 env 覆盖成真实 key 的字段),再调 `_restore_persisted_secrets(data, raw, persist_secret_paths)` 把这些字段替换回**磁盘 YAML 里的原值或占位符**:
 
 ```python
-def save_config(path: Path | str | None = None) -> None:
+def save_config(path: Path | str | None = None, *,
+                persist_secret_paths: Optional[set[tuple[str, ...]]] = None) -> None:
     """原子写回 YAML；环境变量注入的 secret 永不落盘。"""
     cfg = load_config()
     p = Path(path or os.environ.get("CORTEX_CONFIG", _DEFAULT_CONFIG_PATH)).resolve()
     data = cfg.model_dump(by_alias=True)
     raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}   # 磁盘当前原值
-    _restore_persisted_secrets(data, raw)                      # 用原值/占位符盖回 secret
+    _restore_persisted_secrets(data, raw, persist_secret_paths=persist_secret_paths or set())
     # …原子写:tempfile + fsync + os.replace…
 ```
 
-`_restore_persisted_secrets` 对这些键做替换:`api_key` / `key` / `admin_key` / `token` / `token_hash`(每个 secret 字段),以及 `database.url` 与 `api.principals`(整段)。若该键在磁盘原 YAML 里有值就写回原值;否则按类型给空串(字符串)或空列表(`api.principals`):
+`save_config` 多了一个 `persist_secret_paths` 参数:由 `admin_config_post` 用 `secret_paths_in_patch(body)` 算出本次补丁**显式携带**的 secret 路径,持久化时这些被用户主动改写的 key 保留明文写入,其余 env secret 仍被盖回。`_restore_persisted_secrets` 只对两类键做替换:`api_key`(每个 secret 字段)与 `database.url`(**整段**)。若该键在磁盘原 YAML 里有值就写回原值;否则按类型给空串(字符串)或空列表:
 
 ```python
-def _restore_persisted_secrets(data, raw, path=()) -> None:
+def _is_secret_path(path: tuple[str, ...], key: str) -> bool:
+    return key == "api_key" or path == ("database", "url")
+
+def _restore_persisted_secrets(data, raw, path=(), *, persist_secret_paths) -> None:
     """把当前模型里的 env secret 替换回磁盘原值/占位符。"""
     if not isinstance(data, dict):
         return
     raw_dict = raw if isinstance(raw, dict) else {}
     for key, value in list(data.items()):
         current_path = path + (key,)
-        secret = (key in {"api_key", "key", "admin_key", "token", "token_hash"}
-                  or current_path == ("database", "url")
-                  or current_path == ("api", "principals"))
+        secret = _is_secret_path(current_path, key)
         if secret:
+            if current_path in persist_secret_paths:
+                continue                        # 显式改写的 secret 保留明文
             data[key] = raw_dict[key] if key in raw_dict else ([] if isinstance(value, list) else "")
             continue
-        _restore_persisted_secrets(value, raw_dict.get(key), current_path)
+        _restore_persisted_secrets(value, raw_dict.get(key), current_path, persist_secret_paths=persist_secret_paths)
 ```
 
 结果:env 覆盖的 secret 只活在进程内存里,持久化后的 YAML 与重启前看到的内容一致,不泄漏明文。写入采用**原子替换**(tempfile + `os.fsync` + `os.replace`,保留原文件权限),中途崩溃不会留下半截损坏的 `config.yaml`。
@@ -159,7 +163,7 @@ sequenceDiagram
     participant CFG as config.py _CACHE
     participant FS as config.yaml
 
-    FE->>API: POST patch + ?persist=true (X-Cortex-Admin-Key)
+    FE->>API: POST patch + ?persist=true
     API->>CFG: apply_config_patch(patch)
     CFG->>CFG: _deep_merge 白名单校验
     alt 非法字段
@@ -184,7 +188,7 @@ sequenceDiagram
 
 ```python
 def _mask_secrets(value) -> None:
-    """原地遮蔽 DSN、API/admin key、principal token/hash。"""
+    """原地遮蔽 DSN 与 API key。"""
     if isinstance(value, list):
         for item in value:
             _mask_secrets(item)
@@ -192,7 +196,7 @@ def _mask_secrets(value) -> None:
     if not isinstance(value, dict):
         return
     for key, nested in list(value.items()):
-        if key in {"api_key", "key", "admin_key", "token", "token_hash"} and isinstance(nested, str):
+        if key == "api_key" and isinstance(nested, str):
             value[key] = "***" if nested else ""
             value[f"has_{key}"] = bool(nested)        # 注入布尔状态
         elif key == "url" and isinstance(nested, str):
@@ -201,13 +205,12 @@ def _mask_secrets(value) -> None:
             _mask_secrets(nested)
 ```
 
-脱敏规则覆盖 **5 个 secret 键** + url:
+脱敏规则覆盖 **2 个键**：
 
 | 原字段 | 脱敏后 | 附带 |
 |--------|--------|------|
 | `*.api_key`(有值) | `"***"` | `has_api_key: true` |
 | `*.api_key`(空) | `""` | `has_api_key: false` |
-| `*.key` / `*.admin_key` / `*.token` / `*.token_hash` | `"***"` 或 `""` | 对应 `has_<key>` 布尔 |
 | `database.url` | `"***"` | — |
 
 前端据此在 LLM/Rerank 卡片上显示「已配置 / 未配置」徽标,而无需拿到真实 key。
@@ -216,8 +219,8 @@ def _mask_secrets(value) -> None:
 
 ```python
 @app.post("/v1/admin/config")
-def admin_config_post(body: dict, persist: bool = Query(False),
-                      actor: str = Depends(admin_auth)):
+def admin_config_post(body: dict, request: Request,
+                      persist: bool = Query(False)):
     """修改运行配置(白名单深合并)。persist=true 时写回 YAML。"""
     from ...infra.config import apply_config_patch, save_config
     try:
@@ -226,19 +229,19 @@ def admin_config_post(body: dict, persist: bool = Query(False),
         raise HTTPException(422, str(e))
     if persist:
         try:
-            save_config()
+            save_config(persist_secret_paths=secret_paths_in_patch(body))
         except Exception as e:
             raise HTTPException(500, f"failed to persist config: {e}")
-    d = load_config().model_dump()
+    d = _load_runtime_config(request).model_dump()
     _mask_secrets(d)
     return d
 ```
 
 要点:
 
-- **鉴权**:`Depends(admin_auth)`。若配置了 `api.admin_key`,请求必须带 `X-Cortex-Admin-Key` 头;否则该端点 403。
+- **鉴权**:不再内嵌 `Depends(admin_auth)` —— 认证已整体上移给上游应用(见 `ApiCfg` 注释),端点只暴露 `body` / `persist` / `request`。
 - **Body**:任意层级的补丁 dict,只含想改的字段即可(深合并)。
-- **查询参数**:`?persist=true` 触发 `save_config()` 写回 YAML;缺省只改内存。
+- **持久化与 secret**:`persist=true` 时 `save_config(persist_secret_paths=secret_paths_in_patch(body))` —— 本次补丁显式改写的 `api_key` 会明文落盘,其余 env secret 仍被盖回为占位符。
 - **返回**:脱敏后的全量配置(同 GET)。
 - **错误**:`422` 白名单违例(`ValueError` 透传);`500` 持久化失败。
 
@@ -246,8 +249,6 @@ def admin_config_post(body: dict, persist: bool = Query(False),
 
 ```bash
 curl -X POST http://localhost:8000/v1/admin/config \
-  -H "Authorization: Bearer $CORTEX_API_KEY" \
-  -H "X-Cortex-Admin-Key: $CORTEX_ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{"dreaming": {"enabled": true}, "retrieval": {"top_k": 80}}' \
   '?persist=true'
@@ -262,8 +263,7 @@ curl -X POST http://localhost:8000/v1/admin/config \
 def admin_jobs(scope: Optional[str] = Query(None),
                status: Optional[str] = Query(None),
                job_type: Optional[str] = Query(None),
-               limit: int = Query(50, le=500),
-               actor: str = Depends(admin_auth)):
+               limit: int = Query(50, le=500)):
     """查看任务队列明细(不返回 payload,可能含敏感数据)。"""
 ```
 
@@ -337,7 +337,7 @@ data: {"model_used":"gpt-4o-mini","pack_id":"pk_abc","citations":[...]}
 
 ````{admonition} 重构背景
 :class: important
-前端曾是扁平的 demo 导航(Ingest/Graph/Ask/Browse/Ops/Settings 六个平级链接),且 API 客户端硬编码 `dev-key` / `user:alice`。随着后端能力扩展到 Cases、诊断召回、证据、演化审批、词表、时间短语、Understanding、导入导出、维护、Higher-Order,扁平导航不再能覆盖。重构(commit `e2645de`,PR #13)把前端升级为**控制平面**:左侧持久化分组导航 + 连接凭据 store + 认证头注入 + 12 个视图。
+前端曾是扁平的 demo 导航(Ingest/Graph/Ask/Browse/Ops/Settings 六个平级链接),且 API 客户端硬编码 `dev-key` / `user:alice`。随着后端能力扩展到 Cases、诊断召回、证据、演化审批、词表、时间短语、Understanding、导入导出、维护、Higher-Order、Playbooks,扁平导航不再能覆盖。重构(commit `e2645de`,PR #13)把前端升级为**控制平面**:左侧持久化分组导航 + 13 个视图。
 ````
 
 ### 6.1 信息架构:左侧分组导航
@@ -347,56 +347,30 @@ data: {"model_used":"gpt-4o-mini","pack_id":"pk_abc","citations":[...]}
 | 分组 | 路由 | 视图 |
 |------|------|------|
 | **Observe** | `/overview` `/ops` | Overview(健康/版本/存储/队列/特性概览)、Operations(jobs/worker/Dreaming/Higher-Order) |
-| **Operate** | `/ingest` `/data` `/cases` `/qa` | Ingest、Data operations(文档/批量/导入导出/Evidence)、Cases & Diagnosis、Ask |
+| **Operate** | `/ingest` `/data` `/cases` `/playbooks` `/qa` | Ingest、Data operations(文档/批量/导入导出/Evidence)、Cases & Diagnosis、Playbooks、Ask |
 | **Inspect** | `/graph` `/browse` `/understanding` | Knowledge Graph、Memory Browser、Understanding |
 | **Govern** | `/governance` `/api-console` `/settings` | Governance(演化审批/反馈/词表/时间短语/Erasure)、API Console、Settings |
 
 默认落地页从 `/ingest` 改为 `/overview`。移动端(`@media max-width: 980px`)左侧栏折叠为抽屉,由上下文栏的 ☰ 按钮唤出。
 
-### 6.2 连接凭据 store
+### 6.2 Pinia store:scope 与 settings
 
-`frontend/src/stores/connection.ts`(Pinia)把原来硬编码的凭据改成**运行时可配置 + localStorage 持久化**:
+接入认证上移到上游应用后,前端**不再需要连接凭据 store**——旧的 `connection.ts`(token/actor/admin-key 的 localStorage 持久化)已移除。现在 `frontend/src/stores/` 只保留:
 
-```typescript
-const TOKEN_KEY = 'cortex.connection.token'
-const ACTOR_KEY = 'cortex.connection.actor'
+- `scope.ts`:`useScopeStore` 维护全局 scope 选择(localStorage 持久化),启动时从 `/v1/scopes/list` 动态拉取候选,供 Ingest/检索等需要 scope 的调用读取。
+- `settings.ts`:`useSettingsStore` 是 mock 模式开关的遗留(Mock 已移除,`useMock` 固定 `false`、不可切换)——前端永远走 Live API。
 
-export const useConnectionStore = defineStore('connection', () => {
-  const token = ref(stored(TOKEN_KEY, 'dev-key'))   // localStorage 回退到 dev-key
-  const actor  = ref(stored(ACTOR_KEY, 'user:alice'))
-  // …save() 写回 localStorage
-})
+请求头不再由前端注入 `Authorization` / `X-Cortex-Actor` / admin-key;需要认证时由上游网关统一附加,前端按无状态 SPA 处理。
 
-export function connectionHeaders(): Record<string, string> {
-  // 任意模块(非 setup 上下文)都能读当前凭据
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(actor ? { 'X-Cortex-Actor': actor } : {}),
-  }
-}
-```
+### 6.3 SSE 从 EventSource 改为 fetch
 
-要点:
-
-- **默认值兜底**:`stored()` 在 `localStorage` 无值时回退到 `dev-key` / `user:alice`,与开发态后端 `api.key=""` 一致,首次使用无需配置。
-- **`connectionHeaders()` 是纯函数**而非 store getter —— 这样 axios 拦截器、SSE `fetch` 等非组件上下文也能拿到当前头。
-- **配置入口**:`ConnectionPanel.vue` 模态框,可改 actor / token / admin-key,保存即写 localStorage,立即对所有后续请求生效。
-
-### 6.3 认证头注入:SSE 从 EventSource 改为 fetch
-
-原 SSE 订阅用 `EventSource`,但 `EventSource` **无法附加自定义请求头**,因此流式端点在带鉴权时无法直连。重构把 SSE 改为 `fetch` + `AbortController` + 手写 SSE 帧解析(通用 `subscribeApiStream`),复用同一套 `connectionHeaders()`:
+原 SSE 订阅用 `EventSource`,但 `EventSource` **无法附加自定义请求头**,因此流式端点在带鉴权时无法直连。重构把 SSE 改为 `fetch` + `AbortController` + 手写 SSE 帧解析(通用 `subscribeApiStream`)。认证头上移后前端不再注入自定义头,`fetch` 直接打相对路径、由上游网关统一鉴权:
 
 ```typescript
 // frontend/src/api/index.ts
-http.interceptors.request.use((request) => {
-  Object.assign(request.headers, connectionHeaders())  // axios 走这里
-  return request
-})
-
 export function subscribeApiStream(path, onFrame, onError): () => void {
   const controller = new AbortController()
-  // fetch 能带任意头,EventSource 不能
-  fetch(`/v1${path}`, { headers: { ...connectionHeaders(), Accept: 'text/event-stream' },
+  fetch(`/v1${path}`, { headers: { Accept: 'text/event-stream' },
                         signal: controller.signal })
     .then(/* reader.read() 循环 + 按 \n\n 切块 + parseSseBlock */ )
   return () => controller.abort()   // 返回 unsubscribe
@@ -427,7 +401,6 @@ export function subscribeApiStream(path, onFrame, onError): () => void {
 |------|------|
 | `PageHeader.vue` | 页内标题 + 说明 + 操作槽,统一各视图顶部样式 |
 | `JsonResult.vue` | 深色 `<pre>` 渲染任意 JSON 响应,API Console / 调试视图复用 |
-| `ConnectionPanel.vue` | 连接凭据配置模态(actor/token/admin-key) |
 | `RetrievalControlPanel.vue` | 检索控制面(六通道调音 + 三融合策略 + 四信号开关 + A/B 预览) |
 | `ScopeSelector.vue` | 全局 scope 选择(已存在,接入上下文栏) |
 
@@ -473,6 +446,7 @@ export function subscribeApiStream(path, onFrame, onError): () => void {
 - Model / API Base / Temperature 可编辑。
 - API Key 是 `type="password"` 输入,placeholder 显示 `*** (已配置)` 或 `输入新的 API Key`;输入值进入 `newApiKeys[tier]`,不在 `working` 里。
 - 头部徽标根据 `has_key` 显示绿色「已配置」或红色「未配置」。
+- **`extra_body` 透传**:`EmbeddingCfg` / `RerankCfg` / `LLMTierCfg` 都带 `extra_body: Optional[Dict]`,运行时配置支持把额外的请求体字段(如 provider 专属参数)原样透传给上游,无需改代码。此字段在 `working` 里可直接编辑。
 
 ### 7.3 Tab 3:检索调参
 
@@ -488,7 +462,7 @@ export function subscribeApiStream(path, onFrame, onError): () => void {
 
 - **版本信息**:Cortex 版本、schema 表数量(由独立的 `getVersion()` 拉取,不随 config 重置)、数据库 schema、数据库 URL(脱敏)。
 - **Worker 配置**:`visibility_timeout_secs` / `reaper_interval_secs` / `max_attempts`。
-- **API 管理**:`admin_key`(密码框)、`cors_origins`(多选 tag 输入)。
+- **API 管理**:`cors_origins`(多选 tag 输入)。(`API Console` 视图承载对上游认证的原始调用,见第 10 节。)
 
 ### 7.5 顶栏操作
 
@@ -629,7 +603,7 @@ const llmStatus = computed<LlmStatus>(() => {
 
 ## 10. 新增视图速览
 
-控制平面重构后共 **12 个视图**,覆盖后端全部能力面:
+控制平面重构后共 **13 个视图**,覆盖后端全部能力面:
 
 | 视图 | 分组 | 路由 | 职责 |
 |------|------|------|------|
@@ -644,7 +618,7 @@ const llmStatus = computed<LlmStatus>(() => {
 | **BrowseView** | Inspect | `/browse` | Memory Browser,分层级浏览事件/事实/信念 |
 | **UnderstandingView** | Inspect | `/understanding` | 概念合成、coverage、detail、related concepts |
 | **GovernanceView** | Govern | `/governance` | evolution 审批、feedback、vocabularies、synonyms、temporal phrases、Erasure |
-| **SettingsView** | Govern | `/settings` | 配置中心(检索调参/信号总线/feature flag)、连接凭据、检索控制面板 |
+| **SettingsView** | Govern | `/settings` | 配置中心(检索调参/信号总线/feature flag)、检索控制面板 |
 | **ApiConsoleView** | Govern | `/api-console` | 全端点目录 + 认证原始调用(回退兜底) |
 
 **设计意图**:Observe/Operate/Inspect/Govern 四组对应运维生命周期 —— 观察 → 操作 → 审视 → 治理。API Console 作为"原始回退",保证任何后端能力(含尚未建专用 UI 的新端点)都能通过控制平面调用,不再需要 curl。

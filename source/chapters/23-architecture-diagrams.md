@@ -2,7 +2,7 @@
 
 > 本章用 Kruchten 的 4+1 视图模型完整描述 cortex-py 的架构:逻辑视图(Logical)、进程视图(Process)、开发视图(Development)、物理视图(Physical),加上贯穿它们的场景视图(Scenarios)。
 >
-> 所有模块路径基于 `infra` / `memory` / `graph` / `interfaces` 四子包分层(重构 commit `347afb1` 之后)。
+> 所有模块路径基于 `infra` / `memory` / `graph` / `diagnostics` / `interfaces` 五子包分层(重构 commit `347afb1` 落地 `infra`/`memory`/`graph`/`interfaces` 四子包,`diagnostics` 子包随后追加)。
 >
 > ```{admonition} 自演化子系统(后置增量)
 > :class: important
@@ -13,7 +13,7 @@
 |------|-----------|---------|
 | **逻辑视图** | 系统提供哪些功能职责?如何分层? | 功能分包、分层依赖、核心抽象 |
 | **进程视图** | 运行时有哪些进程/并发单元?如何通信同步? | 进程拓扑、队列模型、SSE/notify |
-| **开发视图** | 代码如何组织成模块/包?分层规则? | 4 子包目录、依赖方向、构建入口 |
+| **开发视图** | 代码如何组织成模块/包?分层规则? | 5 子包目录、依赖方向、构建入口 |
 | **物理视图** | 部署到哪些机器/进程?外部依赖? | 部署拓扑、端口、外部服务 |
 | **场景视图** | 关键用例如何穿越上述四层? | 写入/读取/遗忘三条路径 |
 ```
@@ -24,19 +24,23 @@
 
 ### 23.1.1 功能分层
 
-系统按职责分为四层子包,依赖**严格单向向下**,无环:
+系统按职责分为多层子包,依赖**严格单向向下**,无环:
 
 ```{mermaid}
 graph TB
     subgraph interfaces ["interfaces · 对外入口"]
-        API["FastAPI 端点(72)"]
-        MCP["MCP Server(32 工具)"]
+        API["FastAPI 端点(97)"]
+        MCP["MCP Server(53 工具)"]
         CLI["CLI"]
         WK["Worker 循环"]
     end
     subgraph graph_ ["graph · 知识图谱"]
         EXT["extraction<br/>LLM 抽取 + 实体链接"]
         RET["retrieval<br/>6 通道 + 三策略融合 + rerank"]
+    end
+    subgraph diag ["diagnostics · 诊断推理"]
+        FR["forward_reasoning<br/>playbook 版本管理 + walk_graph"]
+        ENG["engine<br/>is_applicable / 确定性前向推理"]
     end
     subgraph memory ["memory · 记忆生命周期"]
         INGEST["ingest · 批量导入"]
@@ -61,23 +65,28 @@ graph TB
     end
 
     API --> graph_
+    API --> diag
     API --> memory
     API --> infra
     MCP --> graph_
+    MCP --> diag
     MCP --> memory
     MCP --> infra
     WK --> graph_
     WK --> memory
     WK --> infra
     graph_ --> infra
+    diag --> memory
+    diag --> infra
     memory --> infra
 ```
 
 ```{admonition} 分层规则
 :class: note
 - 上层可依赖下层,同层可互相依赖
-- 下层**不得**反向依赖上层(`infra.ontology` 不得 import `memory`/`graph`)
+- 下层**不得**反向依赖上层(`infra.ontology` 不得 import `memory`/`graph`/`diagnostics`)
 - `graph` 不依赖 `memory`(已验证)
+- `diagnostics` 依赖 `memory`(terminology)与 `infra`(db),不依赖 `graph`
 - 唯一例外:`memory.ingest` 通过**函数内 lazy import** 调 `graph.extraction`(避免循环)
 ```
 
@@ -93,12 +102,12 @@ graph TB
 | `services` | embedding / rerank / LLM + think 剥离 + 流式 | `embed_one()` · `llm_chat()` · `llm_chat_stream()` |
 | `concurrency` | ThreadPoolExecutor 并行化外部 I/O(LLM/embed/rerank HTTP 调用) | `parallel_map()` · `parallel_call()` · `get_executor()` |
 | `prompts` | 全部 LLM prompt 常量 | `EXTRACTION_SYSTEM_*` · `ANSWER_SYSTEM` |
-| `ontology` | 谓词本体单一真相源 + 图准入规则 | `CAUSAL_PREDICATES` · `graph_eligible()` |
+| `ontology` | 谓词本体单一真相源 + 图准入规则 | `PREDICATE_DICTIONARY` · `graph_eligible()` |
 | `chunking` | 长文档按标题分块 | `chunk_document()` |
 | `token_budget` | token 预算估算 + 裁剪 | `fit_to_budget()` |
 | `think_stream` | think 标签边界状态机(跨 chunk 缓冲) | `split_think_stream()` |
 
-**memory —— 记忆写入与生命周期(12 模块)**
+**memory —— 记忆写入与生命周期(14 模块)**
 
 | 模块 | 职责 |
 |------|------|
@@ -114,6 +123,8 @@ graph TB
 | `feedback` | 反馈回灌(双轨:软降权 `salience` + 硬归档 `recorded_to`),正反馈写 `retrieval_usefulness` + `salience`(不写 access_count) |
 | `dreaming` | 离线巩固(两阶段 LLM:`relation_detect` → `action_plan`),scheduler 定时触发 + heartbeat 续命 |
 | `higher_order` | 高阶归纳(evidence-driven LLM 归纳 `order=2` 谓词),extract 后异步触发 |
+| `graph_mutations` | 受控图写操作(实体软删、fact 超替),统一走该模块保证守卫一致 |
+| `terminology` | 受控词表与同义词(查询扩展、闭集校验的词汇来源) |
 
 **graph —— 知识图谱(2 子包)**
 
@@ -122,13 +133,23 @@ graph TB
 | `graph.extraction.pipeline` | LLM 抽取三元组 + 实体链接 B over C + 事实校验 |
 | `graph.retrieval.pipeline` | 6 通道 + 三策略融合(rrf/weighted_rrf/priority)+ 四信号加权 + prism rerank + StratifiedPack |
 
-**interfaces —— 对外入口(6 模块)**
+> **图路双向化(commit `b5f3bf5`)**:STRUCTURAL 类谓词统一为**父→子单一方向**(如 `has_component`:机台 → 子系统 → 部件),不再为每个谓词保留互逆对。反向可达性由 RRF 图路多跳扩展(`retrieval.channels._chan_graph`)的**双向遍历**补偿——从目标节点反向沿父链/子链扩展。这样图只存单一方向边,存储减半,而召回语义不受损;详见第 14 章。
+
+**diagnostics —— 诊断推理(2 模块)**
 
 | 模块 | 职责 |
 |------|------|
-| `interfaces.api.app` | FastAPI 全端点(72 个) |
+| `forward_reasoning` | Playbook 版本管理(create/import/export)+ `walk_graph` 确定性前向推理 |
+| `engine` | `is_applicable` / `validate_graph` / `walk_graph` 推理引擎 |
+
+**interfaces —— 对外入口(6 模块 + api/routes 子包)**
+
+| 模块 | 职责 |
+|------|------|
+| `interfaces.api.app` | FastAPI 全端点(97 个:app 29 + routes 68) |
 | `interfaces.api.schemas` | Pydantic 请求/响应契约 |
-| `interfaces.mcp_server` | MCP server(32 工具,双传输) |
+| `interfaces.api.routes` | 10 个路由子模块(admin/cases/diagnostics/erasures/graph/operations/sensor_resolve/temporal/terminology/understanding) |
+| `interfaces.mcp_server` | MCP server(53 工具,双传输) |
 | `interfaces.cli` | CLI 入口(db/worker/serve/probe-llm/smoke/mcp) |
 | `interfaces.smoke` | 端到端冒烟 |
 | `interfaces.worker.runner` | 队列 worker 循环 + reaper |
@@ -195,7 +216,7 @@ sequenceDiagram
 
     W1->>DB: 处理中... (locked_at)
     Note over W1: 若崩溃,locked_at 停留
-    Note over DB: reaper 每 60s 扫<br/>locked_at 超 300s → 重置 queued
+    Note over DB: reaper 每 60s 扫<br/>locked_at 超 300s → 按 attempts 分流<br/>(未超限重置 queued / 超限判死信)
     DB->>DB: reap_zombies (visibility timeout)
 
     W1->>DB: complete_job / fail_job
@@ -207,9 +228,9 @@ sequenceDiagram
 | 机制 | 位置 | 作用 |
 |------|------|------|
 | **Postgres-as-queue** | `infra.core.claim_next_job` | `SKIP LOCKED` 原子抢 job,多 worker 无冲突;无 Redis |
-| **visibility timeout** | `infra.core.reap_zombies` | running 且 `locked_at` 超 300s → 重置 queued |
+| **visibility timeout** | `infra.core.reap_zombies` | running 且 `locked_at` 超 300s → 按 attempts 分流:`attempts < max_attempts` 重置 queued,`attempts >= max_attempts` 判死信(`error_kind="visibility_timeout"`);两分支均用 `pg_try_advisory_xact_lock` 与执行中的 worker 互斥 |
 | **reaper** | `worker.runner` 每 60s | 扫僵尸 job,防 worker 崩溃后任务卡死 |
-| **退避重试** | `infra.core.fail_job` | 未超 `max_attempts` → queued + 指数退避;超限 → failed 死信 |
+| **退避重试** | `infra.core.fail_job` | 未超 `max_attempts` → queued + 指数退避;超限 → failed 死信(带 `worker_id` owner-fencing) |
 | **Dreaming scheduler** | `worker.runner._maybe_schedule_dreaming` | 内嵌于 worker reaper 周期,按 scope 检查距上次 dreaming 是否超过 `schedule_interval_hours`;有 queued/running dream 时不重复入队 |
 | **Dream heartbeat** | `worker.runner._JobHeartbeat` | 所有 job 共用的后台线程,每 60s 刷新 job 的 `locked_at`(带 `worker_id` fencing),防 reaper 在 300s visibility timeout 内误重排长耗时 dreaming |
 | **Advisory lock** | `memory.dreaming.dream_run` | `pg_try_advisory_lock(hashtext(:key))` session 级锁,key=`dream:{scope}`,`finally` 显式 `pg_advisory_unlock` 序列化同 scope 并发 dream run |
@@ -237,20 +258,23 @@ worker 按 `job_type` 分发(`worker.runner._dispatch`):
 
 ## 23.3 开发视图
 
-### 23.3.1 目录结构(4 子包)
+### 23.3.1 目录结构(5 子包)
 
 ```{mermaid}
 graph LR
     subgraph src ["src/cortex/"]
         INFRA["infra/<br/>config·db·core<br/>services·concurrency·prompts<br/>ontology·chunking<br/>token_budget·think_stream"]
-        MEM["memory/<br/>ingest·episodes·erasures<br/>temporal·export_data<br/>maintenance·understanding<br/>evidence·evolution<br/>feedback·dreaming·higher_order"]
+        MEM["memory/<br/>ingest·episodes·erasures<br/>temporal·export_data<br/>maintenance·understanding<br/>evidence·evolution<br/>feedback·dreaming·higher_order<br/>graph_mutations·terminology"]
         GRAPH["graph/<br/>extraction/<br/>retrieval/"]
-        IF["interfaces/<br/>api/·mcp_server<br/>cli·smoke·worker/"]
+        DIAG["diagnostics/<br/>forward_reasoning<br/>engine"]
+        IF["interfaces/<br/>api/(app·schemas·routes/)<br/>mcp_server→cli·smoke·worker/"]
     end
 
     INFRA --> MEM
     INFRA --> GRAPH
+    INFRA --> DIAG
     INFRA --> IF
+    MEM --> DIAG
     MEM --> IF
     GRAPH --> IF
 ```
@@ -258,7 +282,6 @@ graph LR
 ```
 src/cortex/
 ├── __init__.py                 # __version__
-├── schema.sql                  # 全表 DDL(27 张表,单一真相源)
 │
 ├── infra/                      # 基础设施(10 模块)
 │   ├── config.py  db.py  core.py  services.py
@@ -266,31 +289,40 @@ src/cortex/
 │   ├── prompts.py  ontology.py  chunking.py
 │   └── token_budget.py  think_stream.py
 │
-├── memory/                     # 记忆写入与生命周期(12 模块)
+├── memory/                     # 记忆写入与生命周期(14 模块)
 │   ├── ingest.py  episodes.py  erasures.py  temporal.py
 │   ├── export_data.py  maintenance.py  understanding.py
 │   ├── evidence.py             # 外部证据目录(新增)
 │   ├── evolution.py            # 人工审批门(新增)
-│   └── feedback.py  dreaming.py  higher_order.py    # 自演化子系统
+│   ├── feedback.py  dreaming.py  higher_order.py    # 自演化子系统
+│   ├── graph_mutations.py      # 受控图写操作(实体软删/fact 超替)
+│   └── terminology.py          # 受控词表与同义词
 │
 ├── graph/                      # 知识图谱
-│   ├── extraction/             # pipeline.py + probe.py
-│   └── retrieval/              # pipeline.py
+│   ├── extraction/             # pipeline.py + probe.py + 实体链接/事实语义
+│   └── retrieval/              # pipeline.py + channels.py + lexical.py
+│
+├── diagnostics/                # Playbook 版本管理 + 确定性正向推理
+│   ├── forward_reasoning.py    # create/import/export playbook + walk_graph
+│   └── engine.py               # is_applicable / validate_graph / walk_graph
 │
 └── interfaces/                 # 对外入口
-    ├── api/                    # app.py + schemas.py
+    ├── api/                    # app.py + schemas.py + routes/(10 子模块)
     ├── mcp_server.py  cli.py  smoke.py
     └── worker/                 # runner.py
 ```
 
+> 注意：schema 不再由 `schema.sql` 直接建表——`src/cortex/schema.sql` 已降级为基线参考，实际建表由 **Alembic 迁移**（`src/cortex/migrations/versions/0001_current_schema → 0008_predicate_cleanup`）驱动，`init_schema()` 调用 `upgrade_database("head")` 到迁移头。全部 34 张表（0001 基线 32 张 + 0003/0004 新增的 `fact_search_documents`/`fact_search_dirty_scopes`）由迁移管理与版本化。
+
 ### 23.3.2 分层依赖矩阵(无环)
 
-| 依赖方 → | infra | memory | graph | interfaces |
-|----------|:-----:|:------:|:-----:|:----------:|
-| **infra** | — | ✗ | ✗ | ✗ |
-| **memory** | ✓ | — | ✗\* | ✗ |
-| **graph** | ✓ | ✗ | — | ✗ |
-| **interfaces** | ✓ | ✓ | ✓ | — |
+| 依赖方 → | infra | memory | graph | diagnostics | interfaces |
+|----------|:-----:|:------:|:-----:|:-----------:|:----------:|
+| **infra** | — | ✗ | ✗ | ✗ | ✗ |
+| **memory** | ✓ | — | ✗\* | ✗ | ✗ |
+| **graph** | ✓ | ✗ | — | ✗ | ✗ |
+| **diagnostics** | ✓ | ✓ | ✗ | — | ✗ |
+| **interfaces** | ✓ | ✓ | ✓ | ✓ | — |
 
 > ✗\* = `memory.ingest` 仅通过函数内 lazy import 调 `graph.extraction`,非 import 顶层依赖。
 
@@ -307,7 +339,7 @@ src/cortex/
 
 ### 23.3.4 测试组织
 
-测试按被测层级组织,与 4 子包对应(下表为编写时快照,实际用例数随迭代增长,运行 `pytest --co -q` 查看当前总数):
+测试按被测层级组织,与 5 子包对应(下表为编写时快照,实际用例数随迭代增长,运行 `pytest --co -q` 查看当前总数):
 
 | 测试文件 | 被测层 | 用例数(编写时) |
 |---------|--------|-------|
@@ -323,6 +355,8 @@ src/cortex/
 | `test_feedback.py` | memory.feedback | 11 |
 | `test_dreaming.py` | memory.dreaming | 11 |
 | `test_higher_order.py` | memory.higher_order | 10 |
+| `test_diagnostic_engine.py` / `test_diagnosis_recall.py` | diagnostics | 4 + 3 |
+| `test_synonyms_forward_reasoning.py` | diagnostics + terminology | 5 |
 | `test_config_api.py` | config/jobs API | 6 |
 
 ---
@@ -347,7 +381,7 @@ graph TB
     end
 
     subgraph client ["客户端"]
-        VUE["Vue 3 控制平面 :5173<br/>(12 视图:Overview/Ops/Ingest/Data/Cases/QA<br/>Graph/Browse/Understanding/Governance<br/>ApiConsole/Settings)"]
+        VUE["Vue 3 控制平面 :5173<br/>(13 视图:Overview/Ops/Ingest/Data/Cases/QA<br/>Graph/Browse/Understanding/Governance<br/>ApiConsole/Settings/Playbooks)"]
         CC["Claude Code<br/>MCP stdio"]
         RA["远程 Agent<br/>MCP HTTP"]
     end
@@ -616,7 +650,7 @@ sequenceDiagram
     VUE-->>O: 活跃 worker + 队列状态
 ```
 
-**穿越层级**:interfaces → infra.config(热更新);interfaces → infra.db(jobs 查询)。配置改动通过白名单深合并原地修改单例 `_CACHE`,即时生效无需重启;`admin_auth` 保护 mutation 端点。详见第24章(运行配置与前端运维)。
+**穿越层级**:interfaces → infra.config(热更新);interfaces → infra.db(jobs 查询)。配置改动通过白名单深合并原地修改单例 `_CACHE`,即时生效无需重启。详见第24章(运行配置与前端运维)。
 
 ---
 
@@ -627,13 +661,13 @@ sequenceDiagram
 | 流式 answer 传输 | GET + EventSource(SSE) + phase 事件 | query 短;dev 态无 auth;浏览器原生;agent 用 MCP 同步接口;phase 事件供前端诊断瀑布图 |
 | 实体链接 | B over C(向量召回 + 阈值 + LLM 灰区) | 图谱质量命门;纯向量误并,纯 LLM 太贵 |
 | 双时态 | 4 字段(valid/recorded × from/to) | 同时支持"现在什么是真的"和"当时我们怎么以为" |
-| 分层 | 4 子包(infra/memory/graph/interfaces) | 职责清晰;依赖单向无环;便于维护演进 |
+| 分层 | 5 子包(infra/memory/graph/diagnostics/interfaces) | 职责清晰;依赖单向无环;便于维护演进 |
 | 信号总线 | `access_count` + `salience` 作为共享信号层 | 单一信号层耦合 Feedback/Dreaming/Higher-Order,避免 MindMemOS 把三功能解耦成互不知情的孤岛;反馈即时回流召回排序 |
 | Dreaming 并发 | advisory lock + heartbeat + SAVEPOINT 隔离 | `pg_try_advisory_lock`(session 级,key=`dream:{scope}`,finally 显式 unlock)序列化同 scope;heartbeat 续命防 reaper;每 action 独立 SAVEPOINT 防单个坏 LLM 输出拖垮整轮 |
 | Feedback 幂等 | `ON CONFLICT` 原子去重 + `FOR UPDATE` 串行 | 防 TOCTOU race(并发同 key → 第二个 500);行锁序列化同 fact 反馈,防 salience/count 读改写竞态 |
-| 配置热更新 | 白名单深合并(原地改 _CACHE) | 开关即时生效无需重启;白名单禁改 database/embedding.dimension;不替换实例避免 auth 绑定失效 |
+| 配置热更新 | 白名单深合并(原地改 _CACHE) | 开关即时生效无需重启;白名单禁改 database/embedding.dimension;不替换实例避免热更语义丢失 |
 
 ```{admonition} 与重构前的差异
 :class: important
-重构前(commit `347afb1` 之前)为 30 个 py 文件平铺在 `src/cortex/` 根下(如 `cortex/core.py`、`cortex/db.py`、`cortex/services.py`)。重构后按职责归入 4 子包,依赖关系从隐式变为显式分层,便于维护与演进。旧平铺路径已**不再可用**,全部迁移到子包路径(如 `cortex.infra.core`、`cortex.infra.db`、`cortex.infra.services`)。
+重构前(commit `347afb1` 之前)为 30 个 py 文件平铺在 `src/cortex/` 根下(如 `cortex/core.py`、`cortex/db.py`、`cortex/services.py`)。重构后按职责归入子包(初始为 `infra`/`memory`/`graph`/`interfaces` 四子包,`diagnostics` 子包随后追加),依赖关系从隐式变为显式分层,便于维护与演进。旧平铺路径已**不再可用**,全部迁移到子包路径(如 `cortex.infra.core`、`cortex.infra.db`、`cortex.infra.services`)。
 ```

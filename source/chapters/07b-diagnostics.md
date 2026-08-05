@@ -324,7 +324,7 @@ Diagnostics 和 Facts 图虽然数据独立，但在工作流中紧密协同：
 | `diagnostic_playbook_versions` | 版本记录（版本号、状态、entry_nodes、创建人） |
 | `diagnostic_playbook_nodes` | 各版本的节点 DAG（node_key、node_type、title、condition、recommendation、priority） |
 | `diagnostic_playbook_edges` | 各版本的边（from/to 节点、outcome、condition、priority） |
-| `diagnostic_reasoning_runs` | 每次正向推理的运行记录（输入症状、观测数据、trace、next_actions、recommendations） |
+| `diagnostic_reasoning_runs` | 每次正向推理的运行记录（`input` JSONB 封装症状/观测/上下文，`result` JSONB 封装 trace/next_actions/recommendations，额外 case_id、created_by） |
 
 所有表都有 `scope` 字段，支持 scope 级隔离。
 

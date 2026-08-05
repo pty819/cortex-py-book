@@ -43,8 +43,16 @@ def _select_event_ids(conn, scope, selector):
             WHERE f.scope=:s{cond}
         """), params).fetchall()
         ids.extend(r[0] for r in rows)
-    return list(dict.fromkeys(ids))  # 去重
+    # 去重 + 只保留真实存在于 events 表的(event_id 可能因 FK 置空/残留而失效)
+    if not ids:
+        return []
+    rows = conn.execute(text(
+        "SELECT event_id::text FROM events WHERE scope=:s AND event_id = ANY(CAST(:ids AS uuid[]))"
+    ), {"s": scope, "ids": "{" + ",".join(ids) + "}"}).fetchall()
+    return list({r[0] for r in rows})
 ```
+
+收集到的 `event_id` 会先按 `events` 表过滤——只保留该 scope 下真实存在的行，避免 `facts.supports` 里残留的失效引用（如已被擦除/删除的 event）进入后续 refcount 阶段。
 
 ### 阶段 2：Refcount（引用计数）
 
@@ -99,38 +107,61 @@ WHERE scope=:s
 每个 event 独立事务，避免 PG 事务中毒：
 
 ```python
-for event_id in manifest["to_delete"]:
+for ent in manifest["events"]:   # 逐 event
     with session_scope() as conn:
-        # 先置空 FK,再 DELETE
-        conn.execute(text("UPDATE jobs SET event_id=NULL WHERE event_id=CAST(:e AS uuid)"), ...)
-        conn.execute(text("UPDATE lifecycle_events SET event_id=NULL WHERE event_id=CAST(:e AS uuid)"), ...)
-        conn.execute(text("DELETE FROM events WHERE event_id=CAST(:e AS uuid)"), ...)
+        rc = _event_refcount(conn, scope, ent["event_id"])
+        if rc > 0 or ent["action"] == "redact":
+            # 擦除:清 content,设 excluded_from_recall
+            conn.execute(text("UPDATE events SET content='{}', excluded_from_recall=true ..."), ...)
+        else:
+            # 物理删:先置空 FK,再 DELETE
+            conn.execute(text("UPDATE jobs SET event_id=NULL WHERE event_id=CAST(:e AS uuid)"), ...)
+            conn.execute(text("UPDATE lifecycle_events SET event_id=NULL WHERE event_id=CAST(:e AS uuid)"), ...)
+            conn.execute(text("DELETE FROM events WHERE event_id=CAST(:e AS uuid)"), ...)
+        # 每行都清 supports 引用
         conn.execute(text("UPDATE facts SET supports=array_remove(supports,:e) ..."), ...)
-
-for event_id in manifest["to_redact"]:
-    with session_scope() as conn:
-        conn.execute(text("UPDATE events SET content='{}', excluded_from_recall=true ..."), ...)
+        conn.execute(text("UPDATE beliefs SET supports=array_remove(supports,:e) ..."), ...)
 ```
+
+`execute_erasure` 遍历 `manifest["events"]`（而非旧的 `to_delete`/`to_redact` 两组），对每个 `{event_id, action, refcount}` 条目独立开事务：`action == "redact"` 或当场 refcount>0 走擦除，否则物理删。执行后回写 `erasure_jobs.phase='completed'` 与 `progress`。
 
 ## 预览与执行
 
 ### Preview（干跑，不做修改）
 
+`preview_erasure` 枚举 + 引用计数，产出 manifest，并把 `phase='enumerate'` 的 erasure_job（含 preview_id 与 manifest）落库：
+
 ```python
-def preview_erasure(scope, selector):
-    """返回 manifest：哪些删、哪些擦"""
+def preview_erasure(*, scope, selector):
+    """enumerate + refcount → manifest。落 erasure_jobs(phase=enumerate)。"""
     with session_scope() as conn:
         eids = _select_event_ids(conn, scope, selector)
-        to_delete = []
-        to_redact = []
+        manifest_entries = []
+        n_del = n_red = 0
         for eid in eids:
             rc = _event_refcount(conn, scope, eid)
-            if rc == 0:
-                to_delete.append(eid)
+            action = "redact" if rc > 0 else "delete"
+            if action == "redact":
+                n_red += 1
             else:
-                to_redact.append({"event_id": eid, "refcount": rc})
-    return {"to_delete": to_delete, "to_redact": to_redact, ...}
+                n_del += 1
+            manifest_entries.append({"event_id": eid, "action": action, "refcount": rc})
+        preview_id = uuid.uuid4()
+        manifest = {"events": manifest_entries,
+                    "expires_at": ...}
+        row = conn.execute(text("""
+            INSERT INTO erasure_jobs (scope, selector, phase, preview_id, manifest, refcount_breakdown)
+            VALUES (:s, CAST(:sel AS jsonb), 'enumerate', :pid, CAST(:m AS jsonb), CAST(:rb AS jsonb))
+            RETURNING erasure_id
+        """), ...).fetchone()
+        eid = str(row.erasure_id)
+    return {"erasure_id": eid, "preview_id": str(preview_id),
+            "estimated_affected": {"events": len(eids)},
+            "refcount_breakdown": {"events_to_delete": n_del, "events_to_redact": n_red},
+            "manifest": manifest}
 ```
+
+返回结构不再是简单的 `{to_delete, to_redact}` 两个列表，而是带元信息的五件套：`erasure_id`（本次 enumerate 落库的 erasure_job id）、`preview_id`（供后续取 manifest / execute 复用）、`estimated_affected`、`refcount_breakdown`（`events_to_delete`/`events_to_redact` 计数）以及 `manifest`（逐 event 的 `{event_id, action, refcount}`）。manifest 24 小时后过期（`MANIFEST_TTL_HOURS=24`），过期后 `get_manifest` 返回 `{"expired": True}`。
 
 ### Execute（执行 + 审计）
 

@@ -36,7 +36,7 @@ graph LR
 
 ## 2. 信号字段
 
-信号总线的物理定义集中在 `schema.sql` 第 382–392 行的"记忆自演化"段落。`events.access_count` 是建表时就有的原生列(`schema.sql:26`),其余列都是后续 `ALTER TABLE ADD COLUMN IF NOT EXISTS` 增量加上去的,因此老库可以平滑升级。
+信号总线的物理定义集中在 `schema.sql` 第 821–838 行的"记忆自演化"段落。`events.access_count` 是建表时就有的原生列(`schema.sql:26`),其余列都是后续 `ALTER TABLE ADD COLUMN IF NOT EXISTS` 增量加上去的,因此老库可以平滑升级。
 
 **`events` 表上的隐式信号:**
 
@@ -59,7 +59,7 @@ graph LR
 
 `salience` 的取值范围被 `CHECK` 约束钉死在 `[0, 2]`:`1.0` 是中性起点,正反馈向 `2.0` 上探,负反馈向 `0.1`(配置项 `salience_floor`)下探但不归零——保留可恢复性,避免一次误判永久抹掉一条记忆。两个 `_count` 列在 `feedback_signals` 表里其实也能 `COUNT` 出来,但这里冗余存储是为了让召回热路径上的 salience 重加权能用一次 `SELECT` 取齐所有信号,不必 join 反馈表。
 
-完整的 `ALTER TABLE` 语句如下(`schema.sql:384-392`):
+完整的 `ALTER TABLE` 语句如下(`schema.sql:821-838`):
 
 ```sql
 -- 信号总线:facts 软降权(salience)+ 反馈计数(冗余加速查询)
@@ -199,7 +199,7 @@ conn.execute(text("DELETE FROM recall_packs WHERE scope=:s"), {"s": scope})
 
 ## 6. 热路径索引
 
-信号总线引入了两种新的查询模式,需要专门的局部索引支撑。它们都建在 `schema.sql:447-453`:
+信号总线引入了两种新的查询模式,需要专门的局部索引支撑。它们都建在 `schema.sql:905-911`:
 
 ```sql
 -- ── 记忆自演化热路径索引(评审 H6)──────────────────────────────────────────────

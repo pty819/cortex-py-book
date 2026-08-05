@@ -179,24 +179,32 @@ graph LR
 
 ### 自动规则
 
-`_assertion_semantics` 函数在抽取管线中自动应用规则：
+`assertion_semantics` 函数在抽取管线中自动应用规则：
 
 ```python
-def _assertion_semantics(predicate, fact, *, trusted=False, source_text=None):
-    # 规则1：ruled_out 谓词 → 自动 negative + ruled_out
+def assertion_semantics(predicate, fact, *, trusted=False, source_text=None):
+    polarity = "negative" if fact.get("negation") else fact.get("polarity", "positive")
+    requested = fact.get("assertion_status")
+    # 规则1：对立谓词 → 自动 negative + ruled_out
     if predicate in OPPOSING_PREDICATES:
         return "negative", "ruled_out"
-    
-    # 规则2：因果谓词
+
+    # 规则2：关系排除谓词（无相关性/反驳）→ 正常注入，但 GRAPH_EXCLUDED 不入图
+    if predicate in RELATIONAL_EXCLUSION_PREDICATES:
+        return "positive", requested or "observed"
+
+    # 规则3：因果谓词
     if predicate in CAUSAL_PREDICATES:
-        if polarity == "negative":
+        if polarity == "negative" or requested in {"ruled_out", "rejected"}:
             return polarity, "ruled_out"
         # 有证据且可信 → confirmed
+        evidence = str(fact.get("evidence_span") or "").strip()
+        grounded = bool(source_text and evidence and evidence in source_text)
         if requested == "confirmed" and evidence and (trusted or grounded):
             return polarity, "confirmed"
         return polarity, "hypothesized"  # 默认假设
-    
-    # 规则3：非因果谓词 → 保留 LLM 指定值
+
+    # 规则4：非因果谓词 → 保留 LLM 指定值
     return polarity, requested or "observed"
 ```
 
@@ -231,7 +239,7 @@ flowchart TD
 
 ## Cardinality（谓词基数）
 
-状态类谓词是单值（新值超替旧值），其他是多值（多值共存）：
+`PREDICATE_CARDINALITY` 只区分**状态类谓词**（单值，新值超替旧值）与**其他谓词**（多值，多值共存）：
 
 ```python
 PREDICATE_CARDINALITY = {
@@ -239,6 +247,65 @@ PREDICATE_CARDINALITY = {
     for predicate in DIAGNOSIS_PREDICATE_NAMES
 }
 ```
+
+需要注意：**基数（cardinality）与结构边收敛是两个不同维度**。基数描述"同一 subject+谓词 下可同时存在多少条有效事实"，而结构边收敛描述的是图中**拓扑边的身份如何确定**。多值共存 ≠ 结构谓词产生多条重复拓扑边——见下一节。
+
+## 结构边收敛（idempotent 写入）
+
+结构谓词（8 个 structural）描述的是设备的**静态拓扑**，同一条边本质上是"同一客观事实"，不应随 case/事件重复出现而堆积成多条等价边。因此结构边采用**按身份收敛**的写路径，而非普通的多值追加。
+
+### 边的身份
+
+`fact_store.py` 的 `lock_and_find_structural_fact()` 把结构边的身份定义为：
+
+```
+identity = scope + subject_id + predicate + object_type + object_identity + polarity
+```
+
+identity 中**不包含** `case_id`、`operating_regime`、`valid_from`/`valid_to`。也就是说，无论来自哪个 case、哪个运行工况、哪个时间区间，只要 `scope+subject+predicate+object+polarity` 相同，都视为**同一条结构边**。
+
+```python
+def lock_and_find_structural_fact(conn, *, scope, subject_id, predicate,
+                                  object_type, object_entity_id, object_value,
+                                  polarity="positive", exclude_fact_id=None):
+    if predicate not in STRUCTURAL_PREDICATES:
+        return None  # 非结构谓词不走收敛路径
+    object_identity = str(object_entity_id) if object_entity_id else \
+        json.dumps(object_value, ensure_ascii=False, sort_keys=True)
+    identity = json.dumps(
+        ["structural", scope, subject_id, predicate, object_type, object_identity, polarity],
+        ensure_ascii=False, sort_keys=True)
+    conn.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:identity,0))"),
+        {"identity": identity})
+    # ... 在 recorded_to IS NULL（当前有效）中查找同身份边
+```
+
+### 并发串行化
+
+写入前先取 `pg_advisory_xact_lock(hashtextextended(:identity,0))`，把对同一条结构边的并发写入串行化——同一事务内多个来源同时写入同一结构边时，只有一个能真正插入，其余走合并路径。这与实体创建（`resolve_write`）的身份锁是同一套思想。
+
+### 证据/置信度合并
+
+写路径 `_insert_fact` 在命中既有结构边时**不新增重复行**，而是合并：
+
+- `supports`（支撑证据）：并集合并 `combined_supports = existing ∪ incoming`
+- `confidence`（置信度）：取 `max`
+- `assertion_case_links`：复制到合并后的记录
+
+### 更强确认 → recorded 版本更新
+
+当新来源的确认强度更高时（`assertion_status` 或 `knowledge_tier` 更强，按 `_ASSERTION_STATUS_RANK` / `_KNOWLEDGE_TIER_RANK` 比较），把旧记录 `recorded_to=now()` 关闭，插入一条带更强确认的新 recorded 版本（同一 valid 区间、合并后的 supports/confidence）。若新来源并不更强，则保留既有更强状态，仅补入新增 supports。
+
+### 与多值/状态谓词的差异
+
+| 谓词类别 | 边身份 | 写入行为 |
+|----------|--------|----------|
+| **structural**（8 个） | `scope+subject+predicate+object+polarity`，**忽略** case/regime/valid 区间 | 同身份收敛：合并 evidence，更强确认才出新 recorded 版本 |
+| **state**（1 个） | 单值，新值超替旧值 | valid 区间超替 |
+| **diagnostic / causal** | 保留 case_id / event/regime 感知的身份 | 多值共存，保留多值历史 |
+
+换句话说，**多值共存适用于诊断/因果类谓词**（不同 case、不同事件时间点本就该并存各自的历史），而**结构边收敛**保证静态拓扑不因 case 重复而退化出等价冗余边。高频 `ingest` 同一台机台的结构时，收敛路径天然具备幂等性——重复写入同一结构边不会产生重复拓扑边。
 
 ## DB-backed 本体: predicate_definitions 表
 
@@ -311,7 +378,7 @@ if not ho_predicates:
 
 ## 在抽取管线中的应用
 
-抽取管线在写入 facts 前，通过 `coerce_value` 将 LLM 输出的谓词约束到预定义词表（如果 scope 有 predicate 词表），并通过 `_assertion_semantics` 自动设置 polarity 和 assertion_status：
+抽取管线在写入 facts 前，通过 `coerce_value` 将 LLM 输出的谓词约束到预定义词表（如果 scope 有 predicate 词表），并通过 `assertion_semantics` 自动设置 polarity 和 assertion_status；结构谓词再经 `lock_and_find_structural_fact` 走结构边收敛写路径：
 
 ```python
 # 1. 谓词词表约束
@@ -320,9 +387,16 @@ if predicate is None:
     skip  # 闭集未命中 → 跳过该 fact
 
 # 2. 断言语义自动推断
-polarity, assertion_status = _assertion_semantics(predicate, fact, ...)
+polarity, assertion_status = assertion_semantics(predicate, fact, ...)
 
-# 3. 图准入检查
+# 3. 结构边收敛（structural 谓词幂等写入）
+if predicate in STRUCTURAL_PREDICATES:
+    existing = lock_and_find_structural_fact(conn, scope=scope, subject_id=..., 
+                                             predicate=predicate, object_type=...,
+                                             object_entity_id=..., object_value=...)
+    # existing 命中 → 合并 evidence / 更强确认出新 recorded；未命中 → 新插入
+
+# 4. 图准入检查
 if not graph_eligible(predicate, polarity, assertion_status):
     # 该 fact 只存不进图（检索仍可命中 BM25）
     ...

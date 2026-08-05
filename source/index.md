@@ -85,7 +85,7 @@ chapters/25-competitive-analysis
 | 6 通道检索 | 向量 + BM25 + 图遍历 + entity-name + synonym + temporal-decay |
 | 实体链接 | B over C 策略：向量召回 + 阈值 + LLM 灰区判定 |
 | 记忆自演化 | Feedback 回灌 + Dreaming 离线巩固 + Higher-Order 高阶归纳，共享信号总线 |
-| MCP | 32 个工具，stdio + streamable-http 双传输 |
+| MCP | 53 个工具，stdio + streamable-http 双传输 |
 
 ### 技术栈
 

@@ -147,7 +147,7 @@ flowchart TD
 | 模块 | 文件 | 职责 |
 |------|------|------|
 | **Ontology** | `infra/ontology.py` | 谓词本体（结构/因果/诊断/状态四大类，共 36 个谓词）、图准入规则、`graph_eligible()` |
-| **Prompt 体系** | `infra/prompts.py` | 半导体级诊断 prompts，13 种实体类型，36 个谓词 |
+| **Prompt 体系** | `infra/prompts.py` | 半导体级诊断 prompts，21 种实体类型，36 个谓词 |
 | **Understanding** | `memory/understanding.py` | 概念合成层，related 图遍历 |
 | **Maintenance** | `memory/maintenance.py` | methylation（软剪枝）+ consolidation（去重）+ 词表预置 + `seed_predicate_definitions` |
 | **Erasures** | `memory/erasures.py` | GDPR 4 阶段引用计数真删 |
@@ -204,13 +204,11 @@ Cortex-PY 的 `diagnostics` 模块是独立于知识图谱的**诊断规程引�
 
 > 5 子包分层（`infra` → `memory` → `graph` → `diagnostics` → `interfaces`，依赖单向无环）。完整架构说明见[第23章 架构视图](23-architecture-diagrams)。
 
-> 4 子包分层（`infra` → `memory` → `graph` → `interfaces`，依赖单向无环）。完整架构说明见[第23章 架构视图](23-architecture-diagrams)。
-
 ```
 src/cortex/
-├── migrations/             # Alembic 迁移（8 个版本，32 张表）
+├── migrations/             # Alembic 迁移（8 个版本，34 张表）
 │   └── versions/
-│       ├── 0001_current_schema.py    # 基础 schema（SQL 文件驱动，32 张表）
+│       ├── 0001_current_schema.py    # 基础 schema（SQL 文件驱动，34 张表）
 │       ├── 0002_graph_editing_audit.py
 │       ├── 0003_pg_textsearch_bm25.py
 │       ├── 0004_bm25_projection_dirty_tracking.py
@@ -224,7 +222,7 @@ src/cortex/
 │   ├── core.py             # WAL append(幂等) + 队列 + lifecycle + ?wait=
 │   ├── services.py         # embedding / rerank / LLM + think 剥离 + 流式
 │   ├── concurrency.py      # parallel_map / parallel_call(ThreadPoolExecutor 并行 I/O)
-│   ├── prompts.py          # 半导体级诊断 prompts（13 种实体, 36 个谓词）
+│   ├── prompts.py          # 半导体级诊断 prompts（21 种实体, 36 个谓词）
 │   ├── ontology.py         # 谓词本体（结构/因果/诊断/状态四大类，PREDICATE_DICTIONARY）
 │   ├── chunking.py         # 长文档分块
 │   ├── token_budget.py     # token 预算估算

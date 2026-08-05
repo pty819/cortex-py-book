@@ -124,15 +124,13 @@ graph TB
 | `maintenance_enqueue` | 触发 maintenance 任务（methylation/consolidation） |
 | `feedback_submit` | 提交反馈信号（正/负反馈，调 salience/usefulness） |
 
-### 自演化（5 个）
+### 自演化（3 个）
 
 | 工具 | 说明 |
 |------|------|
 | `feedback_list` | 查询反馈信号历史 |
 | `dreaming_run` | 触发 Dreaming 离线巩固（dry_run 模式可预览） |
 | `higher_order_generate` | 触发高阶归纳（指定 entity_id） |
-| | |
-| | |
 
 > **注**：自演化的人工审批门（evolution_candidates 列表/审批）走 HTTP Admin API，未暴露为 MCP 工具——审批属于运维操作，不适合 LLM agent 直接调用。
 
@@ -225,7 +223,7 @@ def _eff_scope(ctx, scope_arg):
             return h
     except Exception:
         pass
-    return DEFAULT_SCOPE  # "org:local/user:default"
+    return DEFAULT_SCOPE  # os.environ["CORTEX_SCOPE"] 或 "org:local"
 ```
 
 ## 关键工具详解
@@ -237,15 +235,17 @@ def _eff_scope(ctx, scope_arg):
 ```python
 @mcp.tool()
 def memory_store(text, scope=None, modality="conversation", ctx=None):
+    if not llm_configured("extraction"):
+        raise RuntimeError("memory_store requires a configured extraction LLM")
     sc = _eff_scope(ctx, scope)
     eid, off = append_event(scope=sc, modality=modality,
         content={"kind": "message", "role": "user", "text": text},
         context={}, caller="mcp",
         idempotency_key=f"mcp-{uuid.uuid4().hex[:16]}")
     res = extract_event(eid)  # 同步抽取！
-    return {"event_id": eid, "wal_offset": off,
+    return {"event_id": eid, "wal_offset": off, "scope": sc,
             "facts_extracted": res["facts_extracted"],
-            "entities": res["entities"]}
+            "entities": res["entities"], "model": res["model"]}
 ```
 
 **关键设计**：MCP 内同步抽取（不通过 worker 队列），保证存完立即可搜。
@@ -257,9 +257,10 @@ def memory_store(text, scope=None, modality="conversation", ctx=None):
 ```python
 @mcp.tool()
 def memory_search(query, scope=None, view="local", top_k=20, ctx=None):
-    pack = recall(scope=_eff_scope(ctx, scope), query=query,
-                  view=view, top_k=top_k)
-    return {"pack_id": pack["pack_id"], "scope": pack["scope"],
+    sc = _eff_scope(ctx, scope)
+    pack = recall(scope=sc, query=query, view=view, top_k=top_k)
+    return {"pack_id": pack["pack_id"], "scope": sc,
+            "channels": pack["diagnostics"].get("channels", {}),
             "facts": pack["layers"]["facts"],
             "beliefs": pack["layers"]["beliefs"],
             "context_block": pack["context_block"]}
@@ -272,6 +273,7 @@ def memory_search(query, scope=None, view="local", top_k=20, ctx=None):
 ```python
 @mcp.tool()
 def answer(query, scope=None, ctx=None):
+    sc = _eff_scope(ctx, scope)
     pack = recall(scope=sc, query=query)
     if llm_configured("answer"):
         raw = services.llm_chat("answer", prompt, json.dumps(pack))
@@ -281,23 +283,14 @@ def answer(query, scope=None, ctx=None):
     return {"answer": ans, "model_used": model, "citations": [...]}
 ```
 
-## Auth 中间件
+## 访问控制
 
-streamable-http 模式下可选静态 key 鉴权：
+cortex 自身不做鉴权。streamable-http 模式是**开放访问**,docstring 明确 `upstream owns access control`(上游负责授权)。如需隔离,请在承载服务的网关 / 反向代理层做鉴权,例如校验 `Authorization: Bearer <key>`:cortex 只负责把 `X-Cortex-Scope` 当作调用方默认 scope 的请求头透传。
 
 ```python
-class _AuthASGI:
-    def __init__(self, app, key):
-        self.app = app
-        self.key = (key or "").strip()
-    
-    async def __call__(self, scope, receive, send):
-        if self.key and scope["type"] == "http":
-            # 检查 Authorization: Bearer <key>
-            ...
-            if auth != f"Bearer {self.key}":
-                return 401
-        await self.app(scope, receive, send)
+def http_app():
+    """Return the open streamable-http ASGI app; upstream owns access control."""
+    return mcp.streamable_http_app()
 ```
 
 ## 启动命令速查
@@ -310,5 +303,5 @@ uv run python -m cortex.interfaces.cli mcp
 uv run python -m cortex.interfaces.cli mcp-http --port 8001
 # → http://host:8001/mcp
 
-# 带 key 鉴权（config.api.key 非空时自动启用）
+# 鉴权由上游网关负责（cortex 自身开放访问）
 ```
