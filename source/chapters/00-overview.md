@@ -38,13 +38,15 @@ graph TB
     subgraph 存储
         N[(PostgreSQL)]
         O[pgvector]
-        P[ltree]
+        P[pg_textsearch]
+        Q[pg_trgm]
     end
     
     H --> N
     J --> N
     N --> O
     N --> P
+    N --> Q
 ```
 
 ## 五层记忆模型
@@ -55,7 +57,7 @@ graph TB
 | **Episodes** | `episodes` 表 | 有界事件序列，按时间分段 |
 | **Facts** | `facts` 表 | 双时态三元组，知识图谱的边 |
 | **Beliefs** | `beliefs` 表 | 概率断言，带 supports 证据链 |
-| **Understanding** | `understanding` 表 | 概念合成，从 beliefs 聚合 |
+| **Understanding** | `concepts` 表 | 概念合成，从 beliefs 聚合 |
 
 ```{mermaid}
 graph LR
@@ -134,8 +136,8 @@ flowchart TD
 | 通道 | 实现 | 说明 |
 |------|------|------|
 | 向量 | pgvector `<=>` | 实体 embedding 近邻 → 其 facts |
-| BM25 | tsvector | facts/events 全文检索 |
-| 图遍历 | 递归 CTE | 种子实体 BFS 2-3 跳 |
+| BM25 | fact_search_documents 投影表（pg_textsearch） | facts 全文检索，内置 tsvector 仅作回退 |
+| 图遍历 | 递归 CTE | 种子实体 BFS（默认 2 跳，`retrieval.graph_max_hops` 可配） |
 | Entity Name | pg_trgm | 模糊实体名匹配 |
 | Synonym | synonyms 表 | 同义词扩展 |
 | Temporal-decay | valid_from 近因窗 | 按 `valid_from DESC` 时间新近度排序（不依赖 access_count） |

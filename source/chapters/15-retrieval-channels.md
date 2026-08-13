@@ -63,7 +63,7 @@ def _chan_vector(conn, scope, view, q_emb, top_k, as_of=None, include_superseded
 
 **执行流程**：
 ```
-query → jina-v5 embedding(1024d) → pgvector HNSW 近邻搜索
+query → jina-embeddings-v5-text-small embedding(1024d) → pgvector HNSW 近邻搜索
 → 最近 N 个实体 → 这些实体的所有 live facts
 ```
 

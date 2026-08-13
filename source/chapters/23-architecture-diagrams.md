@@ -6,7 +6,7 @@
 >
 > ```{admonition} 自演化子系统(后置增量)
 > :class: important
-> 四子包重构落地后,在 `memory` 包内追加了**自演化子系统**:三个新模块 `feedback` / `dreaming` / `higher_order`,以及两个新 worker job 类型 `dream` / `higher_order`。三者通过 `access_count` + `salience` 这条**共享信号总线**耦合(而非各自为政),刻意避免 MindMemOS 把反馈/巩固/归纳解耦成三个互不知情的孤岛。本架每次涉及的计数(模块数、job 类型数、表数、端点数、工具数)均已同步到本版。```
+> 四子包重构落地后,在 `memory` 包内追加了**自演化子系统**:三个新模块 `feedback` / `dreaming` / `higher_order`,以及两个新 worker job 类型 `dream` / `higher_order`。三者通过 `retrieval_count` / `salience` / `retrieval_usefulness` 等列构成的**共享信号总线**耦合(而非各自为政),刻意避免 MindMemOS 把反馈/巩固/归纳解耦成三个互不知情的孤岛。本架每次涉及的计数(模块数、job 类型数、表数、端点数、工具数)均已同步到本版。```
 
 ```{admonition} 视图总览
 | 视图 | 回答的问题 | 主要制品 |
@@ -150,7 +150,7 @@ graph TB
 | `interfaces.api.schemas` | Pydantic 请求/响应契约 |
 | `interfaces.api.routes` | 10 个路由子模块(admin/cases/diagnostics/erasures/graph/operations/sensor_resolve/temporal/terminology/understanding) |
 | `interfaces.mcp_server` | MCP server(53 工具,双传输) |
-| `interfaces.cli` | CLI 入口(db/worker/serve/probe-llm/smoke/mcp) |
+| `interfaces.cli` | CLI 入口(db/worker/serve/probe-llm/smoke/mcp/mcp-http) |
 | `interfaces.smoke` | 端到端冒烟 |
 | `interfaces.worker.runner` | 队列 worker 循环 + reaper |
 
@@ -351,7 +351,7 @@ src/cortex/
 | `test_case_retrieval_operational.py` | memory.episodes + graph | 15 |
 | `test_temporal_identity_belief.py` | memory.temporal + 双时态 | 14 |
 | `test_api.py` / `test_answer_stream.py` | interfaces.api | 7 + 3 |
-| `test_signal_bus.py` | 信号总线(access_count + salience) | 6 |
+| `test_signal_bus.py` | 信号总线(retrieval_count + salience) | 6 |
 | `test_feedback.py` | memory.feedback | 11 |
 | `test_dreaming.py` | memory.dreaming | 11 |
 | `test_higher_order.py` | memory.higher_order | 10 |
@@ -371,12 +371,12 @@ graph TB
         API["FastAPI :8002"]
         MCP["MCP HTTP :8001"]
         WK["Worker ×1~N"]
-        PG[("PostgreSQL 18.4")]
+        PG[("PostgreSQL 18")]
     end
 
     subgraph ext ["外部 LLM 服务"]
         LLM["Minimax-M3<br/>(OpenAI 兼容)"]
-        EMB["jina-embeddings-v5<br/>1024d"]
+        EMB["jina-embeddings-v5-text-small<br/>1024d"]
         RR["Prism Rerank"]
     end
 
@@ -402,11 +402,11 @@ graph TB
 
     subgraph pgext ["PG 扩展"]
         HNSW["pgvector HNSW"]
-        LTREE["ltree scope 层级"]
+        PTS["pg_textsearch BM25"]
         TRGM["pg_trgm 模糊匹配"]
     end
     PG --> HNSW
-    PG --> LTREE
+    PG --> PTS
     PG --> TRGM
 ```
 
@@ -423,9 +423,9 @@ graph TB
 
 | 依赖 | 用途 | 可替换 |
 |------|------|--------|
-| PostgreSQL 18.4 | 存储 + 队列 + 向量 + 全文 + 图 | 不可替换(深度依赖 PG 扩展) |
+| PostgreSQL 18 | 存储 + 队列 + 向量 + 全文 + 图 | 不可替换(深度依赖 PG 扩展) |
 | Minimax-M3 | LLM 抽取/回答/合成/校验 | 可替换(OpenAI 兼容接口) |
-| jina-embeddings-v5 | embedding(1024d) | 可替换,但维度变更需重算全量 |
+| jina-embeddings-v5-text-small | embedding(1024d) | 可替换,但维度变更需重算全量 |
 | Prism Rerank | 检索重排 | 可替换为其他 reranker |
 
 ```{admonition} 扩展性边界
@@ -510,7 +510,7 @@ sequenceDiagram
     Note over RET,DB: 信号总线加权 四信号独立
     RET->>DB: 批量查 facts 三信号列
     RET->>RET: 四信号加权 scores 重排 explore exploit 分配
-    RET->>SVC: rerank top-K 到 top-20 会话外
+    RET->>SVC: rerank top-K 到 top-25 会话外
     Note over RET,DB: Phase 3 assemble_pack 独立短事务 三次重试
     RET->>DB: 加载 higher_order 层
     RET->>SVC: context_block LLM 会话外
@@ -569,7 +569,7 @@ sequenceDiagram
 
 ### 23.5.4 场景四:反馈回灌闭环
 
-用户/Agent 对某条召回结果打反馈,系统在**共享信号总线**(`access_count` + `salience`)上即时调整,后续召回自然重排;负反馈累积到阈值则触发 `methylation` 级联软剪枝。这条路径是自演化子系统对外可见的主入口。
+用户/Agent 对某条召回结果打反馈,系统在**共享信号总线**(`salience` / `retrieval_usefulness` / `retrieval_count`)上即时调整,后续召回自然重排;负反馈累积到阈值则触发 `methylation` 级联软剪枝。这条路径是自演化子系统对外可见的主入口。
 
 ```{mermaid}
 sequenceDiagram
@@ -662,7 +662,7 @@ sequenceDiagram
 | 实体链接 | B over C(向量召回 + 阈值 + LLM 灰区) | 图谱质量命门;纯向量误并,纯 LLM 太贵 |
 | 双时态 | 4 字段(valid/recorded × from/to) | 同时支持"现在什么是真的"和"当时我们怎么以为" |
 | 分层 | 5 子包(infra/memory/graph/diagnostics/interfaces) | 职责清晰;依赖单向无环;便于维护演进 |
-| 信号总线 | `access_count` + `salience` 作为共享信号层 | 单一信号层耦合 Feedback/Dreaming/Higher-Order,避免 MindMemOS 把三功能解耦成互不知情的孤岛;反馈即时回流召回排序 |
+| 信号总线 | `salience` / `retrieval_count` / `retrieval_usefulness` 作为共享信号层 | 单一信号层耦合 Feedback/Dreaming/Higher-Order,避免 MindMemOS 把三功能解耦成互不知情的孤岛;反馈即时回流召回排序 |
 | Dreaming 并发 | advisory lock + heartbeat + SAVEPOINT 隔离 | `pg_try_advisory_lock`(session 级,key=`dream:{scope}`,finally 显式 unlock)序列化同 scope;heartbeat 续命防 reaper;每 action 独立 SAVEPOINT 防单个坏 LLM 输出拖垮整轮 |
 | Feedback 幂等 | `ON CONFLICT` 原子去重 + `FOR UPDATE` 串行 | 防 TOCTOU race(并发同 key → 第二个 500);行锁序列化同 fact 反馈,防 salience/count 读改写竞态 |
 | 配置热更新 | 白名单深合并(原地改 _CACHE) | 开关即时生效无需重启;白名单禁改 database/embedding.dimension;不替换实例避免热更语义丢失 |

@@ -104,7 +104,7 @@ def consolidation_run(scope, min_age_hours=24):
             "facts_closed": closed, "groups": len(dups)}
 ```
 
-**选择规则**：survivor = `ORDER BY recorded_from DESC, fact_id` 第一条（最早入库的优先保留，不是 confidence 最高的）。
+**选择规则**：survivor = `ORDER BY recorded_from DESC, fact_id` 第一条（`DESC` 方向即**最新入库的记录存活**，不是 confidence 最高的）。
 
 **引用合并**：把 redundant facts 的三类引用迁到 survivor——`facts.supports`（聚合并去重 `event_id`）、`claim_evidence`、`assertion_case_links`，用 `ON CONFLICT DO NOTHING` 防重复。
 
@@ -114,7 +114,7 @@ def consolidation_run(scope, min_age_hours=24):
 
 **超替语义**：redundant fact 的 `recorded_to = now()`（认知上已过时），`valid_to` 保持不变（保留历史上为真的时间窗口）。
 
-**与 Dreaming 的关系**：Dreaming 流程的 Phase 0 直接复用 `consolidation_run(scope, min_age_hours=0)` 作为前置去重——先跑一遍 consolidation 把完整语义身份重复的 live facts 收敛，Phase 1/2 才在干净的图上做 relation_detect + action_plan。详见第 12 章。
+**与 Dreaming 的关系**：Dreaming 流程的 Phase 0 直接复用 `consolidation_run(scope, min_age_hours=0)` 作为前置去重——先跑一遍 consolidation 把完整语义身份重复的 live facts 收敛，Phase B/C 才在干净的图上做 relation_detect + action_plan。详见第 12 章。
 
 ## 诊断谓词词表预置
 
@@ -167,18 +167,23 @@ def seed_predicate_definitions() -> int:
 
 **作用**：开启 DB-backed ontology——谓词不再只是代码里的 `Enum`，而是表里带 `category`（因果/观测/诊断/状态…）和 `prop_order` 的可查元数据。extract 环节可据此做闭集校验，未命中的谓词走 quarantine 而非直接入图。
 
-## 启动命令
+## 触发方式
+
+CLI 没有 maintenance 子命令，维护操作通过 **REST API** 或 **MCP 工具**触发：
 
 ```bash
-# 甲基化
-uv run python -m cortex.interfaces.cli maintenance --action methylation --scope equip:XXX-v1
+# 甲基化 / 去重 / embedding 补全（同步执行）
+curl -X POST http://localhost:8002/v1/admin/maintenance \
+  -H "Content-Type: application/json" \
+  -d '{"action":"methylation","scope":"equip:XXX-v1"}'
 
-# 去重
-uv run python -m cortex.interfaces.cli maintenance --action consolidation --scope equip:XXX-v1
-
-# 预置诊断词表
-uv run python -m cortex.interfaces.cli maintenance --action seed-vocab --scope equip:XXX-v1
+# 异步入队（async_enqueue=true 返回 job_id，由 worker 执行）
+curl -X POST http://localhost:8002/v1/admin/maintenance \
+  -H "Content-Type: application/json" \
+  -d '{"action":"consolidation","scope":"equip:XXX-v1","async_enqueue":true}'
 ```
+
+MCP 侧用 `maintenance_enqueue(action, scope)` 工具，同样支持 `methylation|consolidation|enrich`（见第 19 章）。词表预置无需手工触发：新 scope 写入第一个 event 时由 `_auto_provision_scope` 自动完成（见第 3 章、第 9 章）。
 
 ## API 端点
 
@@ -186,11 +191,13 @@ maintenance 操作统一走单一端点，通过 body.action 区分：
 
 ```
 POST /v1/admin/maintenance
-  body.action ∈ {methylation, consolidation}
+  body.action ∈ {methylation, consolidation, enrich}
   body.scope  → 目标 scope
+  body.older_than_days → 仅 methylation 用（默认 30）
+  body.async_enqueue → true 时入队由 worker 异步执行
 ```
 
-> 注意：不存在 `/v1/maintenance/methylation`、`/v1/maintenance/consolidation` 这类按动作拆分的路径，也不存在 `POST /v1/admin/maintenance/vocab/seed` 端点。`seed_diagnosis_vocab` 是内部函数（由 CLI / 测试调用），不暴露为 HTTP 端点；consolidation 端点本身也不支持 vocab seed，seed_predicates 走的是 `/v1/admin/higher-order?seed_predicates=true`。旧文档中的写法已废弃，实际实现是单端点 + action 字段。
+> 注意：不存在 `/v1/maintenance/methylation`、`/v1/maintenance/consolidation` 这类按动作拆分的路径，也不存在 `POST /v1/admin/maintenance/vocab/seed` 端点，更没有 `cli maintenance` 子命令。`seed_diagnosis_vocab` 是内部函数（编程入口/自动预置调用），不暴露为 HTTP 端点；consolidation 端点本身也不支持 vocab seed，seed_predicates 走的是 `/v1/admin/higher-order` 的 `seed_predicates=true`。旧文档中的写法已废弃，实际实现是单端点 + action 字段。
 
 ## 最佳实践
 

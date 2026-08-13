@@ -51,7 +51,7 @@ graph TB
 | 通道 | 方法 | 来源 | 最适合 |
 |------|------|------|--------|
 | **Vector** | 实体 embedding 近邻 → 其 facts | `entities.embedding` | 语义匹配 |
-| **BM25** | 全文检索 facts 文本 | `facts` tsvector | 关键词匹配 |
+| **BM25** | 全文检索 facts 文本 | `fact_search_documents` 投影表（pg_textsearch 真 BM25，tsvector 仅作回退） | 关键词匹配 |
 | **Graph** | 种子实体 BFS 图遍历 | `facts` 图边 | 关系发现 |
 | **Entity Name** | 查询中的人名/实体名精确匹配 | `entities.canonical_name` | 命名实体 |
 | **Synonym** | 同义词扩展后再 BM25 | `synonyms` 表 | 词义泛化 |
@@ -346,9 +346,9 @@ salience_multiplier = (1 - weight) + weight · sal
 
 `weight = salience_weight`(裁剪到 [0,1])。`weight=0` 时乘数恒为 1(等于关闭);`weight=1` 时乘数就是 `sal` 本身。这让 salience 的影响是**可控渐变**的,而非全有或全无。
 
-### Exploration 探索槽(exploit/exploit 分配)
+### Exploration 探索槽（explore/exploit 分配）
 
-第四个信号 `exploration` 不改分数,而是改**最终选哪些 fact**。融合 + 三信号加权排好序后,pipeline 按 `exploration_ratio`(默认 0.10)把 top_k 个名额拆成 exploit/exploit 两段:
+第四个信号 `exploration` 不改分数,而是改**最终选哪些 fact**。融合 + 三信号加权排好序后,pipeline 按 `exploration_ratio`(默认 0.10)把 top_k 个名额拆成 explore/exploit 两段:
 
 ```python
 ranked_all = sorted(scores, key=lambda fid: scores[fid], reverse=True)

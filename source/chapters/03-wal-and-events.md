@@ -151,6 +151,7 @@ CREATE TABLE events (
     embed_status        TEXT,
     extraction_diagnostics JSONB NOT NULL DEFAULT '[]',
     access_count        INT NOT NULL DEFAULT 0,
+    retrieval_count     INT NOT NULL DEFAULT 0,
     case_id             TEXT,
     methylated_at       TIMESTAMPTZ,
     feedback_processed  BOOLEAN NOT NULL DEFAULT false,  -- 反馈是否已被处理入权重
@@ -286,8 +287,6 @@ CREATE TABLE lifecycle_events (
 |------|------|
 | `captured` | Event 已写入 WAL（append 成功） |
 | `extracted` | 抽取管线完成，已产出 facts/entities |
-| `entity_linked` | 实体链接（B over C）完成 |
-| `belief_synthesized` | Belief 聚合完成 |
 | `import_progress` | bulk 导入进度上报 |
 | `import_complete` | bulk 导入全部完成 |
 | `feedback_received` | 收到一条用户反馈（正/负投票、采纳信号），写入 `feedback_signals` |

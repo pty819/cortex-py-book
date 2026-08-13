@@ -208,7 +208,7 @@ Cortex-PY 处理结果：
         流量偏差5%(symptom)
         MFC校准漂移(hypothesis)          ← 类型不同！
   事实：MFC-1 monitored_by 流量偏差5%    ← observed, 入图
-        流量偏差5% investigated_by 怀疑MFC校准漂移 ← diagnostic, 入图
+        怀疑MFC校准漂移 investigates 流量偏差5% ← diagnostic, 入图
         MFC-1 caused_by MFC校准漂移      ← hypothesized, **不入图**
         MFC-2 checked 正常              ← observed, 入图
         MFC校准漂移 ruled_out MFC-2     ← negative+ruled_out, **不入图**
@@ -524,7 +524,7 @@ MindMemOS 不是为故障诊断设计的——它的目标是通用 agent 的长
 │   └── agentmemory（零外部依赖 + 自动钩子）
 │
 └── 复杂机械设备的故障诊断因果推理
-    └── Cortex-PY（唯一满足6项不可妥协需求的系统）
+    └── Cortex-PY（唯一满足7项不可妥协需求的系统）
         │
         ├── 需要管理原始文档上下文？
         │   可以配合 OpenViking

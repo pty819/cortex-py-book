@@ -82,7 +82,7 @@ graph TB
 | `episodes_list` | 列出 episodes |
 | `case_create` | 创建诊断 case |
 | `case_update` | 更新 case 阶段/状态/根因 |
-| `case_get` | 获取 case 详情（含 workspace graph） |
+| `case_get` | 获取 case 详情（metadata + events + facts + beliefs） |
 | `case_list` | 列出 cases（可按 status/equipment 过滤） |
 | `case_search` | 语义搜索 cases |
 | `list_beliefs` | 列出 beliefs（可按 about_entity 过滤） |
@@ -121,7 +121,7 @@ graph TB
 | `temporal_register` | 注册时间短语 |
 | `health_check` | 健康检查 |
 | `admin_metrics` | 存储指标（各表行数 + jobs 状态） |
-| `maintenance_enqueue` | 触发 maintenance 任务（methylation/consolidation） |
+| `maintenance_enqueue` | 触发 maintenance 任务（methylation/consolidation/enrich） |
 | `feedback_submit` | 提交反馈信号（正/负反馈，调 salience/usefulness） |
 
 ### 自演化（3 个）

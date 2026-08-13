@@ -24,7 +24,7 @@ CREATE TABLE temporal_phrases (
 
 ## 预置短语
 
-`temporal.py:18-24` 的 `_DEFAULTS` 在 `seed_defaults()` 时写入（`is_default=true`）。注意短语名是**自然语言带空格**（不是 `recent_week` 这种标识符风格），注册和查询都按小写匹配（`register_phrase` / `delete_phrase` / `parse_temporal` 均对 name 做 `.lower()`）：
+`temporal.py` 的 `_DEFAULTS` 常量在 `seed_defaults()` 时写入（`is_default=true`）。注意短语名是**自然语言带空格**（不是 `recent_week` 这种标识符风格），注册和查询都按小写匹配（`register_phrase` / `delete_phrase` / `parse_temporal` 均对 name 做 `.lower()`）：
 
 | 名称 | 表达式 | 含义 |
 |------|--------|------|

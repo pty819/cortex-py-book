@@ -206,7 +206,7 @@ def run_worker(*, max_iterations=0):
 | job_type | 处理函数 | 说明 |
 |----------|----------|------|
 | `extract` | `extract_event(event_id)` | 同步抽取三元组 + 实体 + 索引 |
-| `segment` | `segment_event(event_id)` | 对长文本 event 做分段切片 |
+| `segment` | `segment_scope(scope)` | 对 scope 内长文本 event 做分段切片 |
 | `methylation` | `methylation_run(scope, older_than_days=...)` | 软剪枝长期不召回的 events；`older_than_days` 从 payload 取（默认 30） |
 | `consolidate` | `consolidation_run(scope)` | 完整语义身份相同的 legacy duplicates 去重 |
 | `enrich` | 内联三段短事务 | 扫无 embedding 实体 → 会话外批量 `embed_texts` → 写回短事务 |

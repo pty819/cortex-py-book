@@ -204,7 +204,7 @@ sequenceDiagram
     Note over R: salience·usage·usefulness·exploration,见第14章
 
     R->>LLM: Prism rerank (top_n=25, 会话外/尽力而为)
-    LLM-->>R: reranked top-20 (缺失/失败则退回融合顺序)
+    LLM-->>R: reranked top-25 (缺失/失败则退回融合顺序)
     
     R->>LLM: Synthesis context block
     LLM-->>R: context_block
@@ -245,4 +245,5 @@ sequenceDiagram
 | `rerank.enabled` | `true` | rerank 开关 |
 | `rerank.threshold` / `.top_n` / `.timeout` | `0.1` / `25` / `60` | rerank 阈值/候选池/超时 |
 | `salience_enabled` / `usage_enabled` / `usefulness_enabled` / `exploration_enabled` | 关/开/开/开 | 四信号开关 |
-| `pack_ttl` | 60s | 缓存有效期 |
+
+> 缓存有效期（TTL）不是配置项，而是在 `retrieval/pipeline.py` 的 `_cache_pack` 里硬编码为 `now() + interval '60 second'`（60 秒）。

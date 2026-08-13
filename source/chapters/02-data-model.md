@@ -112,6 +112,11 @@ CREATE TABLE entities (
     merged_into       UUID REFERENCES entities(entity_id),
     merge_confidence  FLOAT,
     
+    -- 软删除 (GDPR/治理)
+    deleted_at        TIMESTAMPTZ,
+    deleted_by        TEXT,
+    delete_note       TEXT,
+    
     -- 时间
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -233,7 +238,7 @@ ALTER TABLE cortex.events ADD COLUMN IF NOT EXISTS last_recalled_at TIMESTAMPTZ;
 ### 断言语义规则
 
 ```python
-def _assertion_semantics(predicate, fact, trusted=False, source_text=None):
+def assertion_semantics(predicate, fact, trusted=False, source_text=None):
     polarity = "negative" if fact.get("negation") else fact.get("polarity", "positive")
     requested = fact.get("assertion_status")
     
@@ -241,9 +246,13 @@ def _assertion_semantics(predicate, fact, trusted=False, source_text=None):
     if predicate in OPPOSING_PREDICATES:
         return "negative", "ruled_out"
     
+    # no_correlation / contradicts → 保持 positive，状态用 LLM 指定值
+    if predicate in RELATIONAL_EXCLUSION_PREDICATES:
+        return "positive", requested or "observed"
+    
     # 因果谓词默认 hypothesized
     if predicate in CAUSAL_PREDICATES:
-        if polarity == "negative":
+        if polarity == "negative" or requested in {"ruled_out", "rejected"}:
             return polarity, "ruled_out"
         evidence = str(fact.get("evidence_span") or "").strip()
         grounded = bool(source_text and evidence and evidence in source_text)
@@ -366,7 +375,7 @@ def coerce_value(conn, scope, vocab_name, raw):
     return raw if row.kind == "open" else None
 ```
 
-详见第21章 词表系统详解。
+详见第9章 词表系统详解。
 
 ## Synonyms 同义词表
 

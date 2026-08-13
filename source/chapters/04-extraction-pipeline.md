@@ -157,7 +157,7 @@ T-101 --installed_on--> 腔体壁
 
 ```
 压力波动 --detected_by--> P-02
-压力波动 --symptom_of--> 腔体压力异常
+腔体压力异常 --has_symptom--> 压力波动
 ```
 
 ### 准则 2b：腔体状态链（Seasoning/漂移链）
@@ -201,7 +201,7 @@ CD偏差 --feedback_to--> 主刻蚀步骤
 每一轮包含假设→排查→发现→排除/细化→再假设。排除项也必须提取！
 
 ```
-刻蚀速率漂移 --investigated_by--> 怀疑温控系统
+怀疑温控系统 --investigates--> 刻蚀速率漂移
 检查温控系统 --found--> T-101缓慢漂移
 怀疑温控系统 --refines_to--> T-101可能漂移
 怀疑射频故障 --ruled_out--> 射频系统

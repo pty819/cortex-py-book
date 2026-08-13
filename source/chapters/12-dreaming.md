@@ -38,14 +38,14 @@ graph TB
     LLM -->|已配置| PB
 ```
 
-整个管线由 `dream_run()`(`dreaming.py` 第 32-54 行,内容在 `_dream_run_impl` 第 54-175 行)编排。每个阶段的结果都汇总进 `summary["phases"]`,最终写入 `dreaming_runs` 表。
+整个管线由 `dream_run()`（`dreaming.py`，主体实现在 `_dream_run_impl`）编排。每个阶段的结果都汇总进 `summary["phases"]`,最终写入 `dreaming_runs` 表。
 
 ## Phase 0: 精确去重
 
 Phase 0 直接复用第 21 章介绍的 `consolidation_run`,但有一个关键参数差异:
 
 ```python
-# dreaming.py 第 89-94 行
+# dreaming.py `dream_run` 的 Phase 0 分支
 if dry_run:
     p0 = {"action": "consolidation", "scope": scope, "facts_closed": 0,
           "groups": 0, "note": "dry_run skipped"}
@@ -53,16 +53,16 @@ else:
     p0 = consolidation_run(scope, min_age_hours=0)
 ```
 
-`consolidation_run` 的默认签名是 `min_age_hours=24`(见 `maintenance.py` 第 56 行),意为常规后台合并只处理入库满 24 小时的事实,避免对刚抽取的事实操作。但 Dreaming 是**手动或定时触发**的离线任务,操作员主动调用时不希望再等 24 小时,因此这里显式传 `min_age_hours=0`,让精确去重覆盖所有 live fact。
+`consolidation_run` 的默认签名是 `min_age_hours=24`（见 `maintenance.py` 的 `consolidation_run` 定义），意为常规后台合并只处理入库满 24 小时的事实，避免对刚抽取的事实操作。但 Dreaming 是**手动或定时触发**的离线任务，操作员主动调用时不希望再等 24 小时，因此这里显式传 `min_age_hours=0`，让精确去重覆盖所有 live fact。
 
-`dry_run=True` 时 Phase 0 被跳过(不写库),仅做候选发现以供预览,随后直接返回(`dreaming.py` 第 66-76 行)。把 Phase 0 放在最前的价值在于:完全相同的重复项用 SQL 一次清掉成本极低,不应消耗 LLM token,只有 SQL 无法判定的语义关系才进入后续阶段。
+`dry_run=True` 时 Phase 0 被跳过（不写库），仅做候选发现以供预览，随后直接返回（`dreaming.py` 的 `dreaming_run` 入口）。把 Phase 0 放在最前的价值在于：完全相同的重复项用 SQL 一次清掉成本极低，不应消耗 LLM token，只有 SQL 无法判定的语义关系才进入后续阶段。
 
 ## Phase A: 候选发现
 
-Phase A 由 `_discover_clusters()` 实现(`dreaming.py` 第 177-222 行),纯 SQL 聚簇,无 LLM 参与。核心查询按 `subject_id` 分组,只取 live fact(`recorded_to IS NULL AND valid_to IS NULL`),并施加时间窗:
+Phase A 由 `_discover_clusters()` 实现（`dreaming.py`），纯 SQL 聚簇，无 LLM 参与。核心查询按 `subject_id` 分组，只取 live fact（`recorded_to IS NULL AND valid_to IS NULL`），并施加时间窗：
 
 ```sql
--- dreaming.py 第 193-207 行
+-- dreaming.py `_discover_clusters`
 SELECT subject_id::text, array_agg(fact_id::text) AS fids, count(*) AS n
 FROM facts
 WHERE scope=:s AND recorded_to IS NULL AND valid_to IS NULL
@@ -89,26 +89,41 @@ if 0.0 < similarity_threshold <= 1.0:
     facts = _similarity_prefilter(conn, scope, facts, similarity_threshold)
 ```
 
+`_similarity_prefilter` 不在 Python 里做 O(n²) 两两比较,而是把簇内 fact 拼成 `predicate + object_text` 的 `body`,一次性打包成 jsonb 传给**单条集合式 SQL**——`jsonb_to_recordset` 展开后自连接,用 `pg_trgm` 的 `similarity()` 在数据库内完成全部两两比较:
+
 ```python
-sim = conn.execute(text("SELECT similarity(:a, :b)"),
-                   {"a": ta, "b": tb}).scalar()
-if sim is not None and sim >= threshold:
-    keep.add(fa["fact_id"])
-    keep.add(fb_["fact_id"])
-    break
+items = [
+    {"fact_id": str(fact["fact_id"]),
+     "body": f"{fact.get('predicate', '')} {fact.get('object_text', '')}".strip()}
+    for fact in facts
+]
+rows = conn.execute(text("""
+    WITH items AS (
+      SELECT fact_id, body
+      FROM jsonb_to_recordset(CAST(:items AS jsonb)) AS item(fact_id text, body text)
+      WHERE body <> ''
+    )
+    SELECT DISTINCT left_item.fact_id
+    FROM items left_item
+    JOIN items right_item
+      ON left_item.fact_id <> right_item.fact_id
+     AND similarity(left_item.body, right_item.body) >= :threshold
+"""), {"items": json.dumps(items, ensure_ascii=False), "threshold": threshold}).fetchall()
 ```
+
+语义是"只保留与组内**至少一个**其他 fact 相似度 >= 阈值的 fact"(DISTINCT 单侧 fact_id),而不是保留"相似对"——孤立的、与谁都不像的 fact 会被筛掉,有至少一个近邻的 fact 全部保留。一次网络往返 + 一条 SQL 完成整个簇的预筛,避免了 Python 循环逐对调用 `similarity()` 的 N²/2 次数据库往返。
 
 阈值语义:
 
 | `similarity_threshold` | 行为 |
 |---|---|
 | `0.0` | **显式关闭**预筛(广域 complementary 分析用,簇可能很大,仍受 `max_facts_per_cluster` 硬上限保护) |
-| `(0, 1]`(默认 `0.85`) | **启用** pg_trgm 预筛,只保留相似度 >= 阈值的 fact 对 |
+| `(0, 1]`(默认 `0.85`) | **启用** pg_trgm 预筛,只保留与组内至少一个其他 fact 相似度 >= 阈值的 fact |
 | `> 1.0` | 配置层 `le=1.0` 校验拒绝,无法配出 |
 
 注意默认 `0.85` **会触发预筛**。若想关闭以做广域 complementary 分析(簇内可能包含文本相似度低但语义互补的 fact,如"温度过高"与"散热风扇停转"),应显式设为 `0`。配置项有 `ge=0.0, le=1.0` 约束。
 
-聚簇完成后,`_load_facts_detail()` 加载每条 fact 的详情(predicate、object_text、effective_time、assertion_status、salience),供后续 LLM 阶段使用。其中 `effective_time` 已在 SQL 里预计算为 `coalesce(valid_from, extracted_at)`,供 Phase C 的 latest-wins 仲裁直接取用。
+聚簇完成后,`_load_facts_detail()` 加载每条 fact 的详情(predicate、object_text、effective_time、assertion_status、salience、retrieval_count、knowledge_tier、case_id、operating_regime 与 evidence_count),供后续 LLM 阶段使用。其中 `effective_time` 已在 SQL 里预计算为 `coalesce(valid_from, extracted_at)`,供 Phase C 的 latest-wins 仲裁直接取用。
 
 ## Phase B+C: 两阶段 LLM（跨簇并发）
 
@@ -146,7 +161,7 @@ if not dry_run:
 
 ### Phase B: 关系检测(LLM #1)
 
-`_relation_detect()`(`dreaming.py` 第 302-323 行)把整簇 fact 序列化为 JSON 喂给 LLM,prompt 为 `DREAMING_RELATION_DETECT`(`prompts.py` 第 546-580 行)。该 prompt 定义了 **7 种 issue_type**:
+`_relation_detect()`（`dreaming.py`）把整簇 fact 序列化为 JSON 喂给 LLM,prompt 为 `DREAMING_RELATION_DETECT`（`prompts.py`）。该 prompt 定义了 **7 种 issue_type**:
 
 | issue_type | 含义 | 后续典型动作 |
 |---|---|---|
@@ -167,11 +182,11 @@ prompt 中特别强调了**负面规则**(什么不是冲突/重复),这是抑�
 - 仅共享一个宽泛类别(如"都是故障")不构成重复
 ```
 
-LLM 返回的 JSON 经 `services.parse_llm_json()` 解析,取 `issues` 数组;解析或调用异常时返回空列表(降级,不阻断后续簇处理),见 `dreaming.py` 第 315-323 行的 try/except 包裹。
+LLM 返回的 JSON 经 `services.parse_llm_json()` 解析,取 `issues` 数组;解析或调用异常时返回空列表(降级,不阻断后续簇处理),见 `_relation_detect` 内的 try/except 包裹。
 
 ### Phase C: 行动规划(LLM #2)
 
-`_action_plan()`(`dreaming.py` 第 324-350 行)接收 Phase B 产出的单个 issue 及其 `fact_ids` 对应的 fact 详情,调用 `DREAMING_ACTION_PLAN` prompt(`prompts.py` 第 587-626 行)规划具体动作。该 prompt 定义 **5 种动作**:
+`_action_plan()`（`dreaming.py`）接收 Phase B 产出的单个 issue 及其 `fact_ids` 对应的 fact 详情,调用 `DREAMING_ACTION_PLAN` prompt（`prompts.py`）规划具体动作。该 prompt 定义 **5 种动作**:
 
 1. **archive**:软关(`recorded_to=now()`)。适用 duplicate 冗余项、low_value 事实。
 2. **merge**:合并多条为新 fact 并归档所有源 fact,新 fact 的 `valid_from` 取最早源 fact。
@@ -288,10 +303,10 @@ def dream_run(scope, ...):
 
 ### worker scheduler
 
-`_maybe_schedule_dreaming()`(`runner.py` 第 61-101 行)是嵌入 worker 主循环的轻量调度器,每次 reaper 周期触发一次检查:
+`_maybe_schedule_dreaming()`（`runner.py`）是嵌入 worker 主循环的轻量调度器,每次 reaper 周期触发一次检查:
 
 ```python
-# runner.py 第 69-71 行
+# 调度间隔检查
 interval = cfg.dreaming.schedule_interval_hours * 3600
 if now - last_check < interval:
     return last_check
@@ -300,7 +315,6 @@ if now - last_check < interval:
 它扫描所有有 live fact 的 scope,查 `dreaming_runs` 表中该 scope 最后一次 `status='completed'` 的时间,若超过 `schedule_interval_hours`(默认 24h)则触发。触发前有 **H2 去重守卫**:
 
 ```python
-# runner.py 第 89-93 行
 # H2:仅在无 queued/running dream job 时插入(防多 worker 重复排程)
 already = conn.execute(text(
     "SELECT 1 FROM jobs WHERE job_type='dream' AND scope=:s "
@@ -350,7 +364,7 @@ def _JobHeartbeat(job_id, worker_id, interval=60.0):
 
 ## dreaming_runs 表
 
-每次 `dream_run` 在入口创建一条 `dreaming_runs` 记录,结束时回写统计。DDL 位于 `schema.sql` 第 875-887 行:
+每次 `dream_run` 在入口创建一条 `dreaming_runs` 记录,结束时回写统计。DDL 位于 `schema.sql` 的 Dreaming 运行记录段落:
 
 ```sql
 CREATE TABLE IF NOT EXISTS cortex.dreaming_runs (
@@ -378,21 +392,21 @@ CREATE INDEX IF NOT EXISTS idx_dreaming_runs_scope
 | `scope` | 巩固的作用域 |
 | `started_at` | 创建记录时(`INSERT ... DEFAULT now()`) |
 | `completed_at` | `_complete_run` 或失败分支回写 |
-| `status` | `running` → `completed` / `failed`。异常时(`dreaming.py` 第 165-174 行)回写 `failed` 并存 `summary.error` |
+| `status` | `running` → `completed` / `failed`。异常时（`dream_run` 的 except 分支）回写 `failed` 并存 `summary.error` |
 | `phase0_closed` | Phase 0 精确去重关闭的 fact 数 |
 | `phase_a_clusters` | Phase A 发现的候选聚簇数 |
 | `phase_b_issues` | Phase B LLM 发现的 issue 总数 |
 | `phase_c_actions` | Phase C 执行的动作总数 |
 | `summary` | 完整 `summary` dict 的 JSON,含各阶段明细 |
 
-`_complete_run()`(`dreaming.py` 第 461-475 行)在写完统计后还做两件事:失效该 scope 的 `recall_packs` 缓存(`DELETE FROM recall_packs WHERE scope=:s`),确保下次召回能看到 dreaming 期间的 archive/merge 改动;并 `emit_lifecycle(kind="dreamed")` 发出生命周期事件。失败分支同样会失效 `recall_packs`。
+`_complete_run()`（`dreaming.py`）在写完统计后还做两件事:失效该 scope 的 `recall_packs` 缓存(`DELETE FROM recall_packs WHERE scope=:s`),确保下次召回能看到 dreaming 期间的 archive/merge 改动;并 `emit_lifecycle(kind="dreamed")` 发出生命周期事件。失败分支同样会失效 `recall_packs`。
 
 ## 无 LLM key 降级
 
 Dreaming 的 LLM 阶段依赖 `synthesis` tier(默认)。若该 tier 未配置 API key,`dream_run` 会优雅降级——只运行 Phase 0,跳过 Phase B/C:
 
 ```python
-# dreaming.py 第 107-109 行
+# `dream_run` 入口的 LLM tier 检查
 if not services.llm_configured(cfg.dreaming.llm_tier):
     summary["note"] = f"LLM tier '{cfg.dreaming.llm_tier}' not configured, skipping Phase B/C"
     _complete_run(run_id, scope, p0["facts_closed"], len(clusters), 0, 0, summary)
@@ -407,7 +421,7 @@ if not services.llm_configured(cfg.dreaming.llm_tier):
 
 ### POST /v1/admin/dreaming
 
-触发一次 dreaming 巩固,需 admin 权限。请求体 `DreamingRequest`(`schemas.py` 第 629-632 行):
+触发一次 dreaming 巩固。请求体 `DreamingRequest`（`schemas.py`）:
 
 ```python
 class DreamingRequest(BaseModel):
@@ -416,7 +430,7 @@ class DreamingRequest(BaseModel):
     async_enqueue: bool = False
 ```
 
-实现位于 `operations.py` 第 48-58 行:
+实现位于 `operations.py` 的 `admin_dreaming` 路由:
 
 ```python
 @router.post("/v1/admin/dreaming")
@@ -436,7 +450,7 @@ def admin_dreaming(body: schemas.DreamingRequest):
 
 ### GET /v1/admin/dreaming/{run_id}
 
-查询某次运行的结果(`operations.py` 第 61-66 行),同样挂在 operations 路由上,无鉴权依赖(原 `auth` 依赖已移除):
+查询某次运行的结果（`operations.py` 的 `admin_dreaming_get` 路由）,同样挂在 operations 路由上,无鉴权依赖(原 `auth` 依赖已移除):
 
 ```python
 @router.get("/v1/admin/dreaming/{run_id}")
@@ -447,7 +461,7 @@ def admin_dreaming_get(run_id: str):
     return result
 ```
 
-`get_dreaming_run()`(`dreaming.py` 第 477-487 行)从 `dreaming_runs` 表读取一行并组装为 dict 返回,字段对应表中各列。
+`get_dreaming_run()`（`dreaming.py`）从 `dreaming_runs` 表读取一行并组装为 dict 返回,字段对应表中各列。
 
 ### MCP
 
@@ -455,7 +469,7 @@ Dreaming 通过 `dreaming_run` MCP 工具暴露给 agent,封装 `POST /v1/admin/
 
 ## 配置
 
-`DreamingCfg`(`config.py` 第 224-237 行)集中管理所有 dreaming 参数:
+`DreamingCfg`（`infra/config.py`）集中管理所有 dreaming 参数:
 
 ```python
 class DreamingCfg(BaseModel):
@@ -489,4 +503,4 @@ class DreamingCfg(BaseModel):
 | `schedule_interval_hours` | `24` | worker scheduler 的检查间隔,每 24h 检查各 scope 是否该触发 dreaming |
 | `llm_tier` | `"synthesis"` | Phase B/C 使用的 LLM tier,默认复用 synthesis tier |
 
-`dream_run()` 的所有可选参数默认 `None`,意为回落到 `DreamingCfg`(`_dream_run_impl`,`dreaming.py` 第 70-75 行),操作员调参即时生效。唯一例外是 `min_age_hours`,函数内硬编码默认 `24`(用于候选发现的 fact 年龄下界),但 scheduler 入队的 dream job payload 显式传 `{"min_age_hours": 0}`,API 同步调用时不传该参数故用默认 24h 下界——这一差异是有意的:手动触发可以保守一点等 24h,定时触发则覆盖全部 live fact。
+`dream_run()` 的所有可选参数默认 `None`,意为回落到 `DreamingCfg`（见 `_dream_run_impl`,`dreaming.py`）,操作员调参即时生效。唯一例外是 `min_age_hours`,函数内硬编码默认 `24`(用于候选发现的 fact 年龄下界),但 scheduler 入队的 dream job payload 显式传 `{"min_age_hours": 0}`,API 同步调用时不传该参数故用默认 24h 下界——这一差异是有意的:手动触发可以保守一点等 24h,定时触发则覆盖全部 live fact。

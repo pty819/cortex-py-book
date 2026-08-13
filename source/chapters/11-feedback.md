@@ -7,7 +7,7 @@
 cortex-py 的 Feedback 模块位于 `src/cortex/memory/feedback.py`，核心是 `submit_feedback` / `_apply_to_fact` / `_check_methylation` 三个函数。它采用**双轨设计**：
 
 - **软轨（salience）**：上调或下调 `facts.salience`，影响召回排序但不删数据。
-- **硬轨（recorded_to）**：对明确错误且属一次性问题的事实，设 `recorded_to=now()` 软关闭，保留可溯源历史。
+- **硬轨（recorded_to）**：`wrong` 信号对旧 fact 设 `recorded_to=now()` 软关闭并插入新版本；`task_temporary` 还会额外软关新版本。软关保留可溯源历史。
 
 ```{mermaid}
 graph LR
@@ -40,7 +40,7 @@ graph LR
 
 来自 MindMemOS 的持久化分级，决定信号在系统中存活的方式：
 
-- **`task_temporary`**：当前任务的一次性问题，不该持久化。`wrong + task_temporary` 触发硬轨 `recorded_to=now()`。
+- **`task_temporary`**：当前任务的一次性问题，不该持久化。`wrong + task_temporary` 除常规版本化软关旧 fact 外，还会额外把新插入的 ruled_out 版本也 `recorded_to=now()` 软关——新版本本身也不该留在活跃集合里。
 - **`scenario_specific`**：仅在特定场景下不适用（如某用户上下文），带条件地保留。
 - **`long_term`**（默认）：长期持久，正常调整 salience。
 
@@ -53,7 +53,7 @@ graph LR
 | **wrong**             | 版本化 ruled_out + 软关新版本 + methylation 检查 | 版本化 ruled_out + methylation 检查 | 版本化 ruled_out + methylation 检查 |
 | **partial**           | 仅记录                                      | 仅记录                               | 仅记录                               |
 
-注意 `signal_durable` 只在 `wrong` 分支产生差异化动作：唯有 `task_temporary` 才会走硬轨归档。其他 durable 等级对同类型信号的处理一致——它们的价值在于为后续的 Dreaming 离线巩固提供分级输入，而非改变即时路径。
+注意 `wrong` 信号在所有 durable 等级下都会软关旧 fact 并插入 ruled_out 新版本（硬轨的版本化部分，见 §4.3）；`signal_durable` 只在 `task_temporary` 时产生额外差异——把新版本也归档。其他 durable 等级对同类型信号的处理一致——它们的价值在于为后续的 Dreaming 离线巩固提供分级输入，而非改变即时路径。
 
 ## 3. 双轨设计
 
@@ -61,7 +61,7 @@ graph LR
 
 salience 是 `facts` 表上的召回权重浮点字段，反馈在 `[salience_floor, salience_ceiling]` 区间内做**钳位增减**：
 
-- **正反馈上调**（`feedback.py` L124-130）：
+- **正反馈上调**（`feedback.py` 的 `_apply_to_fact` relevant 分支）：
 
 ```python
 UPDATE facts SET positive_feedback_count = positive_feedback_count + 1,
@@ -71,7 +71,7 @@ WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND recorded_to IS NULL AND valid_to
 
 用 `least(...)` 钳顶，默认 `:w=0.5`、`:ceil=2.0`，保证 salience 不会无限膨胀。
 
-- **负反馈下调**（`feedback.py` L136-142、L147-152）：
+- **负反馈下调**（`_apply_to_fact` 的 irrelevant 分支）：
 
 ```python
 UPDATE facts SET negative_feedback_count = negative_feedback_count + 1,
@@ -83,12 +83,14 @@ WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND recorded_to IS NULL AND valid_to
 
 ### 3.2 硬轨：recorded_to 软关
 
-只有 `wrong + task_temporary` 才触发硬轨（`feedback.py` L149-151）：
+所有 `wrong` 信号都会触发硬轨的版本化部分（`feedback.py` 的 `_apply_to_fact` wrong 分支）——先软关旧 fact：
 
 ```python
 UPDATE facts SET recorded_to=now()
-WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND recorded_to IS NULL AND valid_to IS NULL
+WHERE fact_id=CAST(:f AS uuid)
 ```
+
+随后 INSERT 一条 ruled_out 负版本（见 §4.3）；若 `signal_durable == "task_temporary"`，新版本也会被同样软关。
 
 这是**软关闭**：事实行仍在表中，历史可溯源，但被 `_LIVE_FACT` 守卫排除出活跃集合，不再参与召回。相比物理删除，软关支持审计与回滚（手动清空 `recorded_to` 即恢复）。
 
@@ -181,7 +183,7 @@ elif signal_type == "wrong":
 
 无论是否归档,最后都对 `revised_id` 走 `_check_methylation`。
 
-### 4.4 partial 分支（L203）
+### 4.4 partial 分支
 
 ```python
 elif signal_type == "partial":
@@ -259,7 +261,7 @@ graph TB
 
 ### 6.1 行锁：`SELECT ... FOR UPDATE`
 
-函数开头（L117-120）锁住目标活跃 fact：
+函数开头锁住目标活跃 fact：
 
 ```python
 locked = conn.execute(text(f"""
@@ -277,7 +279,7 @@ if not locked:
 
 ### 6.2 原子幂等：`INSERT ... ON CONFLICT DO NOTHING`
 
-`submit_feedback` 在写 `feedback_signals` 时用幂等键原子去重（L52-72）：
+`submit_feedback` 在写 `feedback_signals` 时用幂等键原子去重：
 
 ```python
 row = conn.execute(text("""
@@ -302,11 +304,11 @@ else:
 
 关键点：`INSERT ... ON CONFLICT (idempotency_key) DO NOTHING RETURNING ...` 是 Postgres 的**单条原子语句**。冲突时 `RETURNING` 返回空集，于是回查既有记录。这避免了 "先 SELECT 再 INSERT" 的 TOCTOU（time-of-check-to-time-of-use）竞态——那种写法在两个并发请求都查不到记录后各自 INSERT，其中一个会因 UNIQUE 约束抛错退化为 500。
 
-随后的 `applied_already is not False` 守卫（L87）确保：命中既有记录时**不再重复应用即时动作**，防止 salience 被同一信号多次叠加。
+随后的 `applied_already is not False` 守卫确保：命中既有记录时**不再重复应用即时动作**，防止 salience 被同一信号多次叠加。
 
 ### 6.3 `_LIVE_FACT` 守卫
 
-模块顶部定义（L31）：
+模块顶部定义：
 
 ```python
 _LIVE_FACT = "recorded_to IS NULL AND valid_to IS NULL"
@@ -321,7 +323,7 @@ _LIVE_FACT = "recorded_to IS NULL AND valid_to IS NULL"
 
 ## 7. `feedback_signals` 表
 
-DDL 来自 `src/cortex/schema.sql`（L853-872）：
+DDL 来自 `src/cortex/schema.sql`（Feedback 回灌段落）：
 
 ```sql
 CREATE TABLE IF NOT EXISTS cortex.feedback_signals (
@@ -367,13 +369,13 @@ CREATE INDEX IF NOT EXISTS idx_feedback_pack ON cortex.feedback_signals (pack_id
 
 索引：`idx_feedback_target` 支持按 scope+target 查询反馈历史；`idx_feedback_pack` 支持按召回包溯源。
 
-注意：当前实现中 `target_layer` 仅在 `fact` 时触发即时动作（`feedback.py` L87）。`belief` / `event` 层的信号只入表记录，留给离线巩固处理。
+注意：当前实现中 `target_layer` 仅在 `fact` 时触发即时动作（`submit_feedback` 内部分发）。`belief` / `event` 层的信号只入表记录，留给离线巩固处理。
 
 ## 8. API 与 MCP
 
 ### 8.1 REST API
 
-**POST /v1/feedback** — 提交反馈（`src/cortex/interfaces/api/routes/operations.py` L24-36）：
+**POST /v1/feedback** — 提交反馈（`src/cortex/interfaces/api/routes/operations.py` 的 `submit_feedback` 路由）：
 
 ```python
 @router.post("/v1/feedback")
@@ -391,7 +393,7 @@ def submit_feedback(body: schemas.FeedbackRequest):
     )
 ```
 
-请求体 `FeedbackRequest`（`src/cortex/interfaces/api/schemas.py` L618-627）：
+请求体 `FeedbackRequest`（`src/cortex/interfaces/api/schemas.py`）：
 
 ```python
 class FeedbackRequest(BaseModel):
@@ -410,7 +412,7 @@ class FeedbackRequest(BaseModel):
 请求示例：
 
 ```bash
-curl -X POST http://localhost:8000/v1/feedback \
+curl -X POST http://localhost:8002/v1/feedback \
   -H "Content-Type: application/json" \
   -d '{
     "scope": "proj_a",
@@ -439,7 +441,7 @@ curl -X POST http://localhost:8000/v1/feedback \
 }
 ```
 
-**GET /v1/feedback** — 查询反馈（`operations.py` L39-45）：
+**GET /v1/feedback** — 查询反馈（`operations.py` 的 `list_feedback` 路由）：
 
 ```python
 @router.get("/v1/feedback")
@@ -457,7 +459,7 @@ def list_feedback(
 
 两个工具位于 `src/cortex/interfaces/mcp_server.py`：
 
-**feedback_submit**（L666-684）：
+**feedback_submit**：
 
 ```python
 @mcp.tool()
@@ -482,7 +484,7 @@ def feedback_submit(target_id: str, signal_type: str,
                            signal_durable=signal_durable, reason=reason)
 ```
 
-**feedback_list**（L688-692）：
+**feedback_list**：
 
 ```python
 @mcp.tool()
@@ -499,7 +501,7 @@ MCP 工具与 REST API 的差异：MCP 的 `scope` 可选，缺省时由 `_eff_s
 
 ## 9. 配置
 
-`FeedbackCfg` 位于 `src/cortex/infra/config.py`（L213-221）：
+`FeedbackCfg` 位于 `src/cortex/infra/config.py`：
 
 ```python
 class FeedbackCfg(BaseModel):

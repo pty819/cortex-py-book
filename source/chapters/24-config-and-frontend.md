@@ -248,7 +248,7 @@ def admin_config_post(body: dict, request: Request,
 请求示例:
 
 ```bash
-curl -X POST http://localhost:8000/v1/admin/config \
+curl -X POST http://localhost:8002/v1/admin/config \
   -H "Content-Type: application/json" \
   -d '{"dreaming": {"enabled": true}, "retrieval": {"top_k": 80}}' \
   '?persist=true'
@@ -462,7 +462,7 @@ export function subscribeApiStream(path, onFrame, onError): () => void {
 
 - **版本信息**:Cortex 版本、schema 表数量(由独立的 `getVersion()` 拉取,不随 config 重置)、数据库 schema、数据库 URL(脱敏)。
 - **Worker 配置**:`visibility_timeout_secs` / `reaper_interval_secs` / `max_attempts`。
-- **API 管理**:`cors_origins`(多选 tag 输入)。(`API Console` 视图承载对上游认证的原始调用,见第 10 节。)
+- **API 管理**:`cors_origins` 只读展示（CORS 属启动时传输设置，页面提示需通过部署配置修改并重启 API，不可在线编辑）。(`API Console` 视图承载对上游认证的原始调用,见第 10 节。)
 
 ### 7.5 顶栏操作
 
@@ -612,9 +612,9 @@ const llmStatus = computed<LlmStatus>(() => {
 | **IngestView** | Operate | `/ingest` | 单条/批量文档录入,modality/intent 选择 |
 | **DataOpsView** | Operate | `/data` | 文档 ingest、批量 experience、import/export、Evidence 登记 |
 | **CasesView** | Operate | `/cases` | Case CRUD/lifecycle、workspace graph、promotion、diagnosis recall |
-| **PlaybooksView** | Operate | `/playbooks` | 诊断剧本 DAG 管理:创建/版本/可视化/导入导出/正向推理调试 |
+| **PlaybookView** | Operate | `/playbooks` | 诊断剧本管理:三个 Tab（Playbook 列表 / 导入入库 / 正向推理调试） |
 | **QaView** | Operate | `/qa` | Ask 诊断面板 + 阶段事件瀑布流 + 卡住检测 |
-| **GraphView** | Inspect | `/graph` | 知识图谱可视化(vis-network),实体/事实浏览 |
+| **GraphView** | Inspect | `/graph` | 知识图谱可视化（Three.js WebGPU/WebGL2 渲染 + d3-force 混合布局），实体/事实浏览 |
 | **BrowseView** | Inspect | `/browse` | Memory Browser,分层级浏览事件/事实/信念 |
 | **UnderstandingView** | Inspect | `/understanding` | 概念合成、coverage、detail、related concepts |
 | **GovernanceView** | Govern | `/governance` | evolution 审批、feedback、vocabularies、synonyms、temporal phrases、Erasure |
@@ -623,22 +623,21 @@ const llmStatus = computed<LlmStatus>(() => {
 
 **设计意图**:Observe/Operate/Inspect/Govern 四组对应运维生命周期 —— 观察 → 操作 → 审视 → 治理。API Console 作为"原始回退",保证任何后端能力(含尚未建专用 UI 的新端点)都能通过控制平面调用,不再需要 curl。
 
-### 10.1 PlaybooksView（诊断剧本管理）
+### 10.1 PlaybookView（诊断剧本管理）
 
-PlaybooksView 是诊断 playbook 的可视化编辑器,对应后端 `diagnostic_playbooks` + `forward_reasoning` 两套 API。
+PlaybookView 对应后端 `diagnostic_playbooks` + `forward_reasoning` 两套 API，由三个 Tab 组成：
 
-**核心功能**:
-
-| 功能 | 说明 |
+| Tab | 说明 |
 |------|------|
-| **DAG 可视化** | 用 vis-network 渲染 playbook 节点和边,节点按类型着色(symptom=蓝/test=绿/action=橙/recommendation=紫/terminal=灰) |
-| **节点编辑** | 节点 CRUD、类型切换、条件表达式编辑器(JSON Schema 表单) |
-| **边编辑** | 拖拽连线创建边、outcome 选择、边条件编辑 |
-| **版本管理** | 版本列表、版本对比(diff)、激活/退役操作 |
-| **测试运行** | 内置 forward reasoning 调试面板——输入症状+观测数据,实时看到遍历 trace 和 next_actions |
-| **导入导出** | JSON 格式导入导出,便于跨环境迁移 playbook |
+| **Playbook 列表** | 浏览现有 playbook（表格 + 抽屉详情：节点/边/入口节点/适用性），支持状态标签与版本展示 |
+| **导入 / 入库** | 从 JSON 导入 playbook（跨环境迁移），或新建入库 |
+| **正向推理** | 内置 forward reasoning 调试面板——输入症状+观测数据，实时看到遍历 trace、匹配结果与 next_actions（含 Raw JSON） |
 
-**与 CasesView 的关系**:CasesView 处理"具体一次故障怎么查"(案例),PlaybooksView 处理"这类故障应该怎么查"(规程)。两者在 UI 中通过 Operate 分组下的 Tab 切换,数据层完全独立。
+> 注：当前版本不提供可视化 DAG 编辑器（节点/边拖拽、版本 diff）；playbook 的结构编辑以 JSON 导入与 API 写入为主，前端侧重浏览与推理调试。
+
+GraphView 的知识图谱渲染用 **Three.js**（优先 WebGPU，回退 WebGL2）绘制节点与边，布局由 `graph/hybrid-layout.ts` 的 **d3-force** 混合力导向模拟（`forceSimulation` + `forceLink` + `forceManyBody`，另有社区级 meta 图布局）计算，节点按实体类型着色。
+
+**与 CasesView 的关系**:CasesView 处理"具体一次故障怎么查"(案例),PlaybookView 处理"这类故障应该怎么查"(规程)。两者在 UI 中通过 Operate 分组下的 Tab 切换,数据层完全独立。
 
 ```{seealso}
 配置项的语义与默认值见 `src/cortex/infra/config.py` 的 Pydantic 模型定义(`RetrievalCfg` / `DreamingCfg` / `HigherOrderCfg` 等)。API 端点完整列表见第18章。前端控制平面的完整设计文档见主仓 `DESIGN.md`。

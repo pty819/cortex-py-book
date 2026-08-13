@@ -48,7 +48,7 @@ graph LR
 
 ## 13.2 一阶 vs 高阶事实
 
-`facts` 表通过三列扩展实现**同表两级结构**（`schema.sql:891-893`）：
+`facts` 表通过三列扩展实现**同表两级结构**（`schema.sql` 的高阶事实段落）：
 
 ```sql
 -- facts 表加高阶标记
@@ -67,7 +67,7 @@ ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS evidence_fact_ids UUID[] NOT N
 
 高阶事实的写入见 `higher_order.py` 的 generate_higher_order 写入段的 INSERT 语句——`confidence=candidate_confidence`(默认 0.5)、`assertion_status='hypothesized'`、`knowledge_tier='candidate'`、`object_type='literal'`，并显式填入 `is_higher_order=true`、`higher_order_reasoning`、`evidence_fact_ids`。注意生成阶段只产 candidate tier 待审 fact,需人工审批(`evolution.review_candidate`)通过后才晋升 `verified`(见 13.4.5)。
 
-为加速热路径检索，`schema.sql:907-908` 专门建了部分索引：
+为加速热路径检索，`schema.sql` 的"记忆自演化热路径索引"段落专门建了部分索引：
 
 ```sql
 CREATE INDEX IF NOT EXISTS idx_facts_higher_order
@@ -76,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_facts_higher_order
 
 ## 13.3 predicate_definitions 表
 
-高阶归纳需要一个**谓词本体**告诉 LLM"哪些是 `order=2` 的高阶谓词、它们的语义和示例"。这个本体从 `ontology.py` 的硬编码迁移到了 DB 可配表（`schema.sql:896-903`）：
+高阶归纳需要一个**谓词本体**告诉 LLM"哪些是 `order=2` 的高阶谓词、它们的语义和示例"。这个本体从 `ontology.py` 的硬编码迁移到了 DB 可配表（`schema.sql`）：
 
 ```sql
 CREATE TABLE IF NOT EXISTS cortex.predicate_definitions (
@@ -98,34 +98,32 @@ CREATE TABLE IF NOT EXISTS cortex.predicate_definitions (
 
 ### seed_predicate_definitions()
 
-`maintenance.py` 的 `seed_predicate_definitions()` 把 `ontology.py` 硬编码谓词**幂等 upsert** 到该表：
+`maintenance.py` 的 `seed_predicate_definitions()` 遍历 `ontology.py` 的 `PREDICATE_DICTIONARY`，把每个谓词的类别、基数、语义与示例**幂等 upsert** 到该表：
 
 ```python
 def seed_predicate_definitions() -> int:
-    """把 ontology.py 的硬编码谓词预置到 predicate_definitions 表(一阶,order=1)。幂等。返回 upsert 数。"""
-    cat_map = {}
-    for p in STRUCTURAL_PREDICATES: cat_map[p] = "structural"
-    for p in CAUSAL_PREDICATES:     cat_map[p] = "causal"
-    for p in DIAGNOSTIC_PREDICATES: cat_map[p] = "diagnostic"
-    for p in STATE_PREDICATES:      cat_map[p] = "state"
+    """把 ontology.PREDICATE_DICTIONARY 预置到 predicate_definitions 表(一阶,order=1)。幂等。返回 upsert 数。"""
     n = 0
     with session_scope() as conn:
-        for pred, cat in cat_map.items():
+        for pred, d in PREDICATE_DICTIONARY.items():
             card = PREDICATE_CARDINALITY.get(pred, "multi")
             r = conn.execute(text("""
-                INSERT INTO predicate_definitions (predicate, category, prop_order, cardinality)
-                VALUES (:p, :c, 1, :card)
-                ON CONFLICT (predicate) DO UPDATE SET category=:c, cardinality=:card
-            """), {"p": pred, "c": cat, "card": card})
+                INSERT INTO predicate_definitions (predicate, category, prop_order, cardinality, description, example)
+                VALUES (:p, :c, 1, :card, :desc, :ex)
+                ON CONFLICT (predicate) DO UPDATE
+                SET category=:c, cardinality=:card, description=:desc, example=:ex
+            """), {"p": pred, "c": d.category, "card": card, "desc": d.meaning, "ex": d.example})
             n += r.rowcount or 0
     return n
 ```
+
+`PREDICATE_DICTIONARY` 的每个条目是 `PredicateDef`（自带 `category` / `meaning` / `example`），因此 seed 一次就能把本体语义全部带入 DB。
 
 注意：seed 只预置 **`prop_order=1`** 的一阶谓词。`order=2` 的高阶谓词（`failure_mode`、`behavior_pattern`、`personality_trait` 等）需要管理员手动 INSERT 或后续迁移脚本补入。这是有意为之——高阶谓词代表"系统想抽象出什么样的结论"，属于业务语义决策，不应与抽取本体自动绑定。
 
 ## 13.4 generate_higher_order 流程
 
-`higher_order.py:29-134` 的 `generate_higher_order(entity_id, *, new_fact_id=None)` 是整个机制的核心。它接受一个实体 ID（可选传入触发本次归纳的新 `fact_id`），返回 `{"synthesized": n, ...}` 或带 `skipped` 原因。
+`higher_order.py` 的 `generate_higher_order(entity_id, *, new_fact_id=None)` 是整个机制的核心。它接受一个实体 ID（可选传入触发本次归纳的新 `fact_id`），返回 `{"synthesized": n, ...}` 或带 `skipped` 原因。
 
 ### 流程图
 
@@ -146,7 +144,7 @@ flowchart TD
     I --> J["LLM synthesis<br/>HIGHER_ORDER_SYNTHESIZE"]
     J --> K{解析 updates?}
     K -- 空/异常 --> S7["skip: no updates / LLM error"]
-    K -- 有 updates --> L["遍历 updates:<br/>create = INSERT 新高阶 fact<br/>update = 旧 fact recorded_to=now + INSERT 新版本"]
+    K -- 有 updates --> L["遍历 updates:<br/>create = INSERT 新 candidate fact<br/>update = 记录 supersedes_fact_id + INSERT 新 candidate<br/>(旧 fact 审批通过后才软关)"]
     L --> M{n > 0?}
     M -- yes --> N["emit_lifecycle<br/>higher_order_generated"]
     N --> O([return synthesized=n])
@@ -205,7 +203,7 @@ if len(first_order) < cfg.higher_order.min_evidence_count:      # 默认 2
 
 ### 13.4.4 LLM synthesis
 
-通过所有门后，构造 `material` JSON（实体信息 + evidence + 已有高阶值 + `order=2` 谓词定义）调用 `HIGHER_ORDER_SYNTHESIZE` prompt（`prompts.py:633-663`）。Prompt 核心规则：
+通过所有门后，构造 `material` JSON（实体信息 + evidence + 已有高阶值 + `order=2` 谓词定义）调用 `HIGHER_ORDER_SYNTHESIZE` prompt（`prompts.py`）。Prompt 核心规则：
 
 - **只从 evidence 归纳**——不编造、不引入 evidence 没有的信息。
 - **用 `order=2` 谓词**——`behavior_pattern` / `failure_mode` / `personality_trait` 等。
@@ -363,7 +361,7 @@ if subj_ids:
                      "confidence": r[5], "subject_name": r[6], "valid_from": r[7]} for r in horows]
 ```
 
-返回的 `StratifiedPack.layers` 结构（`pipeline.py:544`）：
+返回的 `StratifiedPack.layers` 结构（`_assemble_pack` 收尾）：
 
 ```python
 "layers": {"events": events, "facts": facts_out, "beliefs": beliefs, "higher_order": higher_order}
@@ -392,7 +390,7 @@ Higher-Order 默认**禁用**(`HigherOrderCfg.enabled=False`)。质量保护不�
 
 ### 13.8.1 管理接口 `POST /v1/admin/higher-order`
 
-`routes/operations.py` 的 higher-order admin 端点（`operations.py:69-82`），挂载于 `app.include_router(operations_router)`，**无鉴权**（actor 固定 `"api"`），承担两种职责：
+`routes/operations.py` 的 higher-order admin 端点（`admin_higher_order` 路由），挂载于 `app.include_router(operations_router)`，**无鉴权**（actor 固定 `"api"`），承担两种职责：
 
 ```python
 @router.post("/v1/admin/higher-order")
@@ -418,19 +416,19 @@ def admin_higher_order(body: dict):
 
 ```bash
 # 初始化谓词本体
-curl -X POST http://localhost:8000/v1/admin/higher-order \
+curl -X POST http://localhost:8002/v1/admin/higher-order \
   -d '{"scope":"default","seed_predicates":true}'
 # {"seeded":36}
 
 # 手动触发某实体高阶归纳
-curl -X POST http://localhost:8000/v1/admin/higher-order \
+curl -X POST http://localhost:8002/v1/admin/higher-order \
   -d '{"scope":"default","entity_id":"<uuid>"}'
 # {"synthesized":1,"entity_id":"...","entity_name":"device_X"}
 ```
 
 ### 13.8.2 查询接口 `GET /v1/higher-order`
 
-`routes/operations.py` 的 higher-order 查询端点（`operations.py:85-91`），同样无鉴权，委托 `list_higher_order_facts`（`higher_order.py`）：
+`routes/operations.py` 的 higher-order 查询端点（`higher_order_list` 路由），同样无鉴权，委托 `list_higher_order_facts`（`higher_order.py`）：
 
 ```python
 @router.get("/v1/higher-order")
@@ -446,7 +444,7 @@ def higher_order_list(
 
 ### 13.8.3 MCP 工具 `higher_order_generate`
 
-`mcp_server.py` 的 higher-order MCP 工具（`mcp_server.py:710-721`）：
+`mcp_server.py` 的 higher-order MCP 工具：
 
 ```python
 @mcp.tool()
@@ -468,7 +466,7 @@ MCP 工具语义与 admin API 的 `entity_id` 路径一致，多了一步 `_reso
 
 ## 13.9 配置
 
-`HigherOrderCfg`（`config.py:240-247`）：
+`HigherOrderCfg`（`config.py`）：
 
 ```python
 class HigherOrderCfg(BaseModel):

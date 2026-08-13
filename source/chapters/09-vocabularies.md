@@ -124,11 +124,11 @@ def coerce_value(conn, scope, vocab_name, raw):
 
 ## 预置诊断词表
 
-`maintenance.py` 的 `seed_diagnosis_vocab` 为新 scope 预置诊断谓词词表：
+`maintenance.py` 的 `seed_diagnosis_vocab` 为新 scope 预置诊断谓词词表。**无需手工执行**：第一个 event 写入新 scope 时，`infra/core.py` 的 `_auto_provision_scope` 会自动完成层级注册 + closed `predicate` 词表预填（见第 3 章）；`seed_diagnosis_vocab(scope)` 作为编程入口供脚本/迁移场景手动补种：
 
-```bash
-# 新 scope 初始化时执行一次
-uv run python -m cortex.interfaces.cli maintenance --action seed-vocab --scope equip:XXX-v1
+```python
+from cortex.memory.maintenance import seed_diagnosis_vocab
+seed_diagnosis_vocab("equip:XXX-v1")
 ```
 
 预置后，该 scope 的抽取管线会自动约束谓词为 36 个预定义值（8 结构 + 5 因果 + 22 诊断 + 1 状态）。
@@ -222,7 +222,7 @@ CREATE TABLE synonyms (
 所有 term 和 alias 都经 `normalize_term()` 归一化（小写、去空白、全角转半角）。创建/更新时做**重叠检测**——如果新加入的 aliases 和已有同义词组的成员（term 或任一 alias）重叠，报错拒绝，防止同一个词出现在两个不同的同义词组里导致歧义。
 
 ```python
-def _assert_no_active_overlap(conn, *, scope, members, exclude_synonym_id=None):
+def _assert_no_active_overlap(conn, *, scope, members, exclude_id=None):
     """检查 members 中任意一个是否已在其他同义词组里"""
     # 对每个 member 做归一化,然后查 synonyms 表
     # 有重叠则 raise ValueError
@@ -235,12 +235,12 @@ def _assert_no_active_overlap(conn, *, scope, members, exclude_synonym_id=None):
 ```python
 def expanded_terms(conn, *, scope, view, query):
     """返回 (expanded_terms_list, matched_groups)
-    expanded_terms = 原 query term + 所有命中同义词组的 aliases
-    matched_groups = 命中了哪些同义词组（用于调试/解释）
+    expanded_terms = 所有命中同义词组的 term + aliases（去重排序，不含原 query 词）
+    matched_groups = 命中了哪些同义词组（含 matched_members，用于调试/解释）
     """
 ```
 
-匹配方式是 `_query_contains`——子串双向匹配（query 包含 term 或 term 包含 query 都算命中），不是精确相等。这让"压力不稳"能命中"压力波动"这个同义词组。
+匹配方式是 `_query_contains`——单向包含判定：同义词组的成员（term 或 alias）出现在 query 中才算命中，不是精确相等，也不是双向子串。CJK 成员用子串包含（`member in query`），ASCII 成员用词边界正则避免误伤子串。例如 query “压力波动加剧”包含成员“压力波动”，即可命中对应同义词组。
 
 ### API 与 MCP
 

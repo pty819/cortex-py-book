@@ -184,7 +184,7 @@ cortex 自身**不实现访问控制**——认证与授权由上游应用(承�
 | `/v1/cases/{episode_id}` | PATCH | 更新 case 字段 | `title`, `phase`, `status`, `root_cause`, `resolution`, `equipment`, `lot`, `recipe`, `metadata` |
 | `/v1/cases/{episode_id}/events` | POST | 把已有 event 挂到 case 上 | `{event_id}` |
 | `/v1/cases/{episode_id}/workspace-graph` | GET | 返回 case 工作区图谱(facts/beliefs/events/关联证据),供前端 workspace 渲染 | path: `episode_id` |
-| `/v1/cases/{episode_id}/promote` | POST | 把 case 推导出的 fact 提升为正式断言(reviewer 取自认证 principal) | `fact_ids[]`, `note` |
+| `/v1/cases/{episode_id}/promote` | POST | 把 case 推导出的 fact 提升为正式断言（`reviewer` 为可选 body 字段，缺省 `api`） | `fact_ids[]`, `reviewer`, `note` |
 | `/v1/cases/search` | POST | 按 query 搜索 cases | `scope`, `query` |
 
 `phase ∈ observation|scoping|investigation|correlation|root_cause|remediation|regression`;`status ∈ open|investigating|resolved|closed`。
@@ -229,10 +229,10 @@ cortex 自身**不实现访问控制**——认证与授权由上游应用(承�
 
 | Endpoint | Method | Description | 关键字段 |
 |----------|--------|-------------|---------|
-| `/v1/forward-reasoning/query` | POST | 执行正向推理 | `scope`, `playbook_id`(可选), `symptoms[]`, `observations{}`, `context{}`, `applicability_mode=strict\|allow_unknown` |
+| `/v1/forward-reasoning/query` | POST | 执行正向推理 | `scope`, `symptoms[]`, `observations{}`, `context{}`, `view=local\|holistic\|descend`, `applicability_mode=strict\|allow_unknown`, `playbook_ids[]`(可选), `case_id`, `persist_run=true` |
 | `/v1/forward-reasoning/runs/{run_id}` | GET | 查询推理 run 结果（完整 trace + next_actions + recommendations） | path: `run_id` |
 
-若未指定 `playbook_id`，自动选择所有 `active` 状态且适用性匹配的 playbooks 并行推理，合并结果。返回 `{run_id, playbook_id, version, trace[], next_actions[], recommendations[], unresolved_inputs[]}`。
+若未指定 `playbook_ids`，自动选择所有 `active` 状态且适用性匹配的 playbooks 并行推理，合并结果。`persist_run=false` 时不落 `forward_reasoning_runs` 记录（纯试探）。返回 `{run_id, playbook_id, version, trace[], next_actions[], recommendations[], unresolved_inputs[]}`。
 
 ### 9.5 Sensor Resolve（传感器解析）
 
@@ -305,7 +305,7 @@ cortex 自身**不实现访问控制**——认证与授权由上游应用(承�
 | `/v1/admin/retrieval/effective` | GET | 配置值 + 依赖就绪状态 + 预测生效态(每通道 configured/effective enabled、weight、top_k) | `profile` |
 | `/v1/admin/retrieval/preview` | POST | 无副作用 Active-vs-Draft A/B 预览(不递增 retrieval_count、不写缓存) | body:`scope`/`query`/`variants[]` |
 | `/v1/admin/evolution-candidates` | GET | 列出 Dreaming/Higher-Order 产出的演化候选(facts/谓词定义等,待人工审批) | `scope`, `status=pending`, `limit` |
-| `/v1/admin/evolution-candidates/{candidate_id}/review` | POST | 审批单个候选(`approve`/`reject`,reviewer 取自认证 principal) | `decision=approve|reject`, `note` |
+| `/v1/admin/evolution-candidates/{candidate_id}/review` | POST | 审批单个候选（`approve`/`reject`，`reviewer` 为可选 body 字段，缺省 `api`） | `decision=approve|reject`, `reviewer`, `note` |
 
 > `POST /v1/admin/dreaming` 与 `POST /v1/admin/higher-order` 见第6节(记忆自演化)。
 
@@ -394,7 +394,7 @@ class RetrievalPreviewRequest(BaseModel):
 | `ExperienceRequest` | 单条写入 | `scope`, `modality`, `content`, `context`, `observed_actor`, `subject`, `directives`, `idempotency_key` |
 | `BulkItem` | 批量写入的单项 | 同上,无 `scope` |
 | `BulkExperienceRequest` | 批量写入 | `scope`, `items[]`, `ordering`, `directives` |
-| `RecallRequest` | 检索请求 | `scope`, `query`, `view`, `top_k`, `as_of`, `include_superseded`, `recorded_during`, `budgets`, `citation_mode`, `exclude_content`, `temporal` |
+| `RecallRequest` | 检索请求 | `scope`, `query`, `view`, `include[]`, `top_k`, `as_of`, `include_superseded`, `recorded_during`, `budgets`, `citation_mode`, `exclude_content`, `temporal`, `retrieval_profile`, `retrieval_overrides`, `rerank_overrides` |
 | `DiagnosisRecallRequest` | 诊断召回请求 | `scope`, `query`, `asset`, `chamber`, `recipe`, `lot`, `time_from`, `time_to`, `symptoms[]`, `actions_taken[]`, `goal`, `applicability_mode`, `case_id`, `top_k` |
 | `AnswerRequest` | 问答请求 | `scope`, `query`, `use_pack_id` |
 | `ForgetRequest` | 遗忘请求 | `scope`, `layers`, `predicate`, `about_entity`, `cascade`, `confirm_all` |
@@ -409,14 +409,15 @@ class RetrievalPreviewRequest(BaseModel):
 | `CaseCreateRequest` | 创建 case | `scope`, `title`, `case_id`, `equipment`, `lot`, `recipe`, `metadata` |
 | `CaseUpdateRequest` | 更新 case | `title`, `phase`, `status`, `root_cause`, `resolution`, `equipment`, `lot`, `recipe`, `metadata` |
 | `CaseAddEventRequest` | case 加 event | `event_id` |
-| `CasePromotionRequest` | case 推导断言提升 | `fact_ids[]`, `note` |
+| `CasePromotionRequest` | case 推导断言提升 | `fact_ids[]`, `reviewer`, `note` |
 | `CaseSearchRequest` | 搜索 case | `scope`, `query` |
 | `VocabValueIn` | 词表单项 | `canonical`, `aliases[]` |
 | `VocabCreateRequest` | 创建词表 | `scope`, `name`, `kind`, `values[]` |
 | `VocabReplaceRequest` | 替换词表 | `scope`, `kind`, `values[]` |
 | `TemporalPhraseRequest` | 时间短语 | `name`, `expression`, `anchor` |
 | `MaintenanceRequest` | 维护操作 | `action`, `scope`, `older_than_days` |
-| `EvolutionReviewRequest` | 演化候选审批 | `decision=approve|reject`, `note` |
+| `EvolutionReviewRequest` | 演化候选审批 | `decision=approve|reject`, `reviewer`, `note` |
+| `ForwardReasoningRequest` | 正向推理 | `scope`, `symptoms[]`, `observations{}`, `context{}`, `view`, `applicability_mode`, `playbook_ids[]`, `case_id`, `persist_run` |
 | `EntityBatchRequest` | 批量实体入库 | `scope`, `entities[]{name, type, description}` |
 | `FactBatchRequest` | 批量事实入库 | `scope`, `facts[]{subject_id, predicate, object_entity_id, confidence, evidence_span}` |
 | `EntityCreateRequest` | 创建实体 | `scope`, `canonical_name`, `entity_type`, `description`, `identity_context`, `note` |

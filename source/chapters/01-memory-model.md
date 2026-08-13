@@ -56,14 +56,23 @@ CREATE TABLE events (
     -- 双时态 (Events 只有 2 字段)
     observed_at       TIMESTAMPTZ NOT NULL,
     recorded_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    directives        JSONB,
     
     -- 幂等
     idempotency_key   TEXT NOT NULL,
+    excluded_from_recall BOOLEAN NOT NULL DEFAULT false, -- 软剪枝/甲基化标记
+    
+    -- 抽取状态与诊断
+    embed_status      TEXT,
+    extraction_diagnostics JSONB NOT NULL DEFAULT '[]',
+    case_id           TEXT,
     
     -- 自演化信号
     access_count      INT NOT NULL DEFAULT 0,        -- 召回计数(recall 命中时 +1;Feedback 显式反馈不再写此列)
+    retrieval_count   INT NOT NULL DEFAULT 0,        -- 检索命中计数
     feedback_processed BOOLEAN NOT NULL DEFAULT false, -- 反馈是否已被处理入权重
     last_recalled_at  TIMESTAMPTZ,                    -- 最近一次召回时间
+    methylated_at     TIMESTAMPTZ,                    -- 甲基化标记时间
     
     -- 修订约束
     UNIQUE (scope, idempotency_key)
@@ -201,17 +210,29 @@ CREATE TABLE facts (
     recorded_to      TIMESTAMPTZ,
     
     -- 语义字段
-    confidence       FLOAT NOT NULL DEFAULT 0.5,
+    confidence       FLOAT NOT NULL DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
     polarity         TEXT NOT NULL DEFAULT 'positive',  -- positive | negative
     assertion_status TEXT NOT NULL DEFAULT 'observed',  -- observed|hypothesized|confirmed|ruled_out|rejected
     evidence_span    TEXT,
+    operating_regime JSONB NOT NULL DEFAULT '{}',       -- 工况上下文(参与 belief 聚合分组)
+    case_id          TEXT,                              -- 关联诊断案例
+    knowledge_tier   TEXT NOT NULL DEFAULT 'workspace', -- workspace|verified|candidate
     supports         UUID[] NOT NULL DEFAULT '{}',      -- → event_id
+    supersedes_fact_id UUID REFERENCES facts(fact_id),  -- 版本化超替指针
+    extracted_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     extraction_model TEXT,
     
-    -- 自演化 / 高阶事实
-    salience                 FLOAT NOT NULL DEFAULT 1.0 CHECK (salience BETWEEN 0 AND 2),  -- 显著性权重
+    -- 自演化信号(独立信号不得混用)
+    salience                 FLOAT NOT NULL DEFAULT 1.0 CHECK (salience >= 0 AND salience <= 2),  -- 显著性权重
     positive_feedback_count  INT NOT NULL DEFAULT 0,   -- 显式正向反馈数
     negative_feedback_count  INT NOT NULL DEFAULT 0,   -- 显式负向反馈数
+    retrieval_usefulness     FLOAT NOT NULL DEFAULT 0 CHECK (retrieval_usefulness >= -1 AND retrieval_usefulness <= 1),  -- 显式检索价值
+    evidence_quality         FLOAT CHECK (evidence_quality IS NULL OR (evidence_quality >= 0 AND evidence_quality <= 1)),
+    diagnostic_correctness   FLOAT,
+    population_prevalence    FLOAT,
+    retrieval_count          BIGINT NOT NULL DEFAULT 0, -- 使用频率
+    
+    -- 高阶事实
     is_higher_order          BOOLEAN NOT NULL DEFAULT false,  -- 是否为高阶事实(LLM 合成结论)
     higher_order_reasoning   TEXT,                      -- 高阶事实的推理过程
     evidence_fact_ids        UUID[] NOT NULL DEFAULT '{}',  -- → 支撑此高阶事实的一阶 fact_id
@@ -238,11 +259,13 @@ CREATE TABLE facts (
 | `ruled_out` | 被排除了 | 对立谓词自动 |
 | `rejected` | 被驳回 | 明确否定 |
 
-**自动规则**（`_assertion_semantics` 函数）：
-- 对立谓词（`ruled_out`）→ 自动 `negative` + `ruled_out`
-- 因果谓词 + 无证据 → `hypothesized`
-- 因果谓词 + 证据支撑 + 来源可信 → `confirmed`
-- 非因果谓词 → 保留 LLM 指定的值
+**自动规则**（`semantics.py` 的 `assertion_semantics` 函数）：
+- 对立谓词（`OPPOSING_PREDICATES = {ruled_out}`）→ 自动 `negative` + `ruled_out`
+- 关系排除谓词（`RELATIONAL_EXCLUSION_PREDICATES = {no_correlation, contradicts}`）→ `positive` + LLM 指定值（默认 `observed`）
+- 因果谓词 + 负极性或 LLM 请求 `ruled_out`/`rejected` → `ruled_out`
+- 因果谓词 + LLM 请求 `confirmed` + 有 evidence_span 且（来源可信或证据可在原文中定位）→ `confirmed`
+- 因果谓词 + 其他情况 → `hypothesized`
+- 非因果谓词 → 保留 LLM 指定的值（默认 `observed`）
 
 ### 谓词本体（Ontology）
 
@@ -309,7 +332,7 @@ CREATE TABLE beliefs (
     about_entity_id UUID NOT NULL REFERENCES entities(entity_id),
     stance         TEXT NOT NULL,  -- supports|likely_true|uncertain|likely_false|contradicts
     claim          TEXT NOT NULL,
-    confidence     FLOAT NOT NULL,
+    confidence     FLOAT NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
     confidence_interval JSONB,       -- [lower, upper]
     supports       UUID[] NOT NULL DEFAULT '{}',  -- → fact_id / event_id
     
@@ -318,7 +341,8 @@ CREATE TABLE beliefs (
     valid_to       TIMESTAMPTZ,
     recorded_from  TIMESTAMPTZ NOT NULL DEFAULT now(),
     recorded_to    TIMESTAMPTZ,
-    last_revised_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    last_revised_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    operating_regime JSONB NOT NULL DEFAULT '{}'   -- 工况上下文(与 facts 同字段对齐)
 );
 ```
 

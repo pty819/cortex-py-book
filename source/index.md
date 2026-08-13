@@ -69,6 +69,7 @@ chapters/24-config-and-frontend
 :caption: 对比篇
 
 chapters/25-competitive-analysis
+chapters/26-tech-selection
 ```
 
 ## 项目概览
@@ -104,7 +105,7 @@ graph TB
     
     subgraph 存储层
         H[(PostgreSQL)] --> I[pgvector]
-        H --> J[ltree]
+        H --> J[pg_textsearch]
         H --> K[pg_trgm]
     end
     

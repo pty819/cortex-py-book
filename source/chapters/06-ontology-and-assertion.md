@@ -133,7 +133,7 @@ graph LR
 | `no_correlation` | A与B无相关性（排除项） | 水温波动 → 刻蚀速率漂移 |
 | `contradicts` | A（证据）反驳了B（假设） | MFC-1校准合格 → 假设MFC校准漂移 |
 | `supports` | A（证据）支持B（假设/结论） | 压力历史数据 → 密封圈老化假设 |
-| `confirms`/`confirmed_by` | A被B确认 | MFC-1是根因 → 参考案例-007 |
+| `confirmed_by` | A（结论）被B（证据/案例）确认 | MFC-1是根因 → 参考案例-007 |
 | `refines_to` | A（宽泛假设）细化为B（更具体的假设） | 气体系统问题 → MFC-1校准漂移 |
 | `alternative_to` | A和B是互斥的替代假设 | MFC校准漂移 vs 密封圈老化 |
 | `detected_by` | A（征兆）被B（传感器）检测到 | 压力波动 → P-02 |
@@ -342,18 +342,23 @@ CREATE TABLE IF NOT EXISTS cortex.predicate_definitions (
 
 ```python
 def seed_predicate_definitions() -> int:
-    """把 ontology.py 的硬编码谓词预置到 predicate_definitions 表(一阶,order=1)。幂等。返回 upsert 数。"""
-    cat_map = {}
-    for p in STRUCTURAL_PREDICATES:    cat_map[p] = "structural"
-    for p in CAUSAL_PREDICATES:        cat_map[p] = "causal"
-    for p in DIAGNOSTIC_PREDICATES:    cat_map[p] = "diagnostic"
-    for p in STATE_PREDICATES:         cat_map[p] = "state"
-    # ...按 PREDICATE_CARDINALITY 写入 cardinality,ON CONFLICT DO UPDATE
+    """把 ontology.PREDICATE_DICTIONARY 预置到 predicate_definitions 表(一阶,order=1)。幂等。返回 upsert 数。"""
+    with session_scope() as conn:
+        for pred, d in PREDICATE_DICTIONARY.items():
+            card = PREDICATE_CARDINALITY.get(pred, "multi")
+            conn.execute(text("""
+                INSERT INTO predicate_definitions (predicate, category, prop_order, cardinality, description, example)
+                VALUES (:p, :c, 1, :card, :desc, :ex)
+                ON CONFLICT (predicate) DO UPDATE
+                SET category=:c, cardinality=:card, description=:desc, example=:ex
+            """), {"p": pred, "c": d.category, "card": card, "desc": d.meaning, "ex": d.example})
 ```
+
+实现直接遍历 `PREDICATE_DICTIONARY.items()` 取每个 `PredicateDef` 的 `category`，连同 `meaning`/`example` 一起写入 6 列，`ON CONFLICT (predicate) DO UPDATE` 保证幂等。
 
 ### higher_order 类别与高阶归纳
 
-`category='higher_order'` 是 DB 表新引入的类别，**在 `ontology.py` 中没有对应谓词集**。这类谓词必须同时满足 `prop_order=2`，由第 11 章的 **Higher-Order 归纳** 特征消费：
+`category='higher_order'` 是 DB 表新引入的类别，**在 `ontology.py` 中没有对应谓词集**。这类谓词必须同时满足 `prop_order=2`，由第 13 章的 **Higher-Order 归纳** 特征消费：
 
 ```python
 # higher_order.py

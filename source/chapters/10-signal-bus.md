@@ -13,8 +13,8 @@ Feedback(反馈回灌)、Dreaming(离线巩固)、Higher-Order(高阶归纳)这�
 
 - **recall** 在每次命中时向 `facts.retrieval_count`(+ `events` 冗余计数)写入隐式正反馈;
 - **Feedback** 写 `facts.salience`(软降权)、`facts.retrieval_usefulness`(显式反馈值)与两个计数列;
-- **Dreaming** 读 `access_count` 与 `salience`,决定哪些簇值得巩固、哪些 evidence 已冷;
-- **Higher-Order** 读 `events.access_count`,只有累计被召回过的事实才会被归纳为高阶结论。
+- **Dreaming** 读 `facts.retrieval_count` 与 `salience`(`_load_facts_detail`),决定哪些簇值得巩固、哪些 evidence 已冷;
+- **Higher-Order** 读 `facts.evidence_quality`(`memory/higher_order.py` 按 `evidence_quality DESC` 排序取最近 N 条一阶证据,以 `min_evidence_count` 门控)——使用热度(retrieval_count/access_count)**不参与**认知晋升,只有证据质量足够的事实才会被归纳为高阶结论。
 
 如果把这组列拆掉,三个特性就会退化为彼此隔离的孤岛——这正是 MindMemOS 原型的设计缺陷:它的反馈通道、巩固通道、归纳通道各自维护私有的热度统计,互相看不见对方的信号,导致"用户反复召回的记忆"和"系统决定巩固的记忆"之间出现系统性偏差。cortex-py 把信号总线下沉到 schema 层,让所有特性读写同一份物理状态,从而把记忆从静态存储变成一个自调整系统。
 
@@ -36,7 +36,7 @@ graph LR
 
 ## 2. 信号字段
 
-信号总线的物理定义集中在 `schema.sql` 第 821–838 行的"记忆自演化"段落。`events.access_count` 是建表时就有的原生列(`schema.sql:26`),其余列都是后续 `ALTER TABLE ADD COLUMN IF NOT EXISTS` 增量加上去的,因此老库可以平滑升级。
+信号总线的物理定义集中在 `schema.sql` 的"记忆自演化"段落(信号总线 + Feedback + Dreaming + Higher-Order 一节)。`events.access_count` 是建表时就有的原生列,其余列都是后续 `ALTER TABLE ADD COLUMN IF NOT EXISTS` 增量加上去的,因此老库可以平滑升级。
 
 **`events` 表上的隐式信号:**
 
@@ -59,7 +59,7 @@ graph LR
 
 `salience` 的取值范围被 `CHECK` 约束钉死在 `[0, 2]`:`1.0` 是中性起点,正反馈向 `2.0` 上探,负反馈向 `0.1`(配置项 `salience_floor`)下探但不归零——保留可恢复性,避免一次误判永久抹掉一条记忆。两个 `_count` 列在 `feedback_signals` 表里其实也能 `COUNT` 出来,但这里冗余存储是为了让召回热路径上的 salience 重加权能用一次 `SELECT` 取齐所有信号,不必 join 反馈表。
 
-完整的 `ALTER TABLE` 语句如下(`schema.sql:821-838`):
+完整的 `ALTER TABLE` 语句如下(`schema.sql` 的"记忆自演化"段落):
 
 ```sql
 -- 信号总线:facts 软降权(salience)+ 反馈计数(冗余加速查询)
@@ -71,7 +71,18 @@ ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS negative_feedback_count INT NO
 -- 信号总线:events 隐式反馈幂等标记 + 最近被召回时间
 ALTER TABLE cortex.events ADD COLUMN IF NOT EXISTS feedback_processed BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE cortex.events ADD COLUMN IF NOT EXISTS last_recalled_at TIMESTAMPTZ;
+ALTER TABLE cortex.events ADD COLUMN IF NOT EXISTS retrieval_count INT NOT NULL DEFAULT 0;
+
+-- 独立信号:使用频率、显式检索价值、证据质量、诊断正确性和群体发生率不得混为一谈。
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS retrieval_usefulness FLOAT NOT NULL DEFAULT 0
+    CHECK (retrieval_usefulness >= -1 AND retrieval_usefulness <= 1);
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS evidence_quality FLOAT;
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS diagnostic_correctness FLOAT;
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS population_prevalence FLOAT;
+ALTER TABLE cortex.facts ADD COLUMN IF NOT EXISTS retrieval_count BIGINT NOT NULL DEFAULT 0;
 ```
+
+`evidence_quality` / `diagnostic_correctness` / `population_prevalence` 三列还各配了一个 `DO $$ ... EXCEPTION WHEN duplicate_object` 包裹的 `CHECK` 约束(`[0, 1]` 区间,允许 NULL),幂等地防止重复建约束。
 
 注意 `IF NOT EXISTS`:这是信号总线能向后兼容的关键。老库迁移时这几条语句幂等执行,不会破坏既有数据。
 
@@ -176,7 +187,7 @@ sequenceDiagram
 
 ## 5. 缓存失效
 
-召回结果会被缓存到 `recall_packs` 表(默认 60 秒 TTL,详见第14章检索系统)。一旦 Feedback 或 Dreaming 修改了 `salience` / `access_count` / `excluded_from_recall`,这些缓存就变成了脏数据——如果不失效,用户下次召回会拿到基于旧信号的排序。
+召回结果会被缓存到 `recall_packs` 表(默认 60 秒 TTL,详见第14章检索系统)。一旦 Feedback 或 Dreaming 修改了 `salience` / `retrieval_usefulness` / `excluded_from_recall`,这些缓存就变成了脏数据——如果不失效,用户下次召回会拿到基于旧信号的排序。
 
 Feedback 的失效逻辑在 `src/cortex/memory/feedback.py`(信号写入后):
 
@@ -199,7 +210,7 @@ conn.execute(text("DELETE FROM recall_packs WHERE scope=:s"), {"s": scope})
 
 ## 6. 热路径索引
 
-信号总线引入了两种新的查询模式,需要专门的局部索引支撑。它们都建在 `schema.sql:905-911`:
+信号总线引入了两种新的查询模式,需要专门的局部索引支撑。它们都定义在 `schema.sql` 的"记忆自演化热路径索引"段落:
 
 ```sql
 -- ── 记忆自演化热路径索引(评审 H6)──────────────────────────────────────────────
@@ -260,10 +271,10 @@ class AdvancedRetrievalCfg(BaseModel):
 
 关键设计决策回顾:
 
-1. **隐式信号优先于显式信号。** recall 每次命中都递增 `access_count`,无需用户主动反馈——这弥补了 MindMemOS 只有显式反馈通道的缺陷。
+1. **隐式信号优先于显式信号。** recall 每次命中都递增 `facts.retrieval_count`(events 冗余同步),无需用户主动反馈——这弥补了 MindMemOS 只有显式反馈通道的缺陷。
 2. **recall 不是纯读操作。** 写放大换来的是系统性自调整能力,异常被吞掉以保证读优先。
 3. **salience 软降权而非硬删除。** `CHECK (0 <= salience <= 2)` + `salience_floor = 0.1` 保证记忆可恢复,不因一次误判永久丢失。
 4. **部分索引限定热子集。** `idx_facts_higher_order` 和 `idx_events_methylation` 用 `WHERE` 谓词把索引体积压到最小,同时精确匹配两种热查询模式。
 5. **缓存按 scope 粗粒度失效。** Feedback 和 Dreaming 都用 `DELETE FROM recall_packs WHERE scope=:s`,宁可多删不可漏删。
 
-信号总线是记忆系统的"神经系统":recall 是感觉输入,access_count 是神经冲动,salience 是突触权重,Feedback 是意识层面的修正,Dreaming 是睡眠期的巩固,Higher-Order 是抽象推理。没有这套共享状态,这些功能各自为政;有了它,记忆才从静态存储变成一个自调整、自演化的系统。后续三章(第 11 章 Feedback、第 12 章 Dreaming、第 13 章 Higher-Order)都建立在本章描述的信号字段与数据流之上。
+信号总线是记忆系统的"神经系统":recall 是感觉输入,retrieval_count 是神经冲动,salience 是突触权重,Feedback 是意识层面的修正,Dreaming 是睡眠期的巩固,Higher-Order 是抽象推理。没有这套共享状态,这些功能各自为政;有了它,记忆才从静态存储变成一个自调整、自演化的系统。后续三章(第 11 章 Feedback、第 12 章 Dreaming、第 13 章 Higher-Order)都建立在本章描述的信号字段与数据流之上。
