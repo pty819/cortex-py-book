@@ -400,13 +400,14 @@ graph TB
 
 ### 23.6.1 参与者与用例总览（功能需求）
 
-cortex-py 的功能需求围绕三条业务主线：**记忆读写**（Agent 的长期记忆）、**根因诊断（RCA）**（诊断工程师的 Case 工作台与 Playbook 推理）、**记忆治理与运维**（反馈、演化审批、遗忘、配置）。
+cortex-py 的功能需求围绕三条业务主线：**记忆读写**（长期记忆的写入与召回）、**根因诊断（RCA）**（Case 工作台与 Playbook 推理）、**记忆治理与运维**（反馈、演化审批、遗忘、配置）。
+
+参与者按**角色**建模，不按接入通道拆分。系统只有两类业务参与者：**诊断工程师**（记忆与诊断全部用例的使用者）与**运维人员**（治理与运维用例的使用者）。诊断工程师可以**经其 Agent**（MCP 通道）使用系统，也可以**直接操作控制平面**（Vue · REST 通道）——两条通道指向同一批用例，Agent 只是工程师的执行代理，不是独立角色。
 
 ```{mermaid}
 graph LR
-    AG["Agent<br/>（Claude Code / 远程 Agent · MCP）"]
-    ENG["诊断工程师<br/>（Vue 控制平面）"]
-    OPS["运维人员<br/>（Vue 控制平面）"]
+    ENG["诊断工程师<br/>（经 Agent · MCP，或直接控制平面 · REST）"]
+    OPS["运维人员<br/>（控制平面 · REST）"]
 
     subgraph SYS["cortex-py 用例（功能需求）"]
         UC1(("写入经验"))
@@ -422,15 +423,15 @@ graph LR
         UC11(("配置热更新 / 队列监控"))
     end
 
-    AG --> UC1
-    AG --> UC2
-    AG --> UC3
-    AG --> UC4
-    AG --> UC10
+    ENG --> UC1
+    ENG --> UC2
+    ENG --> UC3
+    ENG --> UC4
     ENG --> UC5
     ENG --> UC6
     ENG --> UC7
     ENG --> UC8
+    ENG --> UC10
     OPS --> UC9
     OPS --> UC11
     UC4 -.->|include| UC3
@@ -439,16 +440,16 @@ graph LR
 
 | 用例 | 参与者 | 需求要点 |
 |------|--------|---------|
-| UC1 写入经验 | Agent | 幂等 WAL 入库；`?wait=` 同步语义 |
-| UC2 批量导入 / 文档喂入 | Agent | 5 种导入器（jsonl / mem0 / zep / letta / openai）；长文档按标题分块 |
-| UC3 召回记忆 | Agent | 6 通道混合检索 + 融合重排，返回分层证据包（StratifiedPack） |
-| UC4 提问 · 流式回答 | Agent | 强制 think；SSE 分流 reasoning / answer；引用与 pack 可追溯 |
+| UC1 写入经验 | 诊断工程师 | 幂等 WAL 入库；`?wait=` 同步语义 |
+| UC2 批量导入 / 文档喂入 | 诊断工程师 | 5 种导入器（jsonl / mem0 / zep / letta / openai）；长文档按标题分块 |
+| UC3 召回记忆 | 诊断工程师 | 6 通道混合检索 + 融合重排，返回分层证据包（StratifiedPack） |
+| UC4 提问 · 流式回答 | 诊断工程师 | 强制 think；SSE 分流 reasoning / answer；引用与 pack 可追溯 |
 | UC5 管理诊断 Case | 诊断工程师 | open → investigating → resolved → closed 全生命周期；事件挂接 |
 | UC6 Similar Case 检索 | 诊断工程师 | 按设备 / 症状 / 根因特征检索同构历史案例 |
 | UC7 Playbook 正向推理 | 诊断工程师 | 确定性 DAG 遍历，给出下一步检查与结论建议 |
 | UC8 反馈信号 | 诊断工程师 | relevant / irrelevant / wrong / partial；即时影响召回排序 |
 | UC9 演化候选审批 | 运维人员 | Dreaming / Higher-Order 候选 approve / reject |
-| UC10 GDPR 遗忘 | Agent | 两阶段 preview / execute；引用计数真删 |
+| UC10 GDPR 遗忘 | 诊断工程师 | 两阶段 preview / execute；引用计数真删 |
 | UC11 配置热更新 / 队列监控 | 运维人员 | 白名单热更新即时生效；jobs 队列可视化 |
 
 ```{admonition} 用例视图与逻辑视图的分工
@@ -460,7 +461,7 @@ graph LR
 
 ### 23.6.2 场景一：写入记忆（UC1 的实例 · 最核心）
 
-Agent 提交一段经验，系统把它变成可召回的知识。
+诊断工程师（本场景经其 Agent 通道）提交一段经验，系统把它变成可召回的知识。
 
 ```{mermaid}
 sequenceDiagram
@@ -489,7 +490,7 @@ sequenceDiagram
 
 ### 23.6.3 场景二：召回 + 流式回答（UC4 的实例 · 最高频）
 
-Agent 提问，系统召回分层证据并流式生成带推理过程的回答。
+诊断工程师提问，系统召回分层证据并流式生成带推理过程的回答。
 
 ```{mermaid}
 sequenceDiagram
@@ -660,5 +661,5 @@ Kruchten 明确指出：**各视图不正交、不独立**，元素按设计规�
 **进程**：四类进程无共享内存，一切协调经 PostgreSQL（队列 / NOTIFY / 锁），全同步 + 线程池。
 **开发**：五子包单向依赖（唯一 lazy import 例外），Alembic 是 schema 真相源。
 **物理**：同一进程模型支持本地单进程 → 单机多进程 → 局域网分布三种摆放。
-**场景**：用例总览（3 类参与者 × 11 个用例）承载功能需求；写入 / 召回 / 遗忘三条关键路径各配四视图对照表，验证五个投影说的是同一套系统。
+**场景**：用例总览（2 类参与者 × 11 个用例，Agent·MCP 与控制平面·REST 两条等价接入通道）承载功能需求；写入 / 召回 / 遗忘三条关键路径各配四视图对照表，验证五个投影说的是同一套系统。
 ```
