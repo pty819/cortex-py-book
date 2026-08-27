@@ -1,0 +1,998 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第5章 实体链接详解 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第6章 谓词本体与断言语义" href="06-ontology-and-assertion.html" />
+    <link rel="prev" title="第4章 抽取管线" href="04-extraction-pipeline.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第5章 实体链接详解</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#b-over-c">B-over-C 三层策略</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a">A 层: 别名匹配</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id2">精确匹配 + 身份上下文</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#b">B 层: 向量近邻</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id3">身份上下文过滤</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#identity-candidate-compatible">身份敏感匹配 (<code class="docutils literal notranslate"><span class="pre">identity_candidate_compatible</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id4">阈值策略</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#c-llm">C 层: LLM 灰区判定</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#llm-prompt">LLM 判定 Prompt</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#extract-event">三阶段并行:extract_event 的实体链接</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fact">Fact 超替机制</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id5">完整实体链接流程</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id6">关键原则</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第5章 实体链接详解</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/05-entity-linking.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="id1">
+<h1>第5章 实体链接详解<a class="headerlink" href="#id1" title="链接到此标题。"></a></h1>
+<section id="b-over-c">
+<h2>B-over-C 三层策略<a class="headerlink" href="#b-over-c" title="链接到此标题。"></a></h2>
+<p>实体链接是<strong>图谱质量的命门</strong>。Cortex-PY 采用三层策略：</p>
+<pre  class="mermaid">
+        graph TB
+    subgraph &quot;A 层: 别名精确匹配&quot;
+        A1[查 entity_aliases]
+        A2[匹配 identity_context]
+        A3[命中 → 直接返回]
+    end
+    
+    subgraph &quot;B 层: 向量近邻&quot;
+        B1[pgvector 近邻查询]
+        B2[context_key 过滤]
+        B3{身份敏感兼容性}
+        B4{相似度判断}
+        B5[高: 直接合并]
+        B6[中: LLM 判定]
+        B7[低: 创建新实体]
+    end
+    
+    subgraph &quot;C 层: 创建新实体&quot;
+        C1[生成 UUID]
+        C2[计算 embedding]
+        C3[存入 entities + aliases]
+    end
+    
+    A1 --&gt; A2
+    A2 --&gt;|context_key 匹配| A3
+    A2 --&gt;|不匹配| B1
+    A1 --&gt;|未命中| B1
+    B1 --&gt; B2
+    B2 --&gt; B3
+    B3 --&gt;|兼容| B4
+    B3 --&gt;|不兼容| C1
+    B4 --&gt;|&gt; 0.85| B5
+    B4 --&gt;|0.30-0.85| B6
+    B4 --&gt;|&lt; 0.30| C1
+    B6 --&gt;|是同一实体| B5
+    B6 --&gt;|不是| C1
+    </pre></section>
+<section id="a">
+<h2>A 层: 别名匹配<a class="headerlink" href="#a" title="链接到此标题。"></a></h2>
+<section id="id2">
+<h3>精确匹配 + 身份上下文<a class="headerlink" href="#id2" title="链接到此标题。"></a></h3>
+<p>为支持灰区 LLM 裁决的并行化，B-over-C 链接逻辑已拆分为查询阶段（<code class="docutils literal notranslate"><span class="pre">resolve_lookup</span></code>，只读）和写入阶段（<code class="docutils literal notranslate"><span class="pre">resolve_write</span></code>）。<code class="docutils literal notranslate"><span class="pre">extract_event</span></code> 主流程走三阶段并行路径（见本章末尾），<code class="docutils literal notranslate"><span class="pre">resolve_or_create</span></code> 保留为单步兼容包装供 triple 直写路径使用。</p>
+<p><code class="docutils literal notranslate"><span class="pre">resolve_lookup</span></code> 的 A 层逻辑——别名精确命中 + 身份上下文匹配——返回三态之一：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># extraction/entity_resolution.py</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_lookup</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">entity_type</span><span class="p">,</span> <span class="n">description</span><span class="p">,</span> <span class="n">thresholds</span><span class="p">,</span>
+                   <span class="n">identity_context</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">precomputed_emb</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;DB 查询阶段(只读)。返回:</span>
+<span class="sd">      (&quot;resolved&quot;, entity_id) / (&quot;grey&quot;, candidates) / (&quot;new&quot;, None)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">canonical_ctx</span> <span class="o">=</span> <span class="n">identity_context_for_type</span><span class="p">(</span><span class="n">identity_context</span><span class="p">,</span> <span class="n">entity_type</span><span class="p">)</span>
+    <span class="n">ctx_key</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">canonical_ctx</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">))</span>
+
+    <span class="c1"># A 层: 别名精确命中(排除已删除/已合并实体)</span>
+    <span class="n">exact</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        SELECT DISTINCT e.entity_id, e.context_key FROM entities e</span>
+<span class="s2">        LEFT JOIN entity_aliases a ON a.entity_id=e.entity_id</span>
+<span class="s2">        WHERE e.scope=:scope AND e.merged_into IS NULL AND e.deleted_at IS NULL</span>
+<span class="s2">          AND (lower(e.canonical_name)=lower(:name) OR lower(a.alias)=lower(:name))</span>
+<span class="s2">          AND ((CAST(:entity_type AS text) IS NULL AND e.entity_type IS NULL)</span>
+<span class="s2">               OR e.entity_type=:entity_type)</span>
+<span class="s2">        ORDER BY e.entity_id</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">name</span><span class="p">,</span> <span class="s2">&quot;entity_type&quot;</span><span class="p">:</span> <span class="n">entity_type</span><span class="p">})</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+
+    <span class="c1"># 身份上下文匹配</span>
+    <span class="k">if</span> <span class="n">canonical_ctx</span><span class="p">:</span>
+        <span class="n">matches</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">exact</span> <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">context_key</span> <span class="o">==</span> <span class="n">ctx_key</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">matches</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;resolved&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">matches</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">entity_id</span><span class="p">)</span>
+        <span class="c1"># 兼容旧数据:无上下文的单条记录可升级</span>
+        <span class="n">legacy</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">exact</span> <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">context_key</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">matches</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">exact</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">legacy</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;UPDATE entities SET identity_context=CAST(:ctx AS jsonb),</span>
+<span class="s2">                                 context_key=:ck, updated_at=now() WHERE entity_id=:e&quot;&quot;&quot;</span><span class="p">),</span>
+                         <span class="p">{</span><span class="s2">&quot;ctx&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">canonical_ctx</span><span class="p">),</span> <span class="s2">&quot;ck&quot;</span><span class="p">:</span> <span class="n">ctx_key</span><span class="p">,</span> <span class="s2">&quot;e&quot;</span><span class="p">:</span> <span class="n">legacy</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">entity_id</span><span class="p">})</span>
+            <span class="k">return</span> <span class="s2">&quot;resolved&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">legacy</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">entity_id</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">exact</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;resolved&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">exact</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">entity_id</span><span class="p">)</span>
+
+    <span class="c1"># 同名但上下文不同必须保守分离 → 不进向量层</span>
+    <span class="c1"># ... 继续到 B 层向量召回</span>
+</pre></div>
+</div>
+<blockquote>
+<div><p><code class="docutils literal notranslate"><span class="pre">CAST(:t</span> <span class="pre">AS</span> <span class="pre">text)</span> <span class="pre">IS</span> <span class="pre">NULL</span></code> 是 psycopg3 的写法——psycopg3 对参数类型推断更严格，裸 <code class="docutils literal notranslate"><span class="pre">:t</span> <span class="pre">IS</span> <span class="pre">NULL</span></code> 会报 <code class="docutils literal notranslate"><span class="pre">AmbiguousParameter</span></code>。详见<a class="reference internal" href="20-worker-system.html"><span class="doc std std-doc">第20章</span></a>。</p>
+</div></blockquote>
+</section>
+</section>
+<section id="b">
+<h2>B 层: 向量近邻<a class="headerlink" href="#b" title="链接到此标题。"></a></h2>
+<section id="id3">
+<h3>身份上下文过滤<a class="headerlink" href="#id3" title="链接到此标题。"></a></h3>
+<p>向量查询时强制 <code class="docutils literal notranslate"><span class="pre">context_key</span></code> 过滤：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># resolve_lookup 的 B 层(仍在同一函数内,紧接 A 层之后)</span>
+<span class="n">embedding</span> <span class="o">=</span> <span class="n">precomputed_emb</span>
+<span class="k">if</span> <span class="n">embedding</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">embedding</span> <span class="o">=</span> <span class="n">services</span><span class="o">.</span><span class="n">embed_one</span><span class="p">(</span>
+        <span class="n">load_config</span><span class="p">()</span><span class="o">.</span><span class="n">extraction</span><span class="o">.</span><span class="n">embedding_text</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="n">description</span><span class="p">),</span>
+        <span class="n">role</span><span class="o">=</span><span class="s2">&quot;passage&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+<span class="n">cands</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    SELECT entity_id, canonical_name, description, entity_type, context_key,</span>
+<span class="s2">           1-(embedding &lt;=&gt; CAST(:query AS vector)) AS cos</span>
+<span class="s2">    FROM entities WHERE scope=:scope AND merged_into IS NULL AND deleted_at IS NULL AND embedding IS NOT NULL</span>
+<span class="s2">      AND ((CAST(:entity_type AS text) IS NULL AND entity_type IS NULL) OR entity_type=:entity_type)</span>
+<span class="s2">      AND context_key=:context_key</span>
+<span class="s2">    ORDER BY embedding &lt;=&gt; CAST(:query AS vector) LIMIT 5</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">embedding</span><span class="p">),</span> <span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span>
+       <span class="s2">&quot;entity_type&quot;</span><span class="p">:</span> <span class="n">entity_type</span><span class="p">,</span> <span class="s2">&quot;context_key&quot;</span><span class="p">:</span> <span class="n">context_key</span><span class="p">})</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+<span class="c1"># 召回后按身份敏感兼容性二次过滤</span>
+<span class="n">cands</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cands</span> <span class="k">if</span> <span class="n">identity_candidate_compatible</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">c</span><span class="o">.</span><span class="n">canonical_name</span><span class="p">,</span> <span class="n">entity_type</span><span class="p">)]</span>
+</pre></div>
+</div>
+</section>
+<section id="identity-candidate-compatible">
+<h3>身份敏感匹配 (<code class="docutils literal notranslate"><span class="pre">identity_candidate_compatible</span></code>)<a class="headerlink" href="#identity-candidate-compatible" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># extraction/semantics.py</span>
+<span class="n">IDENTITY_SENSITIVE_TYPES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;component&quot;</span><span class="p">,</span> <span class="s2">&quot;sensor&quot;</span><span class="p">,</span> <span class="s2">&quot;controller&quot;</span><span class="p">,</span> <span class="s2">&quot;process_param&quot;</span><span class="p">,</span> <span class="s2">&quot;measurement&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;metrology_result&quot;</span><span class="p">,</span> <span class="s2">&quot;recipe&quot;</span><span class="p">,</span> <span class="s2">&quot;recipe_revision&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">critical_identity_tokens</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;提取关键身份标识符（编号+量纲）&quot;&quot;&quot;</span>
+    <span class="n">normalized</span> <span class="o">=</span> <span class="n">unicodedata</span><span class="o">.</span><span class="n">normalize</span><span class="p">(</span><span class="s2">&quot;NFKC&quot;</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">casefold</span><span class="p">()</span>
+    <span class="n">identifiers</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;[a-z]+(?:[-_][a-z]+)*[-_]?\d+(?:\.\d+)?[a-z%°μ]*&quot;</span><span class="p">,</span> <span class="n">normalized</span><span class="p">)</span>
+    <span class="n">quantities</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;\d+(?:\.\d+)?\s*(?:kw|w|v|a|ma|pa|torr|mtorr|sccm|slm|°?c|nm|um|μm|%|hz|khz|mhz)&quot;</span><span class="p">,</span> <span class="n">normalized</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">identifiers</span> <span class="o">+</span> <span class="n">quantities</span><span class="p">)))</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">identity_candidate_compatible</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">candidate_name</span><span class="p">,</span> <span class="n">entity_type</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;身份敏感类型:关键标识符必须一致&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">canonical_text</span><span class="p">(</span><span class="n">entity_type</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">IDENTITY_SENSITIVE_TYPES</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="n">incoming</span> <span class="o">=</span> <span class="n">critical_identity_tokens</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="n">existing</span> <span class="o">=</span> <span class="n">critical_identity_tokens</span><span class="p">(</span><span class="n">candidate_name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="ow">not</span> <span class="p">(</span><span class="n">incoming</span> <span class="ow">or</span> <span class="n">existing</span><span class="p">)</span> <span class="ow">or</span> <span class="n">incoming</span> <span class="o">==</span> <span class="n">existing</span>
+</pre></div>
+</div>
+</section>
+<section id="id4">
+<h3>阈值策略<a class="headerlink" href="#id4" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>余弦相似度</p></th>
+<th class="head"><p>策略</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>&gt;= 0.85</p></td>
+<td><p>直接合并</p></td>
+<td><p>高置信度，省 LLM</p></td>
+</tr>
+<tr class="row-odd"><td><p>0.30 - 0.85</p></td>
+<td><p>LLM 灰区判定</p></td>
+<td><p>传入候选实体 + 原文上下文</p></td>
+</tr>
+<tr class="row-even"><td><p>&lt; 0.30</p></td>
+<td><p>创建新实体</p></td>
+<td><p>低置信度，保守新建</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="c-llm">
+<h2>C 层: LLM 灰区判定<a class="headerlink" href="#c-llm" title="链接到此标题。"></a></h2>
+<p>当相似度在灰区时，调用 LLM 判定：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># extraction/entity_resolution.py</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">llm_entity_link</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">etype</span><span class="p">,</span> <span class="n">description</span><span class="p">,</span> <span class="n">candidates</span><span class="p">,</span> <span class="n">context_text</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;LLM 灰区判定:决定复用哪个候选还是新建&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">..prompts</span><span class="w"> </span><span class="kn">import</span> <span class="n">ENTITY_LINK_SYSTEM</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span>
+        <span class="s2">&quot;new_entity&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">name</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="n">etype</span><span class="p">,</span> <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="n">description</span><span class="p">},</span>
+        <span class="s2">&quot;candidates&quot;</span><span class="p">:</span> <span class="n">candidates</span><span class="p">,</span>
+        <span class="s2">&quot;context&quot;</span><span class="p">:</span> <span class="n">context_text</span><span class="p">,</span>
+    <span class="p">},</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">services</span><span class="o">.</span><span class="n">llm_chat</span><span class="p">(</span><span class="s2">&quot;extraction&quot;</span><span class="p">,</span> <span class="n">ENTITY_LINK_SYSTEM</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">max_tokens</span><span class="o">=</span><span class="mi">1024</span><span class="p">)</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">services</span><span class="o">.</span><span class="n">parse_llm_json</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;reuse&quot;</span><span class="p">:</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;reuse&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">),</span>
+            <span class="s2">&quot;entity_name&quot;</span><span class="p">:</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entity_name&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;reason&quot;</span><span class="p">:</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;reason&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)}</span>
+</pre></div>
+</div>
+<section id="llm-prompt">
+<h3>LLM 判定 Prompt<a class="headerlink" href="#llm-prompt" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ENTITY_LINK_SYSTEM</span> <span class="o">=</span> <span class="n">PROJECT_CONTEXT</span> <span class="o">+</span> <span class="s2">&quot;&quot;&quot;【本次任务:实体灰区判定 — 新实体是复用已有还是新建?】</span>
+
+<span class="s2">## 判断准则</span>
+<span class="s2">1. **看上下文**:原文上下文里这个实体出现在什么设备/子系统/工艺背景下?</span>
+<span class="s2">2. **看类型**:类型不同(如一个是 sensor 一个是 component)→ 大概率不同实体</span>
+<span class="s2">3. **看描述**:描述里提到的位置/编号/型号是否一致?</span>
+<span class="s2">4. **保守原则**:如果不确定,倾向于新建(宁可重复也不错误合并)</span>
+
+<span class="s2">## 输出格式</span>
+<span class="s2">```json</span>
+<span class="s2">{&quot;reuse&quot;: true/false, &quot;entity_name&quot;: &quot;...&quot;, &quot;reason&quot;: &quot;...&quot;}</span>
+<span class="s2">```&quot;&quot;&quot;</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="extract-event">
+<h2>三阶段并行:extract_event 的实体链接<a class="headerlink" href="#extract-event" title="链接到此标题。"></a></h2>
+<p>上面描述的是单个实体的链接逻辑。在 <code class="docutils literal notranslate"><span class="pre">extract_event</span></code> 主流程中，N 个实体的链接如果逐个串行执行，灰区实体的 LLM 裁决会累积成 <code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">×</span> <span class="pre">1-3s</span></code> 的串行等待。为此，实体链接被组织为<strong>三阶段</strong>，把 LLM 裁决从 session 内串行改为 session 外并行：</p>
+<pre  class="mermaid">
+        flowchart TD
+    subgraph Phase1[&quot;Phase 1: lookup(会话内,只读短事务)&quot;]
+        L1[逐 entity 调 resolve_lookup] --&gt; L2{分类}
+        L2 --&gt;|resolved| L3[直接记下 entity_id]
+        L2 --&gt;|grey| L4[收集待裁决]
+        L2 --&gt;|new| L5[标记待新建]
+    end
+
+    subgraph Phase2[&quot;Phase 2: 灰区 LLM 并行(会话外)&quot;]
+        P1[parallel_map _decide_grey] --&gt; P2[N 个灰区 entity&lt;br/&gt;同时调 llm_entity_link]
+        P2 --&gt; P3[裁决:reuse 或新建]
+    end
+
+    subgraph Phase3[&quot;Phase 3: write(会话内,短事务)&quot;]
+        W1[resolve_write 新建] --&gt; W2[插入 facts]
+        W2 --&gt; W3[超替闭合]
+        W3 --&gt; W4[Belief 聚合]
+    end
+
+    L4 --&gt; P1
+    P3 --&gt; W1
+    L3 --&gt; W2
+    L5 --&gt; W1
+    </pre><div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># extraction/pipeline.py — extract_event Step 3c(简化)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cortex.infra.concurrency</span><span class="w"> </span><span class="kn">import</span> <span class="n">parallel_map</span>
+
+<span class="c1"># Phase 1: 会话内只读,对每个 entity 跑 resolve_lookup,按三态分类</span>
+<span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">ent</span><span class="p">,</span> <span class="n">emb</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">ents_to_resolve</span><span class="p">,</span> <span class="n">ent_embeddings</span><span class="p">):</span>
+        <span class="n">category</span><span class="p">,</span> <span class="n">payload</span> <span class="o">=</span> <span class="n">resolve_lookup</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">category</span> <span class="o">==</span> <span class="s2">&quot;resolved&quot;</span><span class="p">:</span>
+            <span class="n">ent_map</span><span class="p">[</span><span class="n">ent</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span> <span class="o">=</span> <span class="n">payload</span>
+        <span class="k">elif</span> <span class="n">category</span> <span class="o">==</span> <span class="s2">&quot;grey&quot;</span><span class="p">:</span>
+            <span class="n">grey_entities</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">idx</span><span class="p">,</span> <span class="n">ent</span><span class="p">,</span> <span class="n">emb</span><span class="p">,</span> <span class="n">payload</span><span class="p">))</span>  <span class="c1"># payload = candidates</span>
+
+<span class="c1"># Phase 2: 会话外并行,N 个灰区 entity 同时调 LLM</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_decide_grey</span><span class="p">(</span><span class="n">item</span><span class="p">):</span>
+    <span class="n">idx</span><span class="p">,</span> <span class="n">ent</span><span class="p">,</span> <span class="n">emb</span><span class="p">,</span> <span class="n">cands</span> <span class="o">=</span> <span class="n">item</span>
+    <span class="n">decision</span> <span class="o">=</span> <span class="n">llm_entity_link</span><span class="p">(</span><span class="n">ent</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">],</span> <span class="o">...</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">decision</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;reuse&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="n">find_reuse_id</span><span class="p">(</span><span class="n">cands</span><span class="p">,</span> <span class="n">decision</span><span class="p">))</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+<span class="n">results</span> <span class="o">=</span> <span class="n">parallel_map</span><span class="p">(</span><span class="n">_decide_grey</span><span class="p">,</span> <span class="n">grey_entities</span><span class="p">)</span>  <span class="c1"># N 路并发,保序</span>
+
+<span class="c1"># Phase 3: 会话内短事务,resolve_write + facts + belief</span>
+<span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="p">(</span><span class="n">ent</span><span class="p">,</span> <span class="n">emb</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">ents_to_resolve</span><span class="p">,</span> <span class="n">ent_embeddings</span><span class="p">)):</span>
+        <span class="n">reuse_id</span> <span class="o">=</span> <span class="n">grey_decisions</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">reuse_id</span><span class="p">:</span>
+            <span class="n">ent_map</span><span class="p">[</span><span class="n">ent</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span> <span class="o">=</span> <span class="n">reuse_id</span>
+        <span class="k">elif</span> <span class="n">ent</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ent_map</span><span class="p">:</span>
+            <span class="n">ent_map</span><span class="p">[</span><span class="n">ent</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span> <span class="o">=</span> <span class="n">resolve_write</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+    <span class="c1"># 接着插入 facts + 超替 + belief 聚合...</span>
+</pre></div>
+</div>
+<p>关键设计点：</p>
+<ol class="arabic simple">
+<li><p><strong>LLM 移出 session</strong>：<code class="docutils literal notranslate"><span class="pre">_decide_grey</span></code> 在 <code class="docutils literal notranslate"><span class="pre">session_scope()</span></code> 外执行。持着 DB 连接等 LLM HTTP 响应（1-3s）是典型的 session 占用浪费——N 个灰区实体会串行占用连接。移出后，Phase 1 和 Phase 3 各自是只读/写入的短事务，连接持有时间降到毫秒级。</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">parallel_map</span></code> 保序</strong>：来自 <code class="docutils literal notranslate"><span class="pre">cortex.infra.concurrency</span></code>，基于 <code class="docutils literal notranslate"><span class="pre">ThreadPoolExecutor</span></code>。GIL 在网络 I/O 的 <code class="docutils literal notranslate"><span class="pre">recv()</span></code> 处释放，所以 LLM/embed/rerank 这类 HTTP 调用能实现真正的并行。结果按输入顺序返回，单项异常返回 <code class="docutils literal notranslate"><span class="pre">None</span></code> 不阻断其余。</p></li>
+<li><p><strong>写入仍串行</strong>：Phase 3 的 <code class="docutils literal notranslate"><span class="pre">resolve_write</span></code> + fact 插入 + belief 聚合在单个事务内串行执行，保证事务一致性。<code class="docutils literal notranslate"><span class="pre">resolve_write</span></code> 的签名是纯写入，不回查不判定——它内部用 <code class="docutils literal notranslate"><span class="pre">pg_advisory_xact_lock</span></code> 做身份锁防并发双建。</p></li>
+</ol>
+</section>
+<section id="fact">
+<h2>Fact 超替机制<a class="headerlink" href="#fact" title="链接到此标题。"></a></h2>
+<p>单值谓词的新事实到达时，超替旧值（<code class="docutils literal notranslate"><span class="pre">cardinality</span></code> 从 scope 级 DB vocabularies 查询，无词表时用代码级 fallback）：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># extraction/fact_store.py</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_close_superseded</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">subject_id</span><span class="p">,</span> <span class="n">predicate</span><span class="p">,</span> <span class="n">valid_from</span><span class="p">,</span>
+                      <span class="n">object_value</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">operating_regime</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">case_id</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;超替:仅对单值谓词,把同 (subject,predicate) 的当前活 fact 的 valid_to 闭合。</span>
+<span class="sd">    多值谓词不按 subject+predicate 超替,因此可连接不同 object;相同 structural</span>
+<span class="sd">    三元组仍由 lock_and_find_structural_fact 收敛为一条 live edge。&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_single_value</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">predicate</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">regime_json</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">canonical_operating_regime</span><span class="p">(</span><span class="n">operating_regime</span><span class="p">),</span>
+                             <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">))</span>
+
+    <span class="n">rows</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        SELECT fact_id::text, valid_from::text, valid_to::text</span>
+<span class="s2">        FROM facts WHERE scope=:s AND subject_id=CAST(:sub AS uuid) AND predicate=:p</span>
+<span class="s2">          AND recorded_to IS NULL AND polarity=&#39;positive&#39;</span>
+<span class="s2">          AND operating_regime=CAST(:reg AS jsonb) AND coalesce(case_id,&#39;&#39;)=:cid</span>
+<span class="s2">          AND assertion_status IN (&#39;observed&#39;,&#39;confirmed&#39;)</span>
+<span class="s2">        ORDER BY valid_from, recorded_from</span>
+<span class="s2">        FOR UPDATE</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;sub&quot;</span><span class="p">:</span> <span class="n">subject_id</span><span class="p">,</span> <span class="s2">&quot;p&quot;</span><span class="p">:</span> <span class="n">predicate</span><span class="p">,</span>
+           <span class="s2">&quot;reg&quot;</span><span class="p">:</span> <span class="n">regime_json</span><span class="p">,</span> <span class="s2">&quot;cid&quot;</span><span class="p">:</span> <span class="n">case_id</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">})</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+
+    <span class="n">target</span> <span class="o">=</span> <span class="n">_parse_timestamp</span><span class="p">(</span><span class="n">valid_from</span><span class="p">)</span>
+    <span class="n">predecessor</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">successor</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
+        <span class="n">point</span> <span class="o">=</span> <span class="n">_parse_timestamp</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">valid_from</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">point</span> <span class="o">==</span> <span class="n">target</span><span class="p">:</span>
+            <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;UPDATE facts SET recorded_to=now() WHERE fact_id=CAST(:f AS uuid)&quot;</span><span class="p">),</span>
+                         <span class="p">{</span><span class="s2">&quot;f&quot;</span><span class="p">:</span> <span class="n">row</span><span class="o">.</span><span class="n">fact_id</span><span class="p">})</span>
+            <span class="k">return</span> <span class="n">row</span><span class="o">.</span><span class="n">valid_to</span>
+        <span class="k">if</span> <span class="n">point</span> <span class="o">&lt;</span> <span class="n">target</span><span class="p">:</span>
+            <span class="n">predecessor</span> <span class="o">=</span> <span class="n">row</span>
+        <span class="k">elif</span> <span class="n">successor</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">successor</span> <span class="o">=</span> <span class="n">row</span>
+    <span class="k">if</span> <span class="n">predecessor</span> <span class="ow">and</span> <span class="p">(</span><span class="n">predecessor</span><span class="o">.</span><span class="n">valid_to</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span>
+                        <span class="n">_parse_timestamp</span><span class="p">(</span><span class="n">predecessor</span><span class="o">.</span><span class="n">valid_to</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">target</span><span class="p">):</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;UPDATE facts SET recorded_to=now() WHERE fact_id=CAST(:f AS uuid)&quot;</span><span class="p">),</span>
+                     <span class="p">{</span><span class="s2">&quot;f&quot;</span><span class="p">:</span> <span class="n">predecessor</span><span class="o">.</span><span class="n">fact_id</span><span class="p">})</span>
+        <span class="c1"># 复制前驱为新的有效区间,copy-on-write 保留历史</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">            INSERT INTO facts(scope,subject_id,predicate,object_type,object_entity_id,object_value,</span>
+<span class="s2">                              valid_from,valid_to,confidence,polarity,assertion_status,evidence_span,</span>
+<span class="s2">                              operating_regime,case_id,knowledge_tier,supports,extraction_model,extracted_at,</span>
+<span class="s2">                              salience,retrieval_usefulness,evidence_quality,diagnostic_correctness,population_prevalence)</span>
+<span class="s2">            SELECT scope,subject_id,predicate,object_type,object_entity_id,object_value,</span>
+<span class="s2">                   valid_from,CAST(:vf AS timestamptz),confidence,polarity,assertion_status,evidence_span,</span>
+<span class="s2">                   operating_regime,case_id,knowledge_tier,supports,extraction_model,extracted_at,</span>
+<span class="s2">                   salience,retrieval_usefulness,evidence_quality,diagnostic_correctness,population_prevalence</span>
+<span class="s2">            FROM facts WHERE fact_id=CAST(:f AS uuid)</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;vf&quot;</span><span class="p">:</span> <span class="n">valid_from</span><span class="p">,</span> <span class="s2">&quot;f&quot;</span><span class="p">:</span> <span class="n">predecessor</span><span class="o">.</span><span class="n">fact_id</span><span class="p">})</span>
+    <span class="k">return</span> <span class="n">successor</span><span class="o">.</span><span class="n">valid_from</span> <span class="k">if</span> <span class="n">successor</span> <span class="k">else</span> <span class="kc">None</span>
+</pre></div>
+</div>
+<blockquote>
+<div><p>超替现在带 <strong>operating_regime + case_id 过滤</strong>：同一单值谓词在不同操作制度/案例下各自独立演进，不会互相误闭合。结构谓词的单值收敛则由 <code class="docutils literal notranslate"><span class="pre">_insert_fact</span></code> 内调用的 <code class="docutils literal notranslate"><span class="pre">lock_and_find_structural_fact</span></code> 负责（见<a class="reference internal" href="06-ontology-and-assertion.html"><span class="doc std std-doc">第6章 §结构边收敛</span></a>）。</p>
+</div></blockquote>
+</section>
+<section id="id5">
+<h2>完整实体链接流程<a class="headerlink" href="#id5" title="链接到此标题。"></a></h2>
+<p>下图展示<strong>单个实体</strong>在 <code class="docutils literal notranslate"><span class="pre">resolve_lookup</span></code> 内的决策树（Phase 1 的逐 entity 逻辑）。N 个实体的编排（三阶段并行）见上一节。</p>
+<pre  class="mermaid">
+        flowchart TD
+    EXT[抽取管线 extract_event] --&gt;|Phase 1| LINK[resolve_lookup]
+    LINK --&gt; A[别名查询 entity_aliases]
+    A --&gt; HIT{精确命中?}
+    HIT --&gt;|是| CTX{context_key 匹配?}
+    CTX --&gt;|匹配| RES[返回 resolved + entity_id]
+    CTX --&gt;|不匹配| B[向量近邻]
+    HIT --&gt;|否| B
+
+    B --&gt; CAND[top-5 候选&lt;br/&gt;context_key 过滤]
+    CAND --&gt; COMPAT{身份敏感&lt;br/&gt;兼容?}
+    COMPAT --&gt;|不兼容| NEW[返回 new]
+    COMPAT --&gt;|兼容| SIM{余弦相似度}
+    SIM --&gt;|&gt;= 0.85| RES2[返回 resolved&lt;br/&gt;高分直接合并]
+    SIM --&gt;|0.30 - 0.85| GREY[返回 grey + candidates]
+    SIM --&gt;|&lt; 0.30| NEW
+
+    GREY --&gt;|Phase 2 会话外并行| LLM[_decide_grey → llm_entity_link]
+    LLM --&gt; DECIDE{LLM 判定}
+    DECIDE --&gt;|同一实体| REUSE[复用 entity_id]
+    DECIDE --&gt;|不同/无key| NEW
+
+    RES --&gt; W[Phase 3: resolve_write / 直接记下]
+    RES2 --&gt; W
+    REUSE --&gt; W
+    NEW --&gt; W
+    </pre></section>
+<section id="id6">
+<h2>关键原则<a class="headerlink" href="#id6" title="链接到此标题。"></a></h2>
+<ol class="arabic simple">
+<li><p><strong>保守合并</strong>：宁可重复也不错误合并——重复可以后续 consolidate，错误合并会污染因果链</p></li>
+<li><p><strong>身份隔离</strong>：同名实体在不同设备/腔体中保持独立</p></li>
+<li><p><strong>灰区 LLM</strong>：中间阈值走 LLM 判定，利用上下文信息</p></li>
+<li><p><strong>自动别名</strong>：新实体创建时自动注册 canonical_name 为别名</p></li>
+</ol>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="04-extraction-pipeline.html" class="btn btn-neutral float-left" title="第4章 抽取管线" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="06-ontology-and-assertion.html" class="btn btn-neutral float-right" title="第6章 谓词本体与断言语义" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

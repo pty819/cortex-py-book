@@ -1,0 +1,819 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第21章 Maintenance 系统 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第22章 Erasures 系统" href="22-erasures.html" />
+    <link rel="prev" title="第20章 Worker 系统" href="20-worker-system.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第21章 Maintenance 系统</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#methylation">Methylation（甲基化）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#consolidation">Consolidation（去重）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">诊断谓词词表预置</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#seed-predicate-definitions">谓词定义预置（seed_predicate_definitions）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">触发方式</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#api">API 端点</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id4">最佳实践</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第21章 Maintenance 系统</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/21-maintenance.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="maintenance">
+<h1>第21章 Maintenance 系统<a class="headerlink" href="#maintenance" title="链接到此标题。"></a></h1>
+<section id="id1">
+<h2>概述<a class="headerlink" href="#id1" title="链接到此标题。"></a></h2>
+<p>Maintenance 系统负责记忆的<strong>演化管理</strong>，包括甲基化（软剪枝）、去重（consolidation）和词表预置。</p>
+<pre  class="mermaid">
+        graph TB
+    subgraph Methylation
+        E[Events] --&gt;|access_count=0 + 超时| M[excluded_from_recall=true]
+    end
+    
+    subgraph Consolidation
+        F1[Fact v1] --&gt;|同 subject/predicate/object| D[保留最新, 关闭旧]
+        F2[Fact v2] --&gt; D
+    end
+    
+    subgraph Vocab Seed
+        V[vocabularies] --&gt;|预置| P[诊断谓词词表]
+    end
+    </pre></section>
+<section id="methylation">
+<h2>Methylation（甲基化）<a class="headerlink" href="#methylation" title="链接到此标题。"></a></h2>
+<p><strong>目的</strong>：长期不召回的事件自动标记为 excluded_from_recall，减少检索噪声。</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">methylation_run</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">older_than_days</span><span class="o">=</span><span class="mi">30</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;标记 access_count=0 且超过阈值的 events&quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">            UPDATE events SET excluded_from_recall=true, methylated_at=now()</span>
+<span class="s2">            WHERE scope=:s AND excluded_from_recall=false AND access_count=0</span>
+<span class="s2">              AND observed_at &lt; now() - make_interval(secs =&gt; :secs)</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;secs&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">older_than_days</span> <span class="o">*</span> <span class="mi">86400</span><span class="p">)})</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">rowcount</span> <span class="ow">or</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;methylation&quot;</span><span class="p">,</span> <span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span>
+            <span class="s2">&quot;methylated&quot;</span><span class="p">:</span> <span class="n">n</span><span class="p">,</span> <span class="s2">&quot;older_than_days&quot;</span><span class="p">:</span> <span class="n">older_than_days</span><span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>触发条件</strong>：</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">excluded_from_recall</span> <span class="pre">=</span> <span class="pre">false</span></code>（尚未被甲基化）</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">access_count</span> <span class="pre">=</span> <span class="pre">0</span></code>（从未被召回）</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">observed_at</span> <span class="pre">&lt;</span> <span class="pre">now()</span> <span class="pre">-</span> <span class="pre">30</span> <span class="pre">天</span></code>（超过 30 天）</p></li>
+</ul>
+<p><strong>可逆操作</strong>：甲基化只设标志，不删数据。手动设回 <code class="docutils literal notranslate"><span class="pre">excluded_from_recall=false</span></code> 即可恢复。</p>
+<p><strong>触发方式的演化</strong>：甲基化最初是纯批处理 job（由 maintenance 定时触发）。现在它<strong>还</strong>会被 Feedback 流程内联触发——<code class="docutils literal notranslate"><span class="pre">feedback._check_methylation</span></code> 在每次反馈提交后检查该 scope 的 <code class="docutils literal notranslate"><span class="pre">negative_feedback_count</span></code>，一旦越过 <code class="docutils literal notranslate"><span class="pre">demote_threshold</span></code> 就立即对该 scope 跑一次 methylation。也就是说甲基化不再只靠人工 maintenance 触发，负反馈累积到阈值会自动软剪枝对应记忆。</p>
+<pre  class="mermaid">
+        flowchart LR
+    A[Events] --&gt; B{access_count &gt; 0?}
+    B --&gt;|是| C[活跃, 保留]
+    B --&gt;|否| D{超过 30 天?}
+    D --&gt;|是| E[甲基化&lt;br/&gt;excluded_from_recall=true]
+    D --&gt;|否| F[等待]
+    E --&gt;|可逆| G[手动恢复]
+    </pre></section>
+<section id="consolidation">
+<h2>Consolidation（去重）<a class="headerlink" href="#consolidation" title="链接到此标题。"></a></h2>
+<p><strong>目的</strong>：合并<strong>完整语义身份</strong>相同的 legacy duplicates——不同工况/Case/状态/层级永不折叠。</p>
+<p><strong>分组维度</strong>（20 列完整语义身份）：<code class="docutils literal notranslate"><span class="pre">subject_id,</span> <span class="pre">predicate,</span> <span class="pre">object_type,</span> <span class="pre">object_entity_id/object_value,</span> <span class="pre">polarity,</span> <span class="pre">assertion_status,</span> <span class="pre">knowledge_tier,</span> <span class="pre">operating_regime,</span> <span class="pre">case_id,</span> <span class="pre">valid_from,</span> <span class="pre">valid_to,</span> <span class="pre">confidence,</span> <span class="pre">salience,</span> <span class="pre">positive_feedback_count,</span> <span class="pre">negative_feedback_count,</span> <span class="pre">retrieval_usefulness,</span> <span class="pre">evidence_quality,</span> <span class="pre">diagnostic_correctness,</span> <span class="pre">population_prevalence,</span> <span class="pre">retrieval_count</span></code>。任一列不同即视为不同 fact，不合并。这与早期&quot;同 S/P/O 三列去重&quot;的简化描述完全不同——三列分组会把不同工况/状态的正负反馈混成一组，破坏双时态语义。</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">consolidation_run</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">min_age_hours</span><span class="o">=</span><span class="mi">24</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;合并完整语义身份相同的 legacy duplicates；不同工况/Case/状态/层级永不折叠。&quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+        <span class="c1"># 1. 找重复组(&gt;1 条 live fact 同完整语义身份)</span>
+        <span class="c1"># min_age_hours 守卫:extracted_at &lt; now() - interval(默认24h),避免合并刚抽取的</span>
+        <span class="n">dups</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">            SELECT subject_id, predicate, object_type,</span>
+<span class="s2">                   coalesce(object_entity_id,&#39;&#39;), coalesce(object_value-&gt;&gt;&#39;value&#39;,&#39;&#39;),</span>
+<span class="s2">                   polarity, assertion_status, knowledge_tier, operating_regime, case_id,</span>
+<span class="s2">                   valid_from, valid_to, confidence, salience, positive_feedback_count,</span>
+<span class="s2">                   negative_feedback_count, retrieval_usefulness, evidence_quality,</span>
+<span class="s2">                   diagnostic_correctness, population_prevalence, retrieval_count</span>
+<span class="s2">            FROM facts</span>
+<span class="s2">            WHERE scope=:s AND recorded_to IS NULL</span>
+<span class="s2">              AND extracted_at &lt; now() - make_interval(secs =&gt; :secs)</span>
+<span class="s2">            GROUP BY subject_id, predicate, object_type, oe, ov, polarity, assertion_status,</span>
+<span class="s2">                     knowledge_tier, operating_regime, case_id, valid_from, valid_to,</span>
+<span class="s2">                     confidence, salience, positive_feedback_count, negative_feedback_count,</span>
+<span class="s2">                     retrieval_usefulness, evidence_quality, diagnostic_correctness,</span>
+<span class="s2">                     population_prevalence, retrieval_count</span>
+<span class="s2">            HAVING count(*) &gt; 1</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;secs&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">min_age_hours</span> <span class="o">*</span> <span class="mi">3600</span><span class="p">)})</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+        <span class="n">closed</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">dups</span><span class="p">:</span>
+            <span class="c1"># 2. survivor 选择:ORDER BY recorded_from DESC, fact_id(非 confidence DESC)</span>
+            <span class="n">fact_ids</span> <span class="o">=</span> <span class="p">[</span><span class="o">...</span><span class="n">ORDER</span> <span class="n">BY</span> <span class="n">recorded_from</span> <span class="n">DESC</span><span class="p">,</span> <span class="n">fact_id</span><span class="p">]</span>
+            <span class="n">survivor</span><span class="p">,</span> <span class="n">redundant</span> <span class="o">=</span> <span class="n">fact_ids</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">fact_ids</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="c1"># 3. 合并三类引用到 survivor:</span>
+            <span class="c1">#    - facts.supports(聚合并去重 event_id)</span>
+            <span class="c1">#    - claim_evidence(ON CONFLICT DO NOTHING)</span>
+            <span class="c1">#    - assertion_case_links(ON CONFLICT DO NOTHING)</span>
+            <span class="o">...</span>
+            <span class="c1"># 4. 软关 redundant facts</span>
+            <span class="n">closed</span> <span class="o">+=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span>
+                <span class="s2">&quot;UPDATE facts SET recorded_to=now() WHERE fact_id=ANY(:ids)&quot;</span>
+            <span class="p">),</span> <span class="o">...</span><span class="p">)</span><span class="o">.</span><span class="n">rowcount</span> <span class="ow">or</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;consolidation&quot;</span><span class="p">,</span> <span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span>
+            <span class="s2">&quot;facts_closed&quot;</span><span class="p">:</span> <span class="n">closed</span><span class="p">,</span> <span class="s2">&quot;groups&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">dups</span><span class="p">)}</span>
+</pre></div>
+</div>
+<p><strong>选择规则</strong>：survivor = <code class="docutils literal notranslate"><span class="pre">ORDER</span> <span class="pre">BY</span> <span class="pre">recorded_from</span> <span class="pre">DESC,</span> <span class="pre">fact_id</span></code> 第一条（<code class="docutils literal notranslate"><span class="pre">DESC</span></code> 方向即<strong>最新入库的记录存活</strong>，不是 confidence 最高的）。</p>
+<p><strong>引用合并</strong>：把 redundant facts 的三类引用迁到 survivor——<code class="docutils literal notranslate"><span class="pre">facts.supports</span></code>（聚合并去重 <code class="docutils literal notranslate"><span class="pre">event_id</span></code>）、<code class="docutils literal notranslate"><span class="pre">claim_evidence</span></code>、<code class="docutils literal notranslate"><span class="pre">assertion_case_links</span></code>，用 <code class="docutils literal notranslate"><span class="pre">ON</span> <span class="pre">CONFLICT</span> <span class="pre">DO</span> <span class="pre">NOTHING</span></code> 防重复。</p>
+<p><strong><code class="docutils literal notranslate"><span class="pre">min_age_hours</span></code> 守卫</strong>：<code class="docutils literal notranslate"><span class="pre">extracted_at</span> <span class="pre">&lt;</span> <span class="pre">now()</span> <span class="pre">-</span> <span class="pre">interval</span></code>（默认 24h），不合并刚抽取的 fact——给抽取管线时间稳定。</p>
+<p><strong>返回键</strong>：<code class="docutils literal notranslate"><span class="pre">action=&quot;consolidation&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">scope</span></code>, <code class="docutils literal notranslate"><span class="pre">facts_closed</span></code>(软关条数), <code class="docutils literal notranslate"><span class="pre">groups</span></code>(重复组数)。注意是 <code class="docutils literal notranslate"><span class="pre">facts_closed</span></code>/<code class="docutils literal notranslate"><span class="pre">groups</span></code>，不是 <code class="docutils literal notranslate"><span class="pre">consolidated</span></code>。</p>
+<p><strong>超替语义</strong>：redundant fact 的 <code class="docutils literal notranslate"><span class="pre">recorded_to</span> <span class="pre">=</span> <span class="pre">now()</span></code>（认知上已过时），<code class="docutils literal notranslate"><span class="pre">valid_to</span></code> 保持不变（保留历史上为真的时间窗口）。</p>
+<p><strong>与 Dreaming 的关系</strong>：Dreaming 流程的 Phase 0 直接复用 <code class="docutils literal notranslate"><span class="pre">consolidation_run(scope,</span> <span class="pre">min_age_hours=0)</span></code> 作为前置去重——先跑一遍 consolidation 把完整语义身份重复的 live facts 收敛，Phase B/C 才在干净的图上做 relation_detect + action_plan。详见第 12 章。</p>
+</section>
+<section id="id2">
+<h2>诊断谓词词表预置<a class="headerlink" href="#id2" title="链接到此标题。"></a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">seed_diagnosis_vocab</span><span class="p">(</span><span class="n">scope</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;预置诊断场景的因果谓词闭合词表&quot;&quot;&quot;</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+        <span class="c1"># 创建 &#39;predicate&#39; 词表（closed, multi）</span>
+        <span class="n">row</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">            INSERT INTO vocabularies (scope, name, kind, description, cardinality)</span>
+<span class="s2">            VALUES (:s, &#39;predicate&#39;, &#39;closed&#39;, &#39;Diagnosis causal predicates&#39;, &#39;multi&#39;)</span>
+<span class="s2">            ON CONFLICT (scope, name) DO UPDATE SET cardinality=&#39;multi&#39;</span>
+<span class="s2">            RETURNING vocab_id</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+        
+        <span class="c1"># 预置所有诊断谓词</span>
+        <span class="k">for</span> <span class="n">pred</span><span class="p">,</span> <span class="n">desc</span><span class="p">,</span> <span class="n">card</span> <span class="ow">in</span> <span class="n">DIAGNOSIS_PREDICATES</span><span class="p">:</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                INSERT INTO vocabulary_values (vocab_id, canonical_value, aliases, cardinality)</span>
+<span class="s2">                VALUES (:v, :c, &#39;</span><span class="si">{}</span><span class="s2">&#39;, :card)</span>
+<span class="s2">                ON CONFLICT (vocab_id, canonical_value) DO UPDATE SET cardinality=:card</span>
+<span class="s2">            &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;v&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">vocab_id</span><span class="p">),</span> <span class="s2">&quot;c&quot;</span><span class="p">:</span> <span class="n">pred</span><span class="p">,</span> <span class="s2">&quot;card&quot;</span><span class="p">:</span> <span class="n">card</span><span class="p">})</span>
+            <span class="n">n</span> <span class="o">+=</span> <span class="n">r</span><span class="o">.</span><span class="n">rowcount</span> <span class="ow">or</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="n">n</span>
+</pre></div>
+</div>
+</section>
+<section id="seed-predicate-definitions">
+<h2>谓词定义预置（seed_predicate_definitions）<a class="headerlink" href="#seed-predicate-definitions" title="链接到此标题。"></a></h2>
+<p>第 4 个 maintenance 动作：把 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 中定义的谓词 upsert 到 <code class="docutils literal notranslate"><span class="pre">predicate_definitions</span></code> 表，<code class="docutils literal notranslate"><span class="pre">prop_order=1</span></code>，使本体从纯代码常量升级为 DB 支撑的元数据表（带 category / order 字段），支持运行时查询与约束校验。</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">seed_predicate_definitions</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;把 ontology.PREDICATE_DICTIONARY 预置到 predicate_definitions 表(一阶,order=1)。幂等。&quot;&quot;&quot;</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">pred</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">PREDICATE_DICTIONARY</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">card</span> <span class="o">=</span> <span class="n">PREDICATE_CARDINALITY</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="s2">&quot;multi&quot;</span><span class="p">)</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                INSERT INTO predicate_definitions (predicate, category, prop_order, cardinality, description, example)</span>
+<span class="s2">                VALUES (:p, :c, 1, :card, :desc, :ex)</span>
+<span class="s2">                ON CONFLICT (predicate) DO UPDATE</span>
+<span class="s2">                SET category=:c, cardinality=:card, description=:desc, example=:ex</span>
+<span class="s2">            &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;p&quot;</span><span class="p">:</span> <span class="n">pred</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">:</span> <span class="n">d</span><span class="o">.</span><span class="n">category</span><span class="p">,</span> <span class="s2">&quot;card&quot;</span><span class="p">:</span> <span class="n">card</span><span class="p">,</span> <span class="s2">&quot;desc&quot;</span><span class="p">:</span> <span class="n">d</span><span class="o">.</span><span class="n">meaning</span><span class="p">,</span> <span class="s2">&quot;ex&quot;</span><span class="p">:</span> <span class="n">d</span><span class="o">.</span><span class="n">example</span><span class="p">})</span>
+            <span class="n">n</span> <span class="o">+=</span> <span class="n">r</span><span class="o">.</span><span class="n">rowcount</span> <span class="ow">or</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="n">n</span>
+</pre></div>
+</div>
+<p><strong>不再是手工 cat_map</strong>：早期实现从 <code class="docutils literal notranslate"><span class="pre">STRUCTURAL_PREDICATES</span></code>/<code class="docutils literal notranslate"><span class="pre">CAUSAL_PREDICATES</span></code>/<code class="docutils literal notranslate"><span class="pre">DIAGNOSTIC_PREDICATES</span></code>/<code class="docutils literal notranslate"><span class="pre">STATE_PREDICATES</span></code> 四个独立集合手工构建 <code class="docutils literal notranslate"><span class="pre">cat_map</span></code>。现在 <code class="docutils literal notranslate"><span class="pre">seed_predicate_definitions</span></code> 直接遍历单一真相源 <code class="docutils literal notranslate"><span class="pre">PREDICATE_DICTIONARY.items()</span></code>——<code class="docutils literal notranslate"><span class="pre">category</span></code> 取自 <code class="docutils literal notranslate"><span class="pre">PredicateDef.category</span></code>，并顺带把 <code class="docutils literal notranslate"><span class="pre">description</span></code>（<code class="docutils literal notranslate"><span class="pre">meaning</span></code>）和 <code class="docutils literal notranslate"><span class="pre">example</span></code> 一并 upsert 进 <code class="docutils literal notranslate"><span class="pre">predicate_definitions</span></code> 表。这套设计下四个分类集合（<code class="docutils literal notranslate"><span class="pre">STRUCTURAL_PREDICATES</span></code> 等）只是从词典 <code class="docutils literal notranslate"><span class="pre">frozenset</span></code> 派生，不再需要手工同步；prompt 中的谓词表格也由 <code class="docutils literal notranslate"><span class="pre">render_predicate_table</span></code> 从同一词典动态生成，消灭手工漂移。</p>
+<p><strong>作用</strong>：开启 DB-backed ontology——谓词不再只是代码里的 <code class="docutils literal notranslate"><span class="pre">Enum</span></code>，而是表里带 <code class="docutils literal notranslate"><span class="pre">category</span></code>（因果/观测/诊断/状态…）和 <code class="docutils literal notranslate"><span class="pre">prop_order</span></code> 的可查元数据。extract 环节可据此做闭集校验，未命中的谓词走 quarantine 而非直接入图。</p>
+</section>
+<section id="id3">
+<h2>触发方式<a class="headerlink" href="#id3" title="链接到此标题。"></a></h2>
+<p>CLI 没有 maintenance 子命令，维护操作通过 <strong>REST API</strong> 或 <strong>MCP 工具</strong>触发：</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># 甲基化 / 去重 / embedding 补全（同步执行）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8002/v1/admin/maintenance<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;action&quot;:&quot;methylation&quot;,&quot;scope&quot;:&quot;equip:XXX-v1&quot;}&#39;</span>
+
+<span class="c1"># 异步入队（async_enqueue=true 返回 job_id，由 worker 执行）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8002/v1/admin/maintenance<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;action&quot;:&quot;consolidation&quot;,&quot;scope&quot;:&quot;equip:XXX-v1&quot;,&quot;async_enqueue&quot;:true}&#39;</span>
+</pre></div>
+</div>
+<p>MCP 侧用 <code class="docutils literal notranslate"><span class="pre">maintenance_enqueue(action,</span> <span class="pre">scope)</span></code> 工具，同样支持 <code class="docutils literal notranslate"><span class="pre">methylation|consolidation|enrich</span></code>（见第 19 章）。词表预置无需手工触发：新 scope 写入第一个 event 时由 <code class="docutils literal notranslate"><span class="pre">_auto_provision_scope</span></code> 自动完成（见第 3 章、第 9 章）。</p>
+</section>
+<section id="api">
+<h2>API 端点<a class="headerlink" href="#api" title="链接到此标题。"></a></h2>
+<p>maintenance 操作统一走单一端点，通过 body.action 区分：</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>POST /v1/admin/maintenance
+  body.action ∈ {methylation, consolidation, enrich}
+  body.scope  → 目标 scope
+  body.older_than_days → 仅 methylation 用（默认 30）
+  body.async_enqueue → true 时入队由 worker 异步执行
+</pre></div>
+</div>
+<blockquote>
+<div><p>注意：不存在 <code class="docutils literal notranslate"><span class="pre">/v1/maintenance/methylation</span></code>、<code class="docutils literal notranslate"><span class="pre">/v1/maintenance/consolidation</span></code> 这类按动作拆分的路径，也不存在 <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/admin/maintenance/vocab/seed</span></code> 端点，更没有 <code class="docutils literal notranslate"><span class="pre">cli</span> <span class="pre">maintenance</span></code> 子命令。<code class="docutils literal notranslate"><span class="pre">seed_diagnosis_vocab</span></code> 是内部函数（编程入口/自动预置调用），不暴露为 HTTP 端点；consolidation 端点本身也不支持 vocab seed，seed_predicates 走的是 <code class="docutils literal notranslate"><span class="pre">/v1/admin/higher-order</span></code> 的 <code class="docutils literal notranslate"><span class="pre">seed_predicates=true</span></code>。旧文档中的写法已废弃，实际实现是单端点 + action 字段。</p>
+</div></blockquote>
+</section>
+<section id="id4">
+<h2>最佳实践<a class="headerlink" href="#id4" title="链接到此标题。"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>操作</p></th>
+<th class="head"><p>频率</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Methylation</p></td>
+<td><p>每日/每周</p></td>
+<td><p>自动清理长期不召回的历史事件</p></td>
+</tr>
+<tr class="row-odd"><td><p>Consolidation</p></td>
+<td><p>每次大量写入后</p></td>
+<td><p>消除重复 facts，保持图谱干净</p></td>
+</tr>
+<tr class="row-even"><td><p>Vocab Seed</p></td>
+<td><p>新 scope 创建时</p></td>
+<td><p>预置诊断谓词约束</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="20-worker-system.html" class="btn btn-neutral float-left" title="第20章 Worker 系统" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="22-erasures.html" class="btn btn-neutral float-right" title="第22章 Erasures 系统" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

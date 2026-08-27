@@ -1,0 +1,790 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第26章 后端选型论证：最小依赖约束下的 PG+扩展生态 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="prev" title="第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界" href="25-competitive-analysis.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">1. 选型原则：低三方件引入</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">2. 需求画像：这个系统到底需要什么样的数据库</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">3. 数据库选型：逐一对比</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id4">3.1 候选名单</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sqlite">3.2 SQLite：单机嵌入很香，但扛不住多写者</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#duckdb-oltp">3.3 DuckDB：分析利器，OLTP 不是它的主场</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#lancedb">3.4 LanceDB：向量是它的唯一语言</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#clickhouse-olap">3.5 ClickHouse：OLAP 巨兽装不进这个场景</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#neo4j">3.6 Neo4j：图是能力之一，不是全部</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5">3.7 评分汇总</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#pgvector-vs">4. 向量检索：pgvector vs 专用向量库</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id6">4.1 候选</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id7">4.2 决定性论据：事务一致性</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id8">4.3 规模论据</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id9">4.4 运维论据</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#bm25-pg-textsearch-vs">5. 全文检索（BM25）：pg_textsearch vs 搜索引擎</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id10">5.1 候选</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id11">5.2 为什么 PG 内置不够</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#elasticsearch">5.3 为什么不是 Elasticsearch</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#meilisearch-typesense">5.4 为什么不是 Meilisearch / Typesense</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pg-textsearch">5.5 pg_textsearch 的代价与边界</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#pg-trgm-vs">6. 模糊匹配：pg_trgm vs 替代方案</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id12">6.1 候选对比</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id13">6.2 结论</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id14">7. PG 的一身七职：中间件替代全景</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#python">8. 应用层 Python 生态选型</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id15">9. 依赖总账：两个架构的对照</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id16">10. 边界与逃生门</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/26-tech-selection.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="pg">
+<h1>第26章 后端选型论证：最小依赖约束下的 PG+扩展生态<a class="headerlink" href="#pg" title="链接到此标题。"></a></h1>
+<section id="id1">
+<h2>1. 选型原则：低三方件引入<a class="headerlink" href="#id1" title="链接到此标题。"></a></h2>
+<p>cortex-py 面向<strong>个人/小团队的 Agent 长期记忆层</strong>，部署形态是 Docker 单机（或 Podman），数据必须持久化。这个定位决定了选型的第一原则：</p>
+<blockquote>
+<div><p><strong>能不引入的三方件就不引入。</strong> 每多一个独立服务，就多一个容器、一份内存、一套备份策略、一个一致性窗口。</p>
+</div></blockquote>
+<p>把这个原则量化，就是一条预算线：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>预算项</p></th>
+<th class="head"><p>约束</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>独立进程数</p></td>
+<td><p>存储层 ≤ 1 个（不算应用自身）</p></td>
+</tr>
+<tr class="row-odd"><td><p>中间件</p></td>
+<td><p>能用数据库内置能力解决的，不引入独立中间件</p></td>
+</tr>
+<tr class="row-even"><td><p>扩展</p></td>
+<td><p>只接受&quot;装进同一个 PG 进程&quot;的扩展，不接受需要独立服务的能力</p></td>
+</tr>
+<tr class="row-odd"><td><p>备份</p></td>
+<td><p>必须一条 <code class="docutils literal notranslate"><span class="pre">pg_dump</span></code> / 一个数据卷搞定全部状态</p></td>
+</tr>
+</tbody>
+</table>
+<p>最终结果：<strong>1 个 PostgreSQL 18 进程 + 3 个扩展（pgvector / pg_textsearch / pg_trgm）</strong>，承担了关系存储、向量检索、BM25 全文检索、模糊匹配、任务队列、事件总线、分布式锁、图遍历共 <strong>8 种角色</strong>。</p>
+<p>本章的任务就是论证：在这条预算线下，当前这批三方件不是&quot;妥协的次优解&quot;，而是<strong>最优解</strong>。论证方式是把每个位置上的候选方案逐一摆出来，对照系统的真实需求逐项打分。</p>
+</section>
+<hr class="docutils" />
+<section id="id2">
+<h2>2. 需求画像：这个系统到底需要什么样的数据库<a class="headerlink" href="#id2" title="链接到此标题。"></a></h2>
+<p>在对比之前，先从代码反推需求。cortex-py 对存储层提出了 9 条硬性要求，每一条都有源码出处：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>#</p></th>
+<th class="head"><p>需求</p></th>
+<th class="head"><p>源码证据</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>1</p></td>
+<td><p>并发 OLTP 写入</p></td>
+<td><p>WAL append（<code class="docutils literal notranslate"><span class="pre">infra/core.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">append_event</span></code>）+ worker 池并发抽取</p></td>
+</tr>
+<tr class="row-odd"><td><p>2</p></td>
+<td><p>跨能力事务一致性</p></td>
+<td><p>fact 与 embedding 同事务写入（<code class="docutils literal notranslate"><span class="pre">graph/extraction/fact_store.py</span></code>）</p></td>
+</tr>
+<tr class="row-even"><td><p>3</p></td>
+<td><p>图遍历</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">WITH</span> <span class="pre">RECURSIVE</span></code> 2-3 跳 BFS（<code class="docutils literal notranslate"><span class="pre">graph/retrieval/channels.py</span></code>）</p></td>
+</tr>
+<tr class="row-odd"><td><p>4</p></td>
+<td><p>任务队列</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">FOR</span> <span class="pre">UPDATE</span> <span class="pre">SKIP</span> <span class="pre">LOCKED</span> <span class="pre">LIMIT</span> <span class="pre">1</span></code> 抢 job（<code class="docutils literal notranslate"><span class="pre">infra/core.py</span></code>）</p></td>
+</tr>
+<tr class="row-even"><td><p>5</p></td>
+<td><p>事件总线</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pg_notify('cortex_lc')</span></code> + <code class="docutils literal notranslate"><span class="pre">LISTEN</span> <span class="pre">cortex_lc</span></code>（<code class="docutils literal notranslate"><span class="pre">infra/core.py</span></code>）</p></td>
+</tr>
+<tr class="row-odd"><td><p>6</p></td>
+<td><p>分布式锁</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pg_advisory_xact_lock</span></code> 防并发实体合并（<code class="docutils literal notranslate"><span class="pre">entity_resolution.py</span></code> 等 7 处）</p></td>
+</tr>
+<tr class="row-even"><td><p>7</p></td>
+<td><p>双时态 + JSONB</p></td>
+<td><p>facts 表 4 个时间字段 + <code class="docutils literal notranslate"><span class="pre">operating_regime</span></code> GIN 索引</p></td>
+</tr>
+<tr class="row-odd"><td><p>8</p></td>
+<td><p>向量 / BM25 / 模糊匹配</p></td>
+<td><p>6 通道检索中的三个通道</p></td>
+</tr>
+<tr class="row-even"><td><p>9</p></td>
+<td><p>Docker 内持久化</p></td>
+<td><p>数据卷挂载，容器重建不丢数据</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">备注</p>
+<p>这张表是全文的评分基准。后文每个候选方案的命运，都取决于它能满足这 9 条中的几条——尤其是第 2、4、5、6 条，它们正是&quot;专用数据库&quot;们普遍缺失的能力。</p>
+</div>
+</section>
+<hr class="docutils" />
+<section id="id3">
+<h2>3. 数据库选型：逐一对比<a class="headerlink" href="#id3" title="链接到此标题。"></a></h2>
+<section id="id4">
+<h3>3.1 候选名单<a class="headerlink" href="#id4" title="链接到此标题。"></a></h3>
+<ul class="simple">
+<li><p><strong>SQLite</strong>：嵌入式关系库，零运维的代表</p></li>
+<li><p><strong>DuckDB</strong>：嵌入式列存 OLAP 引擎</p></li>
+<li><p><strong>LanceDB</strong>：面向 AI 的嵌入式向量数据库</p></li>
+<li><p><strong>ClickHouse</strong>：列存 OLAP 服务</p></li>
+<li><p><strong>Neo4j</strong>：专用图数据库（常见质疑：“你不是知识图谱系统吗？”）</p></li>
+<li><p><strong>PostgreSQL 18 + 扩展</strong>：当前选择</p></li>
+</ul>
+</section>
+<section id="sqlite">
+<h3>3.2 SQLite：单机嵌入很香，但扛不住多写者<a class="headerlink" href="#sqlite" title="链接到此标题。"></a></h3>
+<p>SQLite 的诱惑力在于&quot;零部署&quot;，但它在本系统有三个致命伤：</p>
+<ol class="arabic simple">
+<li><p><strong>单写者模型</strong>。SQLite 同一时刻只允许一个写事务，写锁是库级（WAL 模式下写者仍互斥）。本系统的写入方有：API 网关收 experience、worker 池并发跑抽取/链接/建 fact、Dreaming 离线巩固。多 worker 场景下 SQLite 会退化成串行写 + <code class="docutils literal notranslate"><span class="pre">database</span> <span class="pre">is</span> <span class="pre">locked</span></code> 重试风暴。</p></li>
+<li><p><strong>需求 4/5/6 全部缺失</strong>。没有 <code class="docutils literal notranslate"><span class="pre">SKIP</span> <span class="pre">LOCKED</span></code>（<code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">...</span> <span class="pre">FOR</span> <span class="pre">UPDATE</span></code> 语义不存在），没有 <code class="docutils literal notranslate"><span class="pre">LISTEN/NOTIFY</span></code>，没有 advisory lock。这三样如果用应用层模拟，等于把 PG 内置能力换成自己维护的轮子——与&quot;低三方件&quot;原则背道而驰。</p></li>
+<li><p><strong>向量生态不成熟</strong>。sqlite-vec 尚不提供生产级 HNSW 索引，且与 BM25（FTS5 只有朴素排序）、模糊匹配的能力组合仍需自己缝合。</p></li>
+</ol>
+<p>SQLite 适合&quot;单进程、读多写少&quot;的场景；本系统是&quot;多写者、事务密集&quot;的管线，方向性不匹配。</p>
+</section>
+<section id="duckdb-oltp">
+<h3>3.3 DuckDB：分析利器，OLTP 不是它的主场<a class="headerlink" href="#duckdb-oltp" title="链接到此标题。"></a></h3>
+<p>DuckDB 是优秀的嵌入式分析引擎，但设计目标是<strong>查询密集的分析负载</strong>：</p>
+<ul class="simple">
+<li><p>MVCC 语义面向批量追加写，点更新（本系统的核心操作：fact 状态流转、assertion_status 变更、双时态超替）不是它的优势路径；</p></li>
+<li><p>同样没有服务端协议、<code class="docutils literal notranslate"><span class="pre">SKIP</span> <span class="pre">LOCKED</span></code>、<code class="docutils literal notranslate"><span class="pre">NOTIFY</span></code>、advisory lock；</p></li>
+<li><p>向量检索（vss 扩展）仍是实验性质，无 HNSW 生产级支持。</p></li>
+</ul>
+<p>如果 cortex-py 是一个离线分析工具，DuckDB 会是首选；但它是<strong>在线事务系统</strong>。</p>
+</section>
+<section id="lancedb">
+<h3>3.4 LanceDB：向量是它的唯一语言<a class="headerlink" href="#lancedb" title="链接到此标题。"></a></h3>
+<p>LanceDB 面向&quot;AI 数据湖&quot;，列式 Lance 格式对向量+张量存储很高效，但：</p>
+<ul class="simple">
+<li><p>没有 SQL 事务语义，facts（关系数据）和向量必须拆两个存储，回到双写一致性问题；</p></li>
+<li><p>没有 JOIN、递归查询、锁、队列——需求 3~7 全部为零；</p></li>
+<li><p>实体链接需要在&quot;向量相似 + 结构化属性（entity_type、context_key、scope）&quot;上做联合过滤，嵌入式向量库的过滤表达式能力远不如 SQL。</p></li>
+</ul>
+<p>向量库当主库，等于让锤子做所有事。</p>
+</section>
+<section id="clickhouse-olap">
+<h3>3.5 ClickHouse：OLAP 巨兽装不进这个场景<a class="headerlink" href="#clickhouse-olap" title="链接到此标题。"></a></h3>
+<p>ClickHouse 的强项是海量数据的聚合分析，与本系统的需求正好错开：</p>
+<ul class="simple">
+<li><p><strong>不擅长高频点更新</strong>。<code class="docutils literal notranslate"><span class="pre">ALTER</span> <span class="pre">TABLE</span> <span class="pre">...</span> <span class="pre">UPDATE</span></code>（mutation）是异步重写 parts，而 assertion_status 状态机、双时态 recorded_to 关窗都要求<strong>同步、行级、事务性</strong>的更新；</p></li>
+<li><p>弱事务：不支持跨语句的 ACID 事务语义，需求 2 直接出局；</p></li>
+<li><p>用 MergeTree 做 point lookup + 队列抢锁，是对引擎的错误使用；</p></li>
+<li><p>部署重量级（单节点也需要独立镜像与配置），违反预算线。</p></li>
+</ul>
+</section>
+<section id="neo4j">
+<h3>3.6 Neo4j：图是能力之一，不是全部<a class="headerlink" href="#neo4j" title="链接到此标题。"></a></h3>
+<p>&quot;知识图谱系统为什么不用图数据库？&quot;这是最常见的质疑。答案在需求清单里：</p>
+<ul class="simple">
+<li><p>本系统的图查询是<strong>受限遍历</strong>——2-3 跳 BFS 且带 scope/predicate 过滤，<code class="docutils literal notranslate"><span class="pre">WITH</span> <span class="pre">RECURSIVE</span></code> 在 facts 表 B-tree 索引上足够高效（stage0 冒烟已验证）；</p></li>
+<li><p>Neo4j 只解决需求 3，不解决需求 2（向量同事务）、4、5、7、8。引入 Neo4j 意味着：PG 仍要保留（做其余 8 条），<strong>依赖数 +1、一致性窗口 +1</strong>；</p></li>
+<li><p>谓词本体约束（封闭词表 + 准入规则）用 PG 的 CHECK 约束 + 词表 JOIN 表达即可，不需要图数据库的 schema 能力。</p></li>
+</ul>
+<p>一句话：<strong>图遍历是 PG 能力集的子集时，就不要为这个子集引入一个新系统。</strong></p>
+</section>
+<section id="id5">
+<h3>3.7 评分汇总<a class="headerlink" href="#id5" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>需求</p></th>
+<th class="head text-center"><p>PG+扩展</p></th>
+<th class="head text-center"><p>SQLite</p></th>
+<th class="head text-center"><p>DuckDB</p></th>
+<th class="head text-center"><p>LanceDB</p></th>
+<th class="head text-center"><p>ClickHouse</p></th>
+<th class="head text-center"><p>Neo4j</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>1 并发 OLTP 写</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>⚠️ 单写者</p></td>
+<td class="text-center"><p>⚠️</p></td>
+<td class="text-center"><p>⚠️</p></td>
+<td class="text-center"><p>⚠️</p></td>
+<td class="text-center"><p>✅</p></td>
+</tr>
+<tr class="row-odd"><td><p>2 跨能力事务</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>⚠️</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+</tr>
+<tr class="row-even"><td><p>3 图遍历</p></td>
+<td class="text-center"><p>✅ 递归 CTE</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>✅</p></td>
+</tr>
+<tr class="row-odd"><td><p>4 SKIP LOCKED 队列</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+</tr>
+<tr class="row-even"><td><p>5 LISTEN/NOTIFY</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+</tr>
+<tr class="row-odd"><td><p>6 advisory lock</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+</tr>
+<tr class="row-even"><td><p>7 双时态+JSONB</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>⚠️</p></td>
+<td class="text-center"><p>⚠️</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>⚠️</p></td>
+<td class="text-center"><p>❌</p></td>
+</tr>
+<tr class="row-odd"><td><p>8 向量/BM25/模糊</p></td>
+<td class="text-center"><p>✅ 3 扩展</p></td>
+<td class="text-center"><p>⚠️ 缝合</p></td>
+<td class="text-center"><p>⚠️</p></td>
+<td class="text-center"><p>⚠️ 仅向量</p></td>
+<td class="text-center"><p>❌</p></td>
+<td class="text-center"><p>❌</p></td>
+</tr>
+<tr class="row-even"><td><p>9 Docker 持久化</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>✅</p></td>
+<td class="text-center"><p>✅</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>合计</strong></p></td>
+<td class="text-center"><p><strong>9/9</strong></p></td>
+<td class="text-center"><p>3.5</p></td>
+<td class="text-center"><p>3</p></td>
+<td class="text-center"><p>2.5</p></td>
+<td class="text-center"><p>1.5</p></td>
+<td class="text-center"><p>3</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论：PostgreSQL 是唯一一个 9/9 全满足的候选</strong>——不是因为它每一项都最强，而是因为它是唯一一个&quot;全都够用&quot;的。</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="pgvector-vs">
+<h2>4. 向量检索：pgvector vs 专用向量库<a class="headerlink" href="#pgvector-vs" title="链接到此标题。"></a></h2>
+<section id="id6">
+<h3>4.1 候选<a class="headerlink" href="#id6" title="链接到此标题。"></a></h3>
+<ul class="simple">
+<li><p><strong>pgvector</strong>（HNSW，当前选择）</p></li>
+<li><p><strong>Milvus</strong>：分布式向量库旗舰</p></li>
+<li><p><strong>Qdrant</strong>：Rust 高性能向量库</p></li>
+<li><p><strong>Weaviate</strong>：带 GraphQL 接口的向量库</p></li>
+<li><p><strong>Chroma</strong>：轻量嵌入式向量库</p></li>
+</ul>
+</section>
+<section id="id7">
+<h3>4.2 决定性论据：事务一致性<a class="headerlink" href="#id7" title="链接到此标题。"></a></h3>
+<p>看实体链接的写入路径（<code class="docutils literal notranslate"><span class="pre">graph/extraction/fact_store.py</span></code>）：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;SELECT pg_advisory_xact_lock(hashtextextended(:identity, 0))&quot;</span><span class="p">),</span> <span class="o">...</span><span class="p">)</span>
+<span class="c1"># 同一事务内：</span>
+<span class="c1">#   1) INSERT/UPDATE entities（含 embedding vector(1024)）</span>
+<span class="c1">#   2) INSERT facts（引用 entity_id）</span>
+<span class="c1">#   3) 更新 beliefs</span>
+<span class="c1"># 提交 → 向量索引（HNSW）随事务自动更新</span>
+</pre></div>
+</div>
+<p><strong>实体 embedding 和引用它的 facts 在同一个事务里落盘</strong>。如果向量放在独立的 Milvus/Qdrant：</p>
+<ul class="simple">
+<li><p>写入变成&quot;PG 事务 + 向量库 RPC&quot;两步，必须引入 outbox 模式或双写补偿；</p></li>
+<li><p>实体合并（merge）时要同步删改向量库里的条目，崩溃窗口内两边视图不一致；</p></li>
+<li><p>GDPR 真删（erasures 引用计数）要求<strong>物理删除</strong>向量和关联记录，跨库真删的一致性成本更高。</p></li>
+</ul>
+<p>这些问题专用向量库都有标准答案（outbox、对账任务），但每个答案都是一个新组件或一套新代码——<strong>预算线不允许</strong>。</p>
+</section>
+<section id="id8">
+<h3>4.3 规模论据<a class="headerlink" href="#id8" title="链接到此标题。"></a></h3>
+<p>专用向量库的优势在<strong>亿级向量 + 高并发 ANN</strong>。本系统的定位（个人/小团队记忆）：</p>
+<ul class="simple">
+<li><p>向量规模：万级到百万级。pgvector 0.8 的 HNSW 在百万级 1024 维上召回延迟在个位数到几十毫秒，与专用库差距不构成体感差异；</p></li>
+<li><p>检索模式：向量通道只是 6 通道之一，召回后立即进入 scope 过滤 + RRF 融合，<strong>ANN 精度要求被下游流程放宽</strong>（HNSW 的 recall&#64;10 &gt; 0.99 已足够）；</p></li>
+<li><p>真正的排序质量来自 rerank 阶段，而不是 ANN 引擎本身。</p></li>
+</ul>
+</section>
+<section id="id9">
+<h3>4.4 运维论据<a class="headerlink" href="#id9" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>维度</p></th>
+<th class="head"><p>pgvector</p></th>
+<th class="head"><p>Milvus/Qdrant</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>独立进程</p></td>
+<td><p>0</p></td>
+<td><p>1（Milvus 分布式版更多）</p></td>
+</tr>
+<tr class="row-odd"><td><p>内存开销</p></td>
+<td><p>复用 PG shared_buffers</p></td>
+<td><p>独立一份</p></td>
+</tr>
+<tr class="row-even"><td><p>备份</p></td>
+<td><p>随 <code class="docutils literal notranslate"><span class="pre">pg_dump</span></code> / 数据卷</p></td>
+<td><p>独立快照机制</p></td>
+</tr>
+<tr class="row-odd"><td><p>SDK</p></td>
+<td><p>psycopg 直连，零新增依赖</p></td>
+<td><p>各家独立 SDK</p></td>
+</tr>
+<tr class="row-even"><td><p>过滤</p></td>
+<td><p>原生 SQL（scope/时态/谓词任意组合）</p></td>
+<td><p>有限的过滤表达式</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">备注</p>
+<p>Chroma 单独说明：它和 pgvector 一样轻量，但它是&quot;库&quot;不是&quot;服务&quot;，嵌入应用进程意味着 API 进程和 worker 进程各持一份索引，多进程写入直接冲突。本系统 API/worker 分离的架构天然排除嵌入式向量库。</p>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="bm25-pg-textsearch-vs">
+<h2>5. 全文检索（BM25）：pg_textsearch vs 搜索引擎<a class="headerlink" href="#bm25-pg-textsearch-vs" title="链接到此标题。"></a></h2>
+<section id="id10">
+<h3>5.1 候选<a class="headerlink" href="#id10" title="链接到此标题。"></a></h3>
+<ul class="simple">
+<li><p><strong>pg_textsearch</strong>（真 Okapi BM25 扩展，当前选择）</p></li>
+<li><p><strong>Elasticsearch / OpenSearch</strong>：全文检索事实标准</p></li>
+<li><p><strong>Meilisearch / Typesense</strong>：轻量搜索服务</p></li>
+<li><p><strong>PG 内置 tsvector/ts_rank</strong>：零扩展方案</p></li>
+</ul>
+</section>
+<section id="id11">
+<h3>5.2 为什么 PG 内置不够<a class="headerlink" href="#id11" title="链接到此标题。"></a></h3>
+<p>PG 自带的 <code class="docutils literal notranslate"><span class="pre">to_tsvector</span></code> + <code class="docutils literal notranslate"><span class="pre">ts_rank</span></code> 不是真 BM25——<code class="docutils literal notranslate"><span class="pre">ts_rank</span></code> 是基于词频/密度的启发式排序，没有逆文档频率项，长文档会被系统性高估。schema 里的内置 FTS 索引（<code class="docutils literal notranslate"><span class="pre">idx_facts_text_fts</span></code>）明确注释为&quot;pg_textsearch 不可用时的兼容回退&quot;。排序质量是召回质量的底线，这个位置不能将就。</p>
+</section>
+<section id="elasticsearch">
+<h3>5.3 为什么不是 Elasticsearch<a class="headerlink" href="#elasticsearch" title="链接到此标题。"></a></h3>
+<p>ES 是全文检索的天花板，但对照预算线：</p>
+<ol class="arabic simple">
+<li><p><strong>资源重量级</strong>：JVM 进程，生产建议 2GB+ 堆内存，比整个 PG 实例还重；</p></li>
+<li><p><strong>中文分词外挂</strong>：需要 IK 分词插件；本系统用 jieba-py 在应用层预分词写入 <code class="docutils literal notranslate"><span class="pre">fact_search_documents.tokenized_text</span></code>，分词策略（含自定义词典热更）完全自控；</p></li>
+<li><p><strong>一致性窗口</strong>：facts 在 PG，索引在 ES，写入链路变成双写。本系统的 BM25 投影表 <code class="docutils literal notranslate"><span class="pre">fact_search_documents</span></code> 与 facts <strong>同库</strong>，用触发器标脏（<code class="docutils literal notranslate"><span class="pre">mark_fact_search_scope_dirty</span></code>）+ 按 scope 增量重建，投影与源数据的一致性由同一个事务系统保证；</p></li>
+<li><p><strong>ERASURE 联动</strong>：GDPR 真删要求索引与源数据同步物理删除，同库方案是 <code class="docutils literal notranslate"><span class="pre">ON</span> <span class="pre">DELETE</span> <span class="pre">CASCADE</span></code>，跨库方案是一套同步协议。</p></li>
+</ol>
+</section>
+<section id="meilisearch-typesense">
+<h3>5.4 为什么不是 Meilisearch / Typesense<a class="headerlink" href="#meilisearch-typesense" title="链接到此标题。"></a></h3>
+<p>两者都是优秀的 typo-tolerant 搜索服务，但：</p>
+<ul class="simple">
+<li><p>BM25 语义不完整（Meilisearch 的排序以相关性规则集表达，不是经典 Okapi BM25），而本系统的检索评估是按 BM25 通道设计的；</p></li>
+<li><p>仍是独立服务 + 双写问题；</p></li>
+<li><p>它们的差异化能力（即拼即搜、facets）在本系统没有消费者。</p></li>
+</ul>
+</section>
+<section id="pg-textsearch">
+<h3>5.5 pg_textsearch 的代价与边界<a class="headerlink" href="#pg-textsearch" title="链接到此标题。"></a></h3>
+<p>公平起见，pg_textsearch 也有代价：需要独立安装二进制、<code class="docutils literal notranslate"><span class="pre">shared_preload_libraries</span></code> 配置、重启生效。项目为此提供了 <code class="docutils literal notranslate"><span class="pre">Dockerfile.postgres</span></code> 把这些步骤固化进镜像。<strong>用一次性的镜像构建成本，换运行期零额外进程</strong>——这笔账在 Docker 部署形态下是划算的。</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="pg-trgm-vs">
+<h2>6. 模糊匹配：pg_trgm vs 替代方案<a class="headerlink" href="#pg-trgm-vs" title="链接到此标题。"></a></h2>
+<p>模糊匹配在本系统有两个消费者：</p>
+<ul class="simple">
+<li><p><strong>实体名召回通道</strong>（<code class="docutils literal notranslate"><span class="pre">graph/retrieval/channels.py</span></code>）：<code class="docutils literal notranslate"><span class="pre">similarity(canonical_name,</span> <span class="pre">:raw_name)</span> <span class="pre">&gt;</span> <span class="pre">0.3</span></code> + GIN trigram 索引；</p></li>
+<li><p><strong>Dreaming 聚类预筛</strong>（<code class="docutils literal notranslate"><span class="pre">memory/dreaming.py</span></code>）：<code class="docutils literal notranslate"><span class="pre">similarity(body_a,</span> <span class="pre">body_b)</span> <span class="pre">&gt;=</span> <span class="pre">threshold</span></code>，把疑似重复 fact 对预筛后再送 LLM 判定，省 token。</p></li>
+</ul>
+<section id="id12">
+<h3>6.1 候选对比<a class="headerlink" href="#id12" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>方案</p></th>
+<th class="head"><p>评价</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>pg_trgm</strong>（✅ 当前）</p></td>
+<td><p>contrib 内置，官方镜像自带，零安装成本；GIN 索引支持 <code class="docutils literal notranslate"><span class="pre">similarity()</span></code> 走索引；与 scope 过滤在同一 SQL 里组合</p></td>
+</tr>
+<tr class="row-odd"><td><p>Elasticsearch fuzzy query</p></td>
+<td><p>能力足够，但为了一个 <code class="docutils literal notranslate"><span class="pre">similarity()</span></code> 引入整个 ES，违反预算线</p></td>
+</tr>
+<tr class="row-even"><td><p>Tantivy / tantivy-py</p></td>
+<td><p>Rust 全文引擎，需要独立索引目录与同步逻辑，且 Python 绑定生态薄</p></td>
+</tr>
+<tr class="row-odd"><td><p>rapidfuzz / python-Levenshtein</p></td>
+<td><p>纯 Python 内存计算，无法建索引，实体数一多就是全表扫描</p></td>
+</tr>
+<tr class="row-even"><td><p>PG 内置 ILIKE</p></td>
+<td><p>无索引加速（前缀除外），且没有相似度排序语义</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="id13">
+<h3>6.2 结论<a class="headerlink" href="#id13" title="链接到此标题。"></a></h3>
+<p>pg_trgm 是<strong>零边际成本</strong>的选择：它随 <code class="docutils literal notranslate"><span class="pre">postgres:18-bookworm</span></code> 镜像内置，一条 <code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">EXTENSION</span></code> 即可。当模糊匹配的需求就是&quot;带索引的三元组相似度&quot;时，没有任何独立组件能给出比&quot;数据库自带&quot;更低的引入成本。</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="id14">
+<h2>7. PG 的一身七职：中间件替代全景<a class="headerlink" href="#id14" title="链接到此标题。"></a></h2>
+<p>第 3~6 节论证了检索层。最后把 PG 承担的非检索角色也列清楚——这些位置本可以引入独立中间件，但都被 PG 内置能力替代了：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>角色</p></th>
+<th class="head"><p>独立中间件方案</p></th>
+<th class="head"><p>PG 方案</p></th>
+<th class="head"><p>源码</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>任务队列</p></td>
+<td><p>Redis + RQ / RabbitMQ + Celery</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">jobs</span></code> 表 + <code class="docutils literal notranslate"><span class="pre">FOR</span> <span class="pre">UPDATE</span> <span class="pre">SKIP</span> <span class="pre">LOCKED</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">infra/core.py</span></code> <code class="docutils literal notranslate"><span class="pre">claim_next_job</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>事件总线</p></td>
+<td><p>Redis Pub/Sub / Kafka</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pg_notify</span></code> + <code class="docutils literal notranslate"><span class="pre">LISTEN</span></code>（channel <code class="docutils literal notranslate"><span class="pre">cortex_lc</span></code>）</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">infra/core.py</span></code> <code class="docutils literal notranslate"><span class="pre">emit_lifecycle</span></code> / <code class="docutils literal notranslate"><span class="pre">wait_for_stage</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>分布式锁</p></td>
+<td><p>Redis SETNX / etcd / ZooKeeper</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pg_advisory_xact_lock</span></code>（事务结束自动释放）</p></td>
+<td><p>实体链接/图变更/证据注册共 7 处</p></td>
+</tr>
+<tr class="row-odd"><td><p>图遍历</p></td>
+<td><p>Neo4j / JanusGraph</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">WITH</span> <span class="pre">RECURSIVE</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">channels.py</span></code> 图遍历通道</p></td>
+</tr>
+<tr class="row-even"><td><p>幂等写入</p></td>
+<td><p>应用层去重缓存</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">idempotency_key</span></code> UNIQUE + <code class="docutils literal notranslate"><span class="pre">ON</span> <span class="pre">CONFLICT</span> <span class="pre">DO</span> <span class="pre">NOTHING</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">append_event</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>配置/词表存储</p></td>
+<td><p>独立配置中心</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vocabularies</span></code> / <code class="docutils literal notranslate"><span class="pre">predicate_definitions</span></code> 表</p></td>
+<td><p>schema.sql</p></td>
+</tr>
+<tr class="row-even"><td><p>文档存储</p></td>
+<td><p>对象存储</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blobs</span></code> 表（inline BYTEA + SHA-256 去重）</p></td>
+<td><p>schema.sql</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">备注</p>
+<p>Postgres-as-queue 有一个常被忽略的红利：<strong>队列本身就是可查询的业务数据</strong>。job 的状态、重试次数、错误信息都在 <code class="docutils literal notranslate"><span class="pre">jobs</span></code> 表里，运维页面直接 SQL 聚合，不需要给 Redis/RabbitMQ 再配一套监控。死信也不是新机制，只是 <code class="docutils literal notranslate"><span class="pre">status='failed'</span> <span class="pre">AND</span> <span class="pre">attempts</span> <span class="pre">&gt;=</span> <span class="pre">max_attempts</span></code> 的一个查询条件。</p>
+</div>
+<p>advisory lock 对比 Redis 锁还有一个结构性优势：<strong>锁的生命周期绑定事务</strong>。实体合并持锁期间崩溃，事务回滚的同时锁自动释放，不存在 Redis 锁&quot;持有者崩溃后等 TTL 过期&quot;的窗口。</p>
+</section>
+<hr class="docutils" />
+<section id="python">
+<h2>8. 应用层 Python 生态选型<a class="headerlink" href="#python" title="链接到此标题。"></a></h2>
+<p>数据库定了之后，应用层的选型同样遵循最小依赖原则：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>位置</p></th>
+<th class="head"><p>选择</p></th>
+<th class="head"><p>对比与否决理由</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Web 框架</p></td>
+<td><p><strong>FastAPI</strong></p></td>
+<td><p>vs Flask：原生 async + Pydantic 契约一体；vs Django：无 admin/ORM 负担，本项目不需要</p></td>
+</tr>
+<tr class="row-odd"><td><p>ASGI 服务器</p></td>
+<td><p><strong>uvicorn</strong></p></td>
+<td><p>FastAPI 事实标准，不引入 gunicorn 多进程层（worker 并发由 Postgres 队列承担）</p></td>
+</tr>
+<tr class="row-even"><td><p>数据契约</p></td>
+<td><p><strong>Pydantic v2</strong></p></td>
+<td><p>vs 手写 dataclass：校验/序列化/配置三合一，<code class="docutils literal notranslate"><span class="pre">AppConfig</span></code> 启动即强校验</p></td>
+</tr>
+<tr class="row-odd"><td><p>DB 访问</p></td>
+<td><p><strong>psycopg3 + SQLAlchemy Engine（仅连接池）+ <code class="docutils literal notranslate"><span class="pre">text()</span></code> 裸 SQL</strong></p></td>
+<td><p>vs SQLAlchemy ORM：本系统的 SQL 充满递归 CTE/窗口函数/advisory lock/<code class="docutils literal notranslate"><span class="pre">ON</span> <span class="pre">CONFLICT</span></code>，ORM 表达力不足反而增加翻译层；保留 Engine 只为 QueuePool 连接池与 <code class="docutils literal notranslate"><span class="pre">pool_pre_ping</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>迁移</p></td>
+<td><p><strong>Alembic</strong></p></td>
+<td><p>与 SQLAlchemy Engine 同源，无新增生态</p></td>
+</tr>
+<tr class="row-odd"><td><p>SSE</p></td>
+<td><p><strong>sse-starlette</strong></p></td>
+<td><p>手写 SSE 要处理心跳/断连/<code class="docutils literal notranslate"><span class="pre">&lt;think&gt;</span></code> 分流边界，不值得</p></td>
+</tr>
+<tr class="row-even"><td><p>HTTP 客户端</p></td>
+<td><p><strong>httpx2 + openai SDK</strong></p></td>
+<td><p>LLM/Embedding/Rerank 全是 OpenAI 兼容接口，一个 SDK 覆盖三路外部服务</p></td>
+</tr>
+<tr class="row-odd"><td><p>分词</p></td>
+<td><p><strong>jieba-py</strong></p></td>
+<td><p>纯 Python 依赖，替代&quot;给 ES 装 IK 插件&quot;的重方案</p></td>
+</tr>
+<tr class="row-even"><td><p>MCP</p></td>
+<td><p><strong>mcp (FastMCP)</strong></p></td>
+<td><p>官方 SDK 同时提供 stdio + streamable-http 双传输</p></td>
+</tr>
+<tr class="row-odd"><td><p>配置</p></td>
+<td><p><strong>PyYAML + python-dotenv</strong></p></td>
+<td><p>YAML 结构化 + 环境变量覆盖，不引入 consul/etcd</p></td>
+</tr>
+<tr class="row-even"><td><p>测试/lint</p></td>
+<td><p><strong>pytest + ruff</strong></p></td>
+<td><p>两个开发期工具，不进运行镜像</p></td>
+</tr>
+</tbody>
+</table>
+<p>注意一个取舍：<strong>没有引入 Celery、Redis、任何 ORM、任何配置中心</strong>。worker 就是对 <code class="docutils literal notranslate"><span class="pre">jobs</span></code> 表的轮询消费循环——当队列是数据库表时，消费队列的 worker 不需要框架。</p>
+</section>
+<hr class="docutils" />
+<section id="id15">
+<h2>9. 依赖总账：两个架构的对照<a class="headerlink" href="#id15" title="链接到此标题。"></a></h2>
+<p>把&quot;行业惯例组合&quot;与本项目的选择放在一起，差距一目了然：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>维度</p></th>
+<th class="head"><p>行业惯例组合</p></th>
+<th class="head"><p>cortex-py 选型</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>组件清单</p></td>
+<td><p>PG + Redis + Elasticsearch + Milvus + RabbitMQ</p></td>
+<td><p>PG 18 + pgvector + pg_textsearch + pg_trgm</p></td>
+</tr>
+<tr class="row-odd"><td><p>独立进程数</p></td>
+<td><p>5</p></td>
+<td><p>1</p></td>
+</tr>
+<tr class="row-even"><td><p>容器数（最小部署）</p></td>
+<td><p>5</p></td>
+<td><p>1（<code class="docutils literal notranslate"><span class="pre">Dockerfile.postgres</span></code>）</p></td>
+</tr>
+<tr class="row-odd"><td><p>内存预算</p></td>
+<td><p>PG 1G + Redis 0.5G + ES 2G + Milvus 2G + MQ 0.5G ≈ <strong>6GB</strong></p></td>
+<td><p>PG 单实例 ≈ <strong>1GB</strong> 量级</p></td>
+</tr>
+<tr class="row-even"><td><p>跨存储一致性</p></td>
+<td><p>3 处双写窗口（向量/全文/队列）</p></td>
+<td><p><strong>0</strong>（同库同事务）</p></td>
+</tr>
+<tr class="row-odd"><td><p>备份策略</p></td>
+<td><p>pg_dump + Redis RDB + ES snapshot + Milvus backup + MQ 镜像</p></td>
+<td><p><strong>一个数据卷 / 一条 pg_dump</strong></p></td>
+</tr>
+<tr class="row-even"><td><p>新增 SDK 依赖</p></td>
+<td><p>redis-py、elasticsearch-py、pymilvus、kombu</p></td>
+<td><p>0（psycopg 一个驱动打天下）</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">备注</p>
+<p>这张表不是否认 Redis/ES/Milvus 的价值——它们在各自的规模化场景都是正确答案。选型论证的前提永远是<strong>约束条件</strong>：本项目的约束是&quot;个人/小团队 + Docker 单机 + 低三方件&quot;，在这个约束下，PG+扩展生态是帕累托前沿上唯一的点。</p>
+</div>
+</section>
+<hr class="docutils" />
+<section id="id16">
+<h2>10. 边界与逃生门<a class="headerlink" href="#id16" title="链接到此标题。"></a></h2>
+<p>诚实的选型文档要写清楚<strong>什么时候这个选择会失效</strong>：</p>
+<ol class="arabic simple">
+<li><p><strong>向量规模破千万级</strong>。pgvector HNSW 的构建时间和内存占用会先到瓶颈。逃生门：检索是 6 通道抽象（<code class="docutils literal notranslate"><span class="pre">graph/retrieval/channels.py</span></code>），向量通道可以整体替换为外部向量库，其余通道不动；</p></li>
+<li><p><strong>BM25 检索 QPS 要求超过 PG 单机承载</strong>。逃生门：<code class="docutils literal notranslate"><span class="pre">fact_search_documents</span></code> 是投影表，天然可以整体重放到 ES；</p></li>
+<li><p><strong>需要多读副本/多区域部署</strong>。Postgres 流复制可以解决读扩展，但队列消费需要额外分区设计；</p></li>
+<li><p><strong>图遍历深度超过 3-4 跳</strong>。递归 CTE 的性能随深度指数下降，届时才值得考虑专用图引擎。</p></li>
+</ol>
+<p>当前系统离这四条线都有数量级的距离。在越过任何一条之前，<strong>多引入一个三方件的边际收益是负的</strong>——这正是本章结论的完整表述：</p>
+<blockquote>
+<div><p>在低三方件引入的前提下，PostgreSQL 18 + pgvector + pg_textsearch + pg_trgm 不是&quot;够用就行&quot;，而是同时满足事务一致性、运维成本、能力覆盖三个维度的<strong>唯一最优解</strong>。</p>
+</div></blockquote>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="25-competitive-analysis.html" class="btn btn-neutral float-left" title="第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

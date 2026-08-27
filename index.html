@@ -1,0 +1,1055 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cortex-PY 架构解析 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=7d86a446"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="genindex.html" />
+    <link rel="search" title="搜索" href="search.html" />
+    <link rel="next" title="第0章 项目概览" href="chapters/00-overview.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Cortex-PY 架构解析</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="cortex-py">
+<h1>Cortex-PY 架构解析<a class="headerlink" href="#cortex-py" title="链接到此标题。"></a></h1>
+<blockquote>
+<div><p>一本深入解析 <a class="reference external" href="https://github.com/pty819/cortex-py">cortex-py</a> 项目实现的技术书</p>
+</div></blockquote>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/00-overview.html">第0章 项目概览</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/00-overview.html#id2">项目定位</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/00-overview.html#id3">系统架构</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/00-overview.html#id4">五层记忆模型</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/00-overview.html#id5">核心组件</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/00-overview.html#i-o">并行 I/O 优化</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/00-overview.html#feedback-dreaming-higher-order">记忆自演化（Feedback / Dreaming / Higher-Order）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/00-overview.html#playbook-forward-reasoning">诊断推理（Playbook + Forward Reasoning）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/00-overview.html#id7">代码结构</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/01-memory-model.html">第1章 五层记忆模型</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/01-memory-model.html#id2">设计理念</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/01-memory-model.html#events">第1层：Events（事件层）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/01-memory-model.html#episodes">第2层：Episodes（事件分段层）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/01-memory-model.html#facts">第3层：Facts（事实层）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/01-memory-model.html#beliefs">第4层：Beliefs（信念层）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/01-memory-model.html#understanding">第5层：Understanding（理解层）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/01-memory-model.html#id10">数据派生关系</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/01-memory-model.html#id11">分层架构的优势</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/02-data-model.html">第2章 数据模型</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#id2">设计哲学</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#id3">完整表清单</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#entities">实体表 (entities)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#facts">Facts 表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#ontology">Ontology 模块</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#vocabularies">Vocabularies 词表系统</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#synonyms">Synonyms 同义词表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#concepts">Concepts 概念表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#temporal-phrases">Temporal Phrases 时间短语表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#blobs">Blobs 大对象表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#import-jobs">Import Jobs 导入任务表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#erasure-jobs">Erasure Jobs 擦除任务表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#id17">记忆自演化四表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/02-data-model.html#id18">实体关系全景图</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/03-wal-and-events.html">第3章 WAL 与事件系统</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/03-wal-and-events.html#id1">写入路径概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/03-wal-and-events.html#wal-write-ahead-log">WAL (Write-Ahead Log)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/03-wal-and-events.html#experience-envelope">Experience Envelope</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/03-wal-and-events.html#postgres-as-queue">Postgres-as-Queue</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/03-wal-and-events.html#scope">Scope 自动注册</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/03-wal-and-events.html#lifecycle-events">Lifecycle Events</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/03-wal-and-events.html#id8">完整写入流程</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/04-extraction-pipeline.html">第4章 抽取管线</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#id2">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#llm-prompts">LLM Prompts 体系</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#id3">21 种实体类型</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#id5">36 个谓词四大类</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#id6">8 条连接准则</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#assertion-semantics">Assertion Semantics 断言语义规则</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#vocab-coerce">Vocab Coerce 词表约束</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#identity-context">Identity Context 身份上下文传递</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#b-over-c">B-over-C 实体链接调用</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#extract-event">主流程：extract_event</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#id14">完整抽取流程图</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#higher-order">Higher-Order 异步触发</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#idempotent">结构边收敛（idempotent 写入）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/04-extraction-pipeline.html#id15">关键代码结构</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/05-entity-linking.html">第5章 实体链接详解</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/05-entity-linking.html#b-over-c">B-over-C 三层策略</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/05-entity-linking.html#a">A 层: 别名匹配</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/05-entity-linking.html#b">B 层: 向量近邻</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/05-entity-linking.html#c-llm">C 层: LLM 灰区判定</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/05-entity-linking.html#extract-event">三阶段并行:extract_event 的实体链接</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/05-entity-linking.html#fact">Fact 超替机制</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/05-entity-linking.html#id5">完整实体链接流程</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/05-entity-linking.html#id6">关键原则</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/06-ontology-and-assertion.html#id2">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/06-ontology-and-assertion.html#ontology">Ontology 模块</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/06-ontology-and-assertion.html#id3">四大类谓词详解</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/06-ontology-and-assertion.html#id8">断言语义</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/06-ontology-and-assertion.html#id10">图准入规则</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/06-ontology-and-assertion.html#cardinality">Cardinality（谓词基数）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/06-ontology-and-assertion.html#idempotent">结构边收敛（idempotent 写入）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/06-ontology-and-assertion.html#db-backed-predicate-definitions">DB-backed 本体: predicate_definitions 表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/06-ontology-and-assertion.html#id16">在抽取管线中的应用</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07-episodes-and-case.html#id1">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07-episodes-and-case.html#episodes">Episodes 表结构</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07-episodes-and-case.html#id2">模式1：自动分段</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07-episodes-and-case.html#case">模式2：诊断 Case</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07-episodes-and-case.html#id7">Case 完整数据流</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07-episodes-and-case.html#mcp">MCP 工具一览</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07b-diagnostics.html#diagnostics">为什么需要独立的 Diagnostics 模块</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07b-diagnostics.html#id1">模块架构</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07b-diagnostics.html#playbook-dag">Playbook DAG 数据模型</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07b-diagnostics.html#dag-validate-graph">DAG 验证（validate_graph）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07b-diagnostics.html#walk-graph">正向推理（walk_graph）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07b-diagnostics.html#playbook">Playbook 版本管理</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07b-diagnostics.html#sensor-resolve">传感器解析（Sensor Resolve）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07b-diagnostics.html#facts">与 Facts 图的协同</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07b-diagnostics.html#id13">数据持久化（5 张表）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/07b-diagnostics.html#id14">设计哲学总结</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/08-beliefs-and-understanding.html#id1">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/08-beliefs-and-understanding.html#beliefs">第4层：Beliefs（信念层）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/08-beliefs-and-understanding.html#understanding">第5层：Understanding（理解层）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/08-beliefs-and-understanding.html#id7">Beliefs → Understanding 的完整流程</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/08-beliefs-and-understanding.html#api">API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/08-beliefs-and-understanding.html#id8">使用场景</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/09-vocabularies.html">第9章 Vocabularies 系统</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/09-vocabularies.html#id1">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/09-vocabularies.html#id2">表结构</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/09-vocabularies.html#id4">两种模式</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/09-vocabularies.html#cardinality">Cardinality（基数）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/09-vocabularies.html#id5">谓词 Cardinality 表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/09-vocabularies.html#coerce">Coerce 函数</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/09-vocabularies.html#id6">预置诊断词表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/09-vocabularies.html#api">API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/09-vocabularies.html#mcp">MCP 工具</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/09-vocabularies.html#synonyms">Synonyms（同义词扩展）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/09-vocabularies.html#id12">最佳实践</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/10-signal-bus.html#id2">1. 概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/10-signal-bus.html#id3">2. 信号字段</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/10-signal-bus.html#recall-retrieval-count">3. 隐式反馈环:recall → retrieval_count</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/10-signal-bus.html#id4">4. 信号注入:融合后的四信号加权</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/10-signal-bus.html#id5">5. 缓存失效</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/10-signal-bus.html#id6">6. 热路径索引</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/10-signal-bus.html#id7">7. 配置</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/10-signal-bus.html#id8">8. 小结</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/11-feedback.html#id1">1. 概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/11-feedback.html#id2">2. 信号分类</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/11-feedback.html#id3">3. 双轨设计</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/11-feedback.html#apply-to-fact">4. <code class="docutils literal notranslate"><span class="pre">_apply_to_fact</span></code> 详解</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/11-feedback.html#check-methylation">5. <code class="docutils literal notranslate"><span class="pre">_check_methylation</span></code> — 累积负反馈触发软剪枝</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/11-feedback.html#id6">6. 并发安全</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/11-feedback.html#feedback-signals">7. <code class="docutils literal notranslate"><span class="pre">feedback_signals</span></code> 表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/11-feedback.html#api-mcp">8. API 与 MCP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/11-feedback.html#id7">9. 配置</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/12-dreaming.html#id1">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/12-dreaming.html#id2">四阶段管线</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/12-dreaming.html#phase-0">Phase 0: 精确去重</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/12-dreaming.html#phase-a">Phase A: 候选发现</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/12-dreaming.html#phase-b-c-llm">Phase B+C: 两阶段 LLM（跨簇并发）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/12-dreaming.html#execute-actions-pending">_execute_actions — 写 pending 候选,不直接改知识图</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/12-dreaming.html#id3">并发与调度</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/12-dreaming.html#dreaming-runs">dreaming_runs 表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/12-dreaming.html#llm-key">无 LLM key 降级</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/12-dreaming.html#api">API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/12-dreaming.html#id4">配置</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/13-higher-order.html#id1">13.1 概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/13-higher-order.html#vs">13.2 一阶 vs 高阶事实</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/13-higher-order.html#predicate-definitions">13.3 predicate_definitions 表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/13-higher-order.html#generate-higher-order">13.4 generate_higher_order 流程</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/13-higher-order.html#extract-enqueue">13.5 触发机制：extract 后异步 enqueue</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/13-higher-order.html#id4">13.6 召回集成：higher_order 层</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/13-higher-order.html#candidate-tier">13.7 质量保护:candidate tier + 人工审批门</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/13-higher-order.html#api-mcp">13.8 API 与 MCP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/13-higher-order.html#id5">13.9 配置</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/14-retrieval-system.html">第14章 检索系统概述</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/14-retrieval-system.html#id2">设计目标</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/14-retrieval-system.html#id3">6 通道详解</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/14-retrieval-system.html#scope">Scope 过滤</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/14-retrieval-system.html#temporal-clause">时态过滤 (<code class="docutils literal notranslate"><span class="pre">_temporal_clause</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/14-retrieval-system.html#sql">图准入 SQL</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/14-retrieval-system.html#id4">检索主流程</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/14-retrieval-system.html#id5">问题类型路由</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/14-retrieval-system.html#hyde-hypothetical-document-embedding">HyDE (Hypothetical Document Embedding)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/14-retrieval-system.html#multihop">Multihop 子问题分解</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/14-retrieval-system.html#stratifiedpack">StratifiedPack 缓存</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/14-retrieval-system.html#recall">完整 recall 调用</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/14-retrieval-system.html#id6">信号总线加权 (四信号独立模型)</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/15-retrieval-channels.html">第15章 检索通道详解</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/15-retrieval-channels.html#id2">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/15-retrieval-channels.html#id3">通用时态过滤</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/15-retrieval-channels.html#chan-vector">通道1：向量检索（_chan_vector）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/15-retrieval-channels.html#bm25-chan-bm25">通道2：BM25 全文检索（_chan_bm25）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/15-retrieval-channels.html#chan-graph">通道3：图遍历（_chan_graph）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/15-retrieval-channels.html#entity-name-chan-entity-name">通道4：Entity Name 匹配（_chan_entity_name）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/15-retrieval-channels.html#synonym-expand-synonyms">通道5：Synonym 同义词扩展（_expand_synonyms）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/15-retrieval-channels.html#temporal-decay">通道6：Temporal-decay 时间衰减</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/15-retrieval-channels.html#hyde">HyDE 假设性文档嵌入</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/15-retrieval-channels.html#multihop">Multihop 子问题分解</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/15-retrieval-channels.html#scope">scope 过滤视图</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/15-retrieval-channels.html#id4">通道对比</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/16-rrf-fusion.html">第16章 RRF 融合</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/16-rrf-fusion.html#id1">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/16-rrf-fusion.html#id2">三种融合策略</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/16-rrf-fusion.html#id3">每通道独立控制</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/16-rrf-fusion.html#rerank">Rerank 后处理</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/16-rrf-fusion.html#stratifiedpack">StratifiedPack 组装</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/16-rrf-fusion.html#id4">完整检索流程</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/16-rrf-fusion.html#id5">信号总线再加权(融合后、rerank 前)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/16-rrf-fusion.html#profile-a-b-preview">命名 Profile 与 A/B Preview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/16-rrf-fusion.html#id6">关键参数</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/17-temporal-system.html">第17章 时态系统</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/17-temporal-system.html#id2">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/17-temporal-system.html#temporal-phrases">Temporal Phrases 表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/17-temporal-system.html#id3">预置短语</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/17-temporal-system.html#id4">注册自定义短语</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/17-temporal-system.html#id5">检索中的时态过滤</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/17-temporal-system.html#rest-api">REST API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/17-temporal-system.html#mcp">MCP 工具</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/18-api-reference.html">第18章 API 参考</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#id1">1. 概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#id4">2. 核心写入</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#id5">3. 核心读取</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#sse">4. 流式端点 (SSE)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#id6">5. 层直读与图谱编辑</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#id8">6. 记忆自演化</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#id9">7. 导入导出</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#erasures">8. Erasures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#episodes-cases">9. Episodes 与 Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#understanding">10. Understanding 层</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#vocabularies-temporal">11. Vocabularies 与 Temporal</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#admin">12. Admin</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#scopes-health">13. Scopes 与 Health</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#pydantic-schemas">Pydantic Schemas</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/18-api-reference.html#id12">变更说明(相对旧版章节)</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/19-mcp-server.html">第19章 MCP Server</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/19-mcp-server.html#mcp">MCP 概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/19-mcp-server.html#id1">53 工具一览</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/19-mcp-server.html#id7">双传输模式</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/19-mcp-server.html#scope">Scope 解析规则</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/19-mcp-server.html#id8">关键工具详解</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/19-mcp-server.html#id9">访问控制</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/19-mcp-server.html#id10">启动命令速查</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/20-worker-system.html">第20章 Worker 系统</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/20-worker-system.html#id1">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/20-worker-system.html#jobs">Jobs 表结构</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/20-worker-system.html#id2">原子抢任务</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/20-worker-system.html#id3">完成与失败处理</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/20-worker-system.html#id6">僵尸回收</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/20-worker-system.html#id7">Worker 主循环</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/20-worker-system.html#id8">生命周期事件通知</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/20-worker-system.html#dreaming">Dreaming 调度器与心跳</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/20-worker-system.html#id9">启动 Worker</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/20-worker-system.html#id10">关键设计决策</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/21-maintenance.html">第21章 Maintenance 系统</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/21-maintenance.html#id1">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/21-maintenance.html#methylation">Methylation（甲基化）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/21-maintenance.html#consolidation">Consolidation（去重）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/21-maintenance.html#id2">诊断谓词词表预置</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/21-maintenance.html#seed-predicate-definitions">谓词定义预置（seed_predicate_definitions）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/21-maintenance.html#id3">触发方式</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/21-maintenance.html#api">API 端点</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/21-maintenance.html#id4">最佳实践</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/22-erasures.html">第22章 Erasures 系统</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/22-erasures.html#id1">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/22-erasures.html#id2">4 阶段执行</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/22-erasures.html#id3">事务策略</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/22-erasures.html#id4">预览与执行</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/22-erasures.html#api">完整 API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/22-erasures.html#id5">设计原则</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/23-architecture-diagrams.html#id2">23.1 视图模型与隔离规则</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/23-architecture-diagrams.html#id3">23.2 逻辑视图：功能的对象分解</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/23-architecture-diagrams.html#id8">23.3 进程视图：并发与同步</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/23-architecture-diagrams.html#id12">23.4 开发视图：源码静态组织</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/23-architecture-diagrams.html#id16">23.5 物理视图：部署拓扑</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/23-architecture-diagrams.html#id20">23.6 场景视图（用例视图，+1）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/23-architecture-diagrams.html#id23">23.7 视图对应关系</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/23-architecture-diagrams.html#id27">23.8 关键约束与架构决策（按视图归类）</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/24-config-and-frontend.html">第24章 运行配置与前端运维</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/24-config-and-frontend.html#id2">1. 概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/24-config-and-frontend.html#id3">2. 配置热更新机制</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/24-config-and-frontend.html#api">3. 配置 API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/24-config-and-frontend.html#id9">4. 任务队列 API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/24-config-and-frontend.html#answer-stream-sse-phase">5. answer/stream SSE phase 事件</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/24-config-and-frontend.html#id10">6. 前端:控制平面架构</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/24-config-and-frontend.html#settingsview">7. 前端:SettingsView 配置中心</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/24-config-and-frontend.html#opsview">8. 前端:OpsView 运维监控</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/24-config-and-frontend.html#qaview-ask">9. 前端:QaView Ask 诊断面板</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/24-config-and-frontend.html#id19">10. 新增视图速览</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="chapters/25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/25-competitive-analysis.html#id1">为什么要做这个对比</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/25-competitive-analysis.html#mem0-59k-star">1. Mem0：59k star 的通用记忆层，但它的&quot;记忆&quot;是扁平的</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/25-competitive-analysis.html#graphiti-zep">2. Graphiti (Zep)：真正的时态知识图谱，但实体是&quot;通用&quot;的</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/25-competitive-analysis.html#agentmemory-rohitg00-agent">3. agentmemory (rohitg00)：编程 agent 记忆的天才设计，但和诊断无关</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/25-competitive-analysis.html#openviking">4. OpenViking (字节跳动)：上下文文件系统，不是知识图谱</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/25-competitive-analysis.html#mindmemos-cortex-py">5. MindMemOS（华为）：自演化记忆操作系统，Cortex-PY 三大自演化特性的原型</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/25-competitive-analysis.html#id15">6. 诊断场景的七个&quot;不可妥协&quot;的技术需求</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/25-competitive-analysis.html#id22">7. 六系统综合对比总表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/25-competitive-analysis.html#id23">8. 决策树</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/25-competitive-analysis.html#id24">9. 附：各系统的&quot;不可&quot;清单</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="chapters/26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="chapters/26-tech-selection.html#id1">1. 选型原则：低三方件引入</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/26-tech-selection.html#id2">2. 需求画像：这个系统到底需要什么样的数据库</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/26-tech-selection.html#id3">3. 数据库选型：逐一对比</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/26-tech-selection.html#pgvector-vs">4. 向量检索：pgvector vs 专用向量库</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/26-tech-selection.html#bm25-pg-textsearch-vs">5. 全文检索（BM25）：pg_textsearch vs 搜索引擎</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/26-tech-selection.html#pg-trgm-vs">6. 模糊匹配：pg_trgm vs 替代方案</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/26-tech-selection.html#id14">7. PG 的一身七职：中间件替代全景</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/26-tech-selection.html#python">8. 应用层 Python 生态选型</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/26-tech-selection.html#id15">9. 依赖总账：两个架构的对照</a></li>
+<li class="toctree-l2"><a class="reference internal" href="chapters/26-tech-selection.html#id16">10. 边界与逃生门</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<section id="id1">
+<h2>项目概览<a class="headerlink" href="#id1" title="链接到此标题。"></a></h2>
+<p><strong>Cortex-PY</strong> 是 <a class="reference external" href="https://cortexdb.ai/docs/">CortexDB</a> 记忆系统的 Python 复刻实现，面向个人/小团队的 Agent 长期记忆层。</p>
+<section id="id2">
+<h3>核心特性<a class="headerlink" href="#id2" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>特性</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>五层记忆</p></td>
+<td><p>Events → Episodes → Facts → Beliefs → Understanding</p></td>
+</tr>
+<tr class="row-odd"><td><p>双时态</p></td>
+<td><p>每条记录 4 个时间字段，支持&quot;当时&quot;和&quot;现在&quot;双视角</p></td>
+</tr>
+<tr class="row-even"><td><p>知识图谱</p></td>
+<td><p>Facts 当图边，递归 CTE 做 2-3 跳 BFS</p></td>
+</tr>
+<tr class="row-odd"><td><p>6 通道检索</p></td>
+<td><p>向量 + BM25 + 图遍历 + entity-name + synonym + temporal-decay</p></td>
+</tr>
+<tr class="row-even"><td><p>实体链接</p></td>
+<td><p>B over C 策略：向量召回 + 阈值 + LLM 灰区判定</p></td>
+</tr>
+<tr class="row-odd"><td><p>记忆自演化</p></td>
+<td><p>Feedback 回灌 + Dreaming 离线巩固 + Higher-Order 高阶归纳，共享信号总线</p></td>
+</tr>
+<tr class="row-even"><td><p>MCP</p></td>
+<td><p>53 个工具，stdio + streamable-http 双传输</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="id3">
+<h3>技术栈<a class="headerlink" href="#id3" title="链接到此标题。"></a></h3>
+<pre  class="mermaid">
+        graph TB
+    subgraph 应用层
+        A[FastAPI] --&gt; B[Vue 3 前端]
+        A --&gt; C[MCP Server]
+    end
+    
+    subgraph 业务层
+        D[Extraction Pipeline] --&gt; E[Retrieval Pipeline]
+        D --&gt; F[Entity Linking]
+        E --&gt; G[RRF Fusion]
+    end
+    
+    subgraph 存储层
+        H[(PostgreSQL)] --&gt; I[pgvector]
+        H --&gt; J[pg_textsearch]
+        H --&gt; K[pg_trgm]
+    end
+    
+    A --&gt; D
+    E --&gt; H
+    D --&gt; H
+    </pre></section>
+</section>
+<section id="id4">
+<h2>索引<a class="headerlink" href="#id4" title="链接到此标题。"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">索引</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">搜索页面</span></a></p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="chapters/00-overview.html" class="btn btn-neutral float-right" title="第0章 项目概览" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,1512 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第24章 运行配置与前端运维 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界" href="25-competitive-analysis.html" />
+    <link rel="prev" title="第23章 架构视图（4+1 视图模型）" href="23-architecture-diagrams.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第24章 运行配置与前端运维</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id2">1. 概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">2. 配置热更新机制</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id4">2.1 原地深合并</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5">2.2 白名单校验</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id6">2.3 持久化</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id7">2.4 典型用法</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id8">2.5 热更新流程</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#api">3. 配置 API</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#get-v1-admin-config">3.1 读取:GET /v1/admin/config</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#post-v1-admin-config">3.2 修改:POST /v1/admin/config</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id9">4. 任务队列 API</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#get-v1-admin-jobs">4.1 GET /v1/admin/jobs</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#answer-stream-sse-phase">5. answer/stream SSE phase 事件</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id10">6. 前端:控制平面架构</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id11">6.1 信息架构:左侧分组导航</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pinia-store-scope-settings">6.2 Pinia store:scope 与 settings</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sse-eventsource-fetch">6.3 SSE 从 EventSource 改为 fetch</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id12">6.4 全量端点封装</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id13">6.5 复用组件</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#retrievalcontrolpanel">6.6 检索控制面(RetrievalControlPanel)</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#a-b-preview">A/B Preview(无副作用预览)</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#settingsview">7. 前端:SettingsView 配置中心</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#tab-1">7.1 Tab 1:功能开关</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tab-2-api">7.2 Tab 2:上游 API</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tab-3">7.3 Tab 3:检索调参</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tab-4">7.4 Tab 4:系统</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id14">7.5 顶栏操作</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#opsview">8. 前端:OpsView 运维监控</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id15">8.1 统计卡片</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#worker">8.2 活跃 Worker</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id16">8.3 任务队列表</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#dreaming">8.4 Dreaming 控制</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#qaview-ask">9. 前端:QaView Ask 诊断面板</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#phase">9.1 监听 phase 事件</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id17">9.2 阶段耗时瀑布图</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id18">9.3 6 通道命中数</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#provenance-trail">9.4 provenance trail(数据漏斗)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#llm">9.5 LLM 状态指示器</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id19">10. 新增视图速览</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#playbookview">10.1 PlaybookView（诊断剧本管理）</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第24章 运行配置与前端运维</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/24-config-and-frontend.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="id1">
+<h1>第24章 运行配置与前端运维<a class="headerlink" href="#id1" title="链接到此标题。"></a></h1>
+<section id="id2">
+<h2>1. 概述<a class="headerlink" href="#id2" title="链接到此标题。"></a></h2>
+<p>cortex-py 的配置最初是只读的:启动时由 <code class="docutils literal notranslate"><span class="pre">load_config()</span></code> 从 <code class="docutils literal notranslate"><span class="pre">config/config.yaml</span></code> 读取,加上环境变量覆盖,校验后缓存进模块级 <code class="docutils literal notranslate"><span class="pre">_CACHE</span></code> 单例,进程生命周期内不再变化。任何调整都要改文件并重启进程,对长时间运行的抽取/回答服务很不方便。</p>
+<p>本章描述两块新能力:</p>
+<ul class="simple">
+<li><p><strong>配置热更新</strong>:通过 <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/admin/config</span></code> 在运行时深合并补丁到缓存的 <code class="docutils literal notranslate"><span class="pre">AppConfig</span></code> 单例,功能开关、上游 API key、检索参数等即时生效,无需重启;可选写回 YAML。</p></li>
+<li><p><strong>前端运维页面</strong>:三个新视图 —— <code class="docutils literal notranslate"><span class="pre">SettingsView</span></code>(配置中心)、<code class="docutils literal notranslate"><span class="pre">OpsView</span></code>(运维监控)、<code class="docutils literal notranslate"><span class="pre">QaView</span></code> 的 Ask 诊断面板,加上 SSE 阶段事件,把黑盒的 recall/LLM 流程变成可观测的瀑布图。</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">备注</p>
+<p>热更新只覆盖<strong>白名单内</strong>的字段。<code class="docutils literal notranslate"><span class="pre">database</span></code> 与 <code class="docutils literal notranslate"><span class="pre">embedding.dimension</span></code> 明确禁止运行时修改 —— 前者影响连接池,后者与 <code class="docutils literal notranslate"><span class="pre">schema.sql</span></code> 的 <code class="docutils literal notranslate"><span class="pre">vector(N)</span></code> 强绑定,改了会静默召回失败。</p>
+</div>
+</section>
+<section id="id3">
+<h2>2. 配置热更新机制<a class="headerlink" href="#id3" title="链接到此标题。"></a></h2>
+<section id="id4">
+<h3>2.1 原地深合并<a class="headerlink" href="#id4" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">apply_config_patch()</span></code> 的关键设计是<strong>不替换 <code class="docutils literal notranslate"><span class="pre">_CACHE</span></code> 实例</strong>,而是递归地把补丁写进现有 <code class="docutils literal notranslate"><span class="pre">AppConfig</span></code> 对象的字段:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># src/cortex/infra/config.py</span>
+<span class="n">_CONFIG_PATCH_WHITELIST</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;llm&quot;</span><span class="p">,</span> <span class="s2">&quot;rerank&quot;</span><span class="p">,</span> <span class="s2">&quot;embedding.api_base&quot;</span><span class="p">,</span> <span class="s2">&quot;embedding.model&quot;</span><span class="p">,</span> <span class="s2">&quot;embedding.provider&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;worker&quot;</span><span class="p">,</span> <span class="s2">&quot;retrieval&quot;</span><span class="p">,</span> <span class="s2">&quot;extraction&quot;</span><span class="p">,</span> <span class="s2">&quot;feedback&quot;</span><span class="p">,</span> <span class="s2">&quot;dreaming&quot;</span><span class="p">,</span> <span class="s2">&quot;higher_order&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">apply_config_patch</span><span class="p">(</span><span class="n">patch</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AppConfig</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;原地深合并 patch 到缓存的 AppConfig(不替换 _CACHE 实例,</span>
+<span class="sd">    避免 app.py 的 cfg 绑定失效)。&quot;&quot;&quot;</span>
+    <span class="n">cfg</span> <span class="o">=</span> <span class="n">load_config</span><span class="p">()</span>
+    <span class="n">candidate</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>                 <span class="c1"># 1) 深拷贝,避免半成品污染 _CACHE</span>
+    <span class="n">_deep_merge</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">patch</span><span class="p">,</span> <span class="n">root_path</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>           <span class="c1"># 2) 白名单深合并</span>
+    <span class="n">validated</span> <span class="o">=</span> <span class="n">AppConfig</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span>                 <span class="c1"># 3) 重跑 Pydantic 校验(含 dimension 强约束)</span>
+        <span class="n">candidate</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">by_alias</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">AppConfig</span><span class="o">.</span><span class="n">model_fields</span><span class="p">:</span>             <span class="c1"># 4) 把校验通过的值逐字段回填到原 cfg</span>
+        <span class="nb">setattr</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">validated</span><span class="p">,</span> <span class="n">field_name</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">cfg</span>
+</pre></div>
+</div>
+<p>白名单<strong>不含 <code class="docutils literal notranslate"><span class="pre">api</span></code></strong>:<code class="docutils literal notranslate"><span class="pre">ApiCfg</span></code> 现在只承载传输层设置 <code class="docutils literal notranslate"><span class="pre">cors_origins</span></code>(认证已归属上游应用,见 <code class="docutils literal notranslate"><span class="pre">config.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">ApiCfg</span></code> 注释),运行中改它会让 CORS 与部署不一致。注释明确&quot;传输配置 <code class="docutils literal notranslate"><span class="pre">api</span></code> 与 <code class="docutils literal notranslate"><span class="pre">database</span></code>/<code class="docutils literal notranslate"><span class="pre">embedding.dimension</span></code> 禁止运行时修改&quot;,必须通过受控部署更新并重启。</p>
+<p>为什么不替换 <code class="docutils literal notranslate"><span class="pre">_CACHE</span></code>?因为 <code class="docutils literal notranslate"><span class="pre">app.py</span></code> 等模块在启动时通过 <code class="docutils literal notranslate"><span class="pre">cfg</span> <span class="pre">=</span> <span class="pre">load_config()</span></code> 拿到单例引用,并在闭包/装饰器里长期持有。如果热更新走 <code class="docutils literal notranslate"><span class="pre">load_config(reload=True)</span></code> 路径重建实例,旧的 <code class="docutils literal notranslate"><span class="pre">cfg</span></code> 引用就指向了一个孤儿对象,新配置对它们永远不可见。原地改字段让所有持有引用的代码立刻看到新值。</p>
+<p>但&quot;原地改字段&quot;不能跳过校验:补丁可能引入非法值(如 <code class="docutils literal notranslate"><span class="pre">embedding.dimension</span></code> 与 schema 的 <code class="docutils literal notranslate"><span class="pre">vector(N)</span></code> 不一致)。所以 <code class="docutils literal notranslate"><span class="pre">apply_config_patch</span></code> 先深拷贝一份候选对象,合并补丁后用 <code class="docutils literal notranslate"><span class="pre">AppConfig.model_validate(...)</span></code> 重跑完整 Pydantic 校验,校验通过才把每个字段 <code class="docutils literal notranslate"><span class="pre">setattr</span></code> 回真正的 <code class="docutils literal notranslate"><span class="pre">_CACHE</span></code> 实例。校验失败 <code class="docutils literal notranslate"><span class="pre">_CACHE</span></code> 不变。</p>
+</section>
+<section id="id5">
+<h3>2.2 白名单校验<a class="headerlink" href="#id5" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">_deep_merge()</span></code> 在递归时维护 <code class="docutils literal notranslate"><span class="pre">root_path</span></code>(如 <code class="docutils literal notranslate"><span class="pre">llm.extraction.api_key</span></code>),对每个字段做两层校验:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_deep_merge</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="n">patch</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">root_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">patch</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">root_path</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">root_path</span> <span class="k">else</span> <span class="n">key</span>
+        <span class="n">top</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="c1"># 三条白名单匹配规则:精确路径、顶层、父路径在白名单</span>
+        <span class="n">allowed</span> <span class="o">=</span> <span class="p">(</span><span class="n">path</span> <span class="ow">in</span> <span class="n">_CONFIG_PATCH_WHITELIST</span> <span class="ow">or</span> <span class="n">top</span> <span class="ow">in</span> <span class="n">_CONFIG_PATCH_WHITELIST</span>
+                   <span class="ow">or</span> <span class="nb">any</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">path</span> <span class="o">+</span> <span class="s2">&quot;.&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">_CONFIG_PATCH_WHITELIST</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">allowed</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Field &#39;</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&#39; is not patchable at runtime (not in whitelist)&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">top</span> <span class="o">==</span> <span class="s2">&quot;database&quot;</span> <span class="ow">or</span> <span class="n">path</span> <span class="o">==</span> <span class="s2">&quot;embedding.dimension&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Field &#39;</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&#39; cannot be changed at runtime (requires restart)&quot;</span><span class="p">)</span>
+        <span class="c1"># 特判:retrieval.graph_weight 落到 channels.graph.weight</span>
+        <span class="k">if</span> <span class="n">path</span> <span class="o">==</span> <span class="s2">&quot;retrieval.graph_weight&quot;</span><span class="p">:</span>
+            <span class="n">target</span><span class="o">.</span><span class="n">channels</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">weight</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="c1"># 递归或赋值;retrieval.profiles 整表替换并逐项 model_validate</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="s2">&quot;model_dump&quot;</span><span class="p">):</span>
+            <span class="n">_deep_merge</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">path</span> <span class="o">==</span> <span class="s2">&quot;retrieval.profiles&quot;</span><span class="p">:</span>
+                <span class="n">current</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">k2</span><span class="p">,</span> <span class="n">v2</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">current</span><span class="p">[</span><span class="n">k2</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">RetrievalProfileCfg</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">v2</span><span class="p">)</span>
+                               <span class="k">if</span> <span class="n">path</span> <span class="o">==</span> <span class="s2">&quot;retrieval.profiles&quot;</span> <span class="k">else</span> <span class="n">v2</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">setattr</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>白名单匹配有<strong>三条</strong>规则:① 精确路径命中(如 <code class="docutils literal notranslate"><span class="pre">embedding.api_base</span></code>);② 顶层整棵子树命中(如 <code class="docutils literal notranslate"><span class="pre">llm</span></code>,覆盖 <code class="docutils literal notranslate"><span class="pre">llm.extraction.api_key</span></code> 等任意下钻);③ <strong>父路径</strong>已在白名单(如 <code class="docutils literal notranslate"><span class="pre">embedding.model</span></code> 在白名单,允许 <code class="docutils literal notranslate"><span class="pre">embedding.model</span></code> 本身)。另有两条 <code class="docutils literal notranslate"><span class="pre">retrieval</span></code> 特判:<code class="docutils literal notranslate"><span class="pre">retrieval.graph_weight</span></code> 实际写入 <code class="docutils literal notranslate"><span class="pre">target.channels.graph.weight</span></code>(检索通道权重,非顶层标量);<code class="docutils literal notranslate"><span class="pre">retrieval.profiles</span></code> 走&quot;整表 clear + 逐项 <code class="docutils literal notranslate"><span class="pre">RetrievalProfileCfg.model_validate</span></code>&quot;,而非原地合并。</p>
+<p>规则:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>字段</p></th>
+<th class="head"><p>可热更新</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">llm</span></code> / <code class="docutils literal notranslate"><span class="pre">rerank</span></code></p></td>
+<td><p>是</p></td>
+<td><p>整棵子树,含 <code class="docutils literal notranslate"><span class="pre">api_key</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">embedding.api_base</span></code> / <code class="docutils literal notranslate"><span class="pre">.model</span></code> / <code class="docutils literal notranslate"><span class="pre">.provider</span></code></p></td>
+<td><p>是</p></td>
+<td><p>仅这三项</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">embedding.dimension</span></code></p></td>
+<td><p><strong>否</strong></p></td>
+<td><p>与 <code class="docutils literal notranslate"><span class="pre">vector(N)</span></code> 强绑定</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">embedding.api_key</span></code></p></td>
+<td><p>否(不在白名单)</p></td>
+<td><p>走环境变量</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">database.*</span></code></p></td>
+<td><p><strong>否</strong></p></td>
+<td><p>整棵子树禁</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">api</span></code></p></td>
+<td><p><strong>否</strong></p></td>
+<td><p>传输设置(<code class="docutils literal notranslate"><span class="pre">cors_origins</span></code>),禁止运行时修改,需重启</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">worker</span></code> / <code class="docutils literal notranslate"><span class="pre">retrieval</span></code> / <code class="docutils literal notranslate"><span class="pre">extraction</span></code></p></td>
+<td><p>是</p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">feedback</span></code> / <code class="docutils literal notranslate"><span class="pre">dreaming</span></code> / <code class="docutils literal notranslate"><span class="pre">higher_order</span></code></p></td>
+<td><p>是</p></td>
+<td><p>含 <code class="docutils literal notranslate"><span class="pre">enabled</span></code> 开关</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="id6">
+<h3>2.3 持久化<a class="headerlink" href="#id6" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">save_config()</span></code> 的真实行为与直觉相反:<strong>它不会把 env 注入的 secret 明文落盘</strong>。docstring 直写&quot;原子写回 YAML;环境变量注入的 secret 永不落盘&quot;。流程是先 <code class="docutils literal notranslate"><span class="pre">model_dump()</span></code> 拿到当前内存配置(其中已被 env 覆盖成真实 key 的字段),再调 <code class="docutils literal notranslate"><span class="pre">_restore_persisted_secrets(data,</span> <span class="pre">raw,</span> <span class="pre">persist_secret_paths)</span></code> 把这些字段替换回<strong>磁盘 YAML 里的原值或占位符</strong>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">save_config</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+                <span class="n">persist_secret_paths</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">set</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;原子写回 YAML；环境变量注入的 secret 永不落盘。&quot;&quot;&quot;</span>
+    <span class="n">cfg</span> <span class="o">=</span> <span class="n">load_config</span><span class="p">()</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;CORTEX_CONFIG&quot;</span><span class="p">,</span> <span class="n">_DEFAULT_CONFIG_PATH</span><span class="p">))</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">by_alias</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span> <span class="ow">or</span> <span class="p">{}</span>   <span class="c1"># 磁盘当前原值</span>
+    <span class="n">_restore_persisted_secrets</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">raw</span><span class="p">,</span> <span class="n">persist_secret_paths</span><span class="o">=</span><span class="n">persist_secret_paths</span> <span class="ow">or</span> <span class="nb">set</span><span class="p">())</span>
+    <span class="c1"># …原子写:tempfile + fsync + os.replace…</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">save_config</span></code> 多了一个 <code class="docutils literal notranslate"><span class="pre">persist_secret_paths</span></code> 参数:由 <code class="docutils literal notranslate"><span class="pre">admin_config_post</span></code> 用 <code class="docutils literal notranslate"><span class="pre">secret_paths_in_patch(body)</span></code> 算出本次补丁<strong>显式携带</strong>的 secret 路径,持久化时这些被用户主动改写的 key 保留明文写入,其余 env secret 仍被盖回。<code class="docutils literal notranslate"><span class="pre">_restore_persisted_secrets</span></code> 只对两类键做替换:<code class="docutils literal notranslate"><span class="pre">api_key</span></code>(每个 secret 字段)与 <code class="docutils literal notranslate"><span class="pre">database.url</span></code>(<strong>整段</strong>)。若该键在磁盘原 YAML 里有值就写回原值;否则按类型给空串(字符串)或空列表:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_is_secret_path</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;api_key&quot;</span> <span class="ow">or</span> <span class="n">path</span> <span class="o">==</span> <span class="p">(</span><span class="s2">&quot;database&quot;</span><span class="p">,</span> <span class="s2">&quot;url&quot;</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_restore_persisted_secrets</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">raw</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="p">(),</span> <span class="o">*</span><span class="p">,</span> <span class="n">persist_secret_paths</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;把当前模型里的 env secret 替换回磁盘原值/占位符。&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span>
+    <span class="n">raw_dict</span> <span class="o">=</span> <span class="n">raw</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">items</span><span class="p">()):</span>
+        <span class="n">current_path</span> <span class="o">=</span> <span class="n">path</span> <span class="o">+</span> <span class="p">(</span><span class="n">key</span><span class="p">,)</span>
+        <span class="n">secret</span> <span class="o">=</span> <span class="n">_is_secret_path</span><span class="p">(</span><span class="n">current_path</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">secret</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">current_path</span> <span class="ow">in</span> <span class="n">persist_secret_paths</span><span class="p">:</span>
+                <span class="k">continue</span>                        <span class="c1"># 显式改写的 secret 保留明文</span>
+            <span class="n">data</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">raw_dict</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">raw_dict</span> <span class="k">else</span> <span class="p">([]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="n">_restore_persisted_secrets</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">raw_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">),</span> <span class="n">current_path</span><span class="p">,</span> <span class="n">persist_secret_paths</span><span class="o">=</span><span class="n">persist_secret_paths</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>结果:env 覆盖的 secret 只活在进程内存里,持久化后的 YAML 与重启前看到的内容一致,不泄漏明文。写入采用<strong>原子替换</strong>(tempfile + <code class="docutils literal notranslate"><span class="pre">os.fsync</span></code> + <code class="docutils literal notranslate"><span class="pre">os.replace</span></code>,保留原文件权限),中途崩溃不会留下半截损坏的 <code class="docutils literal notranslate"><span class="pre">config.yaml</span></code>。</p>
+</section>
+<section id="id7">
+<h3>2.4 典型用法<a class="headerlink" href="#id7" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">cortex.infra.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">apply_config_patch</span><span class="p">,</span> <span class="n">save_config</span>
+
+<span class="c1"># 开启 Dreaming(默认关,配 LLM key 后开)</span>
+<span class="n">apply_config_patch</span><span class="p">({</span><span class="s2">&quot;dreaming&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enabled&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}})</span>
+
+<span class="c1"># 轮换抽取 LLM 的 api_key</span>
+<span class="n">apply_config_patch</span><span class="p">({</span><span class="s2">&quot;llm&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;extraction&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;api_key&quot;</span><span class="p">:</span> <span class="s2">&quot;sk-xxx&quot;</span><span class="p">}}})</span>
+
+<span class="c1"># 调检索参数</span>
+<span class="n">apply_config_patch</span><span class="p">({</span><span class="s2">&quot;retrieval&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="mi">80</span><span class="p">,</span> <span class="s2">&quot;graph_weight&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">}})</span>
+
+<span class="c1"># 持久化到 config.yaml</span>
+<span class="n">save_config</span><span class="p">()</span>
+</pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">警告</p>
+<p><code class="docutils literal notranslate"><span class="pre">apply_config_patch</span></code> 是进程内的。多进程部署(uvicorn workers &gt; 1)时,补丁只对当前进程生效;要全量生效需 <code class="docutils literal notranslate"><span class="pre">persist=true</span></code> 写回文件后逐个 reload 或重启。</p>
+</div>
+</section>
+<section id="id8">
+<h3>2.5 热更新流程<a class="headerlink" href="#id8" title="链接到此标题。"></a></h3>
+<pre  class="mermaid">
+        sequenceDiagram
+    participant FE as 前端 SettingsView
+    participant API as FastAPI /v1/admin/config
+    participant CFG as config.py _CACHE
+    participant FS as config.yaml
+
+    FE-&gt;&gt;API: POST patch + ?persist=true
+    API-&gt;&gt;CFG: apply_config_patch(patch)
+    CFG-&gt;&gt;CFG: _deep_merge 白名单校验
+    alt 非法字段
+        CFG--&gt;&gt;API: ValueError
+        API--&gt;&gt;FE: 422
+    else 合法
+        CFG--&gt;&gt;API: AppConfig(原地改)
+        opt persist=true
+            API-&gt;&gt;FS: save_config() yaml.safe_dump
+        end
+        API-&gt;&gt;CFG: model_dump()
+        API-&gt;&gt;API: _mask_secrets
+        API--&gt;&gt;FE: 200 脱敏后的全量配置
+    end
+    </pre></section>
+</section>
+<section id="api">
+<h2>3. 配置 API<a class="headerlink" href="#api" title="链接到此标题。"></a></h2>
+<section id="get-v1-admin-config">
+<h3>3.1 读取:GET /v1/admin/config<a class="headerlink" href="#get-v1-admin-config" title="链接到此标题。"></a></h3>
+<p>返回 <code class="docutils literal notranslate"><span class="pre">AppConfig.model_dump()</span></code>,但密钥被 <code class="docutils literal notranslate"><span class="pre">_mask_secrets()</span></code> 原地脱敏:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_mask_secrets</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;原地遮蔽 DSN 与 API key。&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+            <span class="n">_mask_secrets</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">nested</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">items</span><span class="p">()):</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;api_key&quot;</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">nested</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">value</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;***&quot;</span> <span class="k">if</span> <span class="n">nested</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+            <span class="n">value</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;has_</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">nested</span><span class="p">)</span>        <span class="c1"># 注入布尔状态</span>
+        <span class="k">elif</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;url&quot;</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">nested</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">value</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;***&quot;</span>                        <span class="c1"># database.url</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">_mask_secrets</span><span class="p">(</span><span class="n">nested</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>脱敏规则覆盖 <strong>2 个键</strong>：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>原字段</p></th>
+<th class="head"><p>脱敏后</p></th>
+<th class="head"><p>附带</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">*.api_key</span></code>(有值)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;***&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">has_api_key:</span> <span class="pre">true</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">*.api_key</span></code>(空)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">has_api_key:</span> <span class="pre">false</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">database.url</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;***&quot;</span></code></p></td>
+<td><p>—</p></td>
+</tr>
+</tbody>
+</table>
+<p>前端据此在 LLM/Rerank 卡片上显示「已配置 / 未配置」徽标,而无需拿到真实 key。</p>
+</section>
+<section id="post-v1-admin-config">
+<h3>3.2 修改:POST /v1/admin/config<a class="headerlink" href="#post-v1-admin-config" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">&quot;/v1/admin/config&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">admin_config_post</span><span class="p">(</span><span class="n">body</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">Request</span><span class="p">,</span>
+                      <span class="n">persist</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">False</span><span class="p">)):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;修改运行配置(白名单深合并)。persist=true 时写回 YAML。&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">...infra.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">apply_config_patch</span><span class="p">,</span> <span class="n">save_config</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">apply_config_patch</span><span class="p">(</span><span class="n">body</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="mi">422</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">persist</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">save_config</span><span class="p">(</span><span class="n">persist_secret_paths</span><span class="o">=</span><span class="n">secret_paths_in_patch</span><span class="p">(</span><span class="n">body</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="mi">500</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;failed to persist config: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">_load_runtime_config</span><span class="p">(</span><span class="n">request</span><span class="p">)</span><span class="o">.</span><span class="n">model_dump</span><span class="p">()</span>
+    <span class="n">_mask_secrets</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">d</span>
+</pre></div>
+</div>
+<p>要点:</p>
+<ul class="simple">
+<li><p><strong>鉴权</strong>:不再内嵌 <code class="docutils literal notranslate"><span class="pre">Depends(admin_auth)</span></code> —— 认证已整体上移给上游应用(见 <code class="docutils literal notranslate"><span class="pre">ApiCfg</span></code> 注释),端点只暴露 <code class="docutils literal notranslate"><span class="pre">body</span></code> / <code class="docutils literal notranslate"><span class="pre">persist</span></code> / <code class="docutils literal notranslate"><span class="pre">request</span></code>。</p></li>
+<li><p><strong>Body</strong>:任意层级的补丁 dict,只含想改的字段即可(深合并)。</p></li>
+<li><p><strong>持久化与 secret</strong>:<code class="docutils literal notranslate"><span class="pre">persist=true</span></code> 时 <code class="docutils literal notranslate"><span class="pre">save_config(persist_secret_paths=secret_paths_in_patch(body))</span></code> —— 本次补丁显式改写的 <code class="docutils literal notranslate"><span class="pre">api_key</span></code> 会明文落盘,其余 env secret 仍被盖回为占位符。</p></li>
+<li><p><strong>返回</strong>:脱敏后的全量配置(同 GET)。</p></li>
+<li><p><strong>错误</strong>:<code class="docutils literal notranslate"><span class="pre">422</span></code> 白名单违例(<code class="docutils literal notranslate"><span class="pre">ValueError</span></code> 透传);<code class="docutils literal notranslate"><span class="pre">500</span></code> 持久化失败。</p></li>
+</ul>
+<p>请求示例:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8002/v1/admin/config<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;dreaming&quot;: {&quot;enabled&quot;: true}, &quot;retrieval&quot;: {&quot;top_k&quot;: 80}}&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s1">&#39;?persist=true&#39;</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="id9">
+<h2>4. 任务队列 API<a class="headerlink" href="#id9" title="链接到此标题。"></a></h2>
+<section id="get-v1-admin-jobs">
+<h3>4.1 GET /v1/admin/jobs<a class="headerlink" href="#get-v1-admin-jobs" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/v1/admin/jobs&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">admin_jobs</span><span class="p">(</span><span class="n">scope</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">),</span>
+               <span class="n">status</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">),</span>
+               <span class="n">job_type</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">),</span>
+               <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">500</span><span class="p">)):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;查看任务队列明细(不返回 payload,可能含敏感数据)。&quot;&quot;&quot;</span>
+</pre></div>
+</div>
+<p>查询参数:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>参数</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">scope</span></code></p></td>
+<td><p>按 scope 过滤</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">status</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">queued</span></code> / <code class="docutils literal notranslate"><span class="pre">running</span></code> / <code class="docutils literal notranslate"><span class="pre">completed</span></code> / <code class="docutils literal notranslate"><span class="pre">failed</span></code> / <code class="docutils literal notranslate"><span class="pre">cancelled</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job_type</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">extract</span></code> / <code class="docutils literal notranslate"><span class="pre">segment</span></code> / <code class="docutils literal notranslate"><span class="pre">methylation</span></code> / <code class="docutils literal notranslate"><span class="pre">consolidate</span></code> / <code class="docutils literal notranslate"><span class="pre">synthesize</span></code> / <code class="docutils literal notranslate"><span class="pre">dream</span></code> / <code class="docutils literal notranslate"><span class="pre">higher_order</span></code> / <code class="docutils literal notranslate"><span class="pre">enrich</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">limit</span></code></p></td>
+<td><p>默认 50,上限 500</p></td>
+</tr>
+</tbody>
+</table>
+<p>返回字段: <code class="docutils literal notranslate"><span class="pre">job_id,</span> <span class="pre">job_type,</span> <span class="pre">scope,</span> <span class="pre">status,</span> <span class="pre">attempts,</span> <span class="pre">max_attempts,</span> <span class="pre">priority,</span> <span class="pre">locked_by,</span> <span class="pre">locked_at,</span> <span class="pre">run_after,</span> <span class="pre">created_at,</span> <span class="pre">started_at,</span> <span class="pre">completed_at,</span> <span class="pre">error,</span> <span class="pre">result</span></code>。</p>
+<div class="admonition important">
+<p class="admonition-title">重要</p>
+<p>该端点<strong>故意不返回 <code class="docutils literal notranslate"><span class="pre">payload</span></code></strong>。job 的 payload 可能含原始 event 文本或 LLM 中间产物,属于敏感数据;运维只需看状态、重试次数、错误信息即可定位问题。</p>
+</div>
+</section>
+</section>
+<section id="answer-stream-sse-phase">
+<h2>5. answer/stream SSE phase 事件<a class="headerlink" href="#answer-stream-sse-phase" title="链接到此标题。"></a></h2>
+<p>为了让前端诊断 recall 与 LLM 的耗时分布,<code class="docutils literal notranslate"><span class="pre">/v1/answer/stream</span></code> 在原有的 <code class="docutils literal notranslate"><span class="pre">reasoning</span></code> / <code class="docutils literal notranslate"><span class="pre">answer</span></code> / <code class="docutils literal notranslate"><span class="pre">done</span></code> 事件之外,新增三个 <code class="docutils literal notranslate"><span class="pre">phase</span></code> 事件:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># src/cortex/interfaces/api/app.py  (answer 流式生成器内)</span>
+<span class="c1"># 1) recall 完成</span>
+<span class="k">yield</span> <span class="p">{</span><span class="s2">&quot;event&quot;</span><span class="p">:</span> <span class="s2">&quot;phase&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">_json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span>
+    <span class="p">{</span><span class="s2">&quot;phase&quot;</span><span class="p">:</span> <span class="s2">&quot;recall_done&quot;</span><span class="p">,</span> <span class="s2">&quot;pack_id&quot;</span><span class="p">:</span> <span class="n">pack</span><span class="p">[</span><span class="s2">&quot;pack_id&quot;</span><span class="p">],</span>
+     <span class="s2">&quot;time_ms&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">pack</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;diagnostics&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;time_ms&quot;</span><span class="p">)})}</span>
+
+<span class="c1"># 2) LLM 调用开始</span>
+<span class="k">yield</span> <span class="p">{</span><span class="s2">&quot;event&quot;</span><span class="p">:</span> <span class="s2">&quot;phase&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">_json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span>
+    <span class="p">{</span><span class="s2">&quot;phase&quot;</span><span class="p">:</span> <span class="s2">&quot;llm_start&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">model_use</span><span class="p">})}</span>
+
+<span class="c1"># …reasoning / answer 文本流…</span>
+
+<span class="c1"># 3) LLM 流结束</span>
+<span class="k">yield</span> <span class="p">{</span><span class="s2">&quot;event&quot;</span><span class="p">:</span> <span class="s2">&quot;phase&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">_json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;phase&quot;</span><span class="p">:</span> <span class="s2">&quot;llm_end&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">model_use</span><span class="p">})}</span>
+</pre></div>
+</div>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>事件</p></th>
+<th class="head"><p>data 字段</p></th>
+<th class="head"><p>触发时机</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">recall_done</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pack_id</span></code>, <code class="docutils literal notranslate"><span class="pre">time_ms</span></code>(recall 内部各阶段耗时 dict)</p></td>
+<td><p>6 通道检索 + rerank 完成后</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">llm_start</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">model</span></code>(answer tier 模型名)</p></td>
+<td><p>首次调用 LLM 前</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">llm_end</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">model</span></code></p></td>
+<td><p>LLM 流彻底结束(answer 已全部 yield)</p></td>
+</tr>
+</tbody>
+</table>
+<p>SSE 帧示例:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">event</span><span class="p">:</span> <span class="n">phase</span>
+<span class="n">data</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;phase&quot;</span><span class="p">:</span><span class="s2">&quot;recall_done&quot;</span><span class="p">,</span><span class="s2">&quot;pack_id&quot;</span><span class="p">:</span><span class="s2">&quot;pk_abc&quot;</span><span class="p">,</span><span class="s2">&quot;time_ms&quot;</span><span class="p">:{</span><span class="s2">&quot;fetch&quot;</span><span class="p">:</span><span class="mi">120</span><span class="p">,</span><span class="s2">&quot;fuse_rrf&quot;</span><span class="p">:</span><span class="mi">8</span><span class="p">,</span><span class="s2">&quot;rerank&quot;</span><span class="p">:</span><span class="mi">340</span><span class="p">}}</span>
+
+<span class="n">event</span><span class="p">:</span> <span class="n">phase</span>
+<span class="n">data</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;phase&quot;</span><span class="p">:</span><span class="s2">&quot;llm_start&quot;</span><span class="p">,</span><span class="s2">&quot;model&quot;</span><span class="p">:</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">}</span>
+
+<span class="n">event</span><span class="p">:</span> <span class="n">reasoning</span>
+<span class="n">data</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;text&quot;</span><span class="p">:</span><span class="s2">&quot;...&quot;</span><span class="p">}</span>
+
+<span class="n">event</span><span class="p">:</span> <span class="n">answer</span>
+<span class="n">data</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;text&quot;</span><span class="p">:</span><span class="s2">&quot;...&quot;</span><span class="p">}</span>
+
+<span class="n">event</span><span class="p">:</span> <span class="n">phase</span>
+<span class="n">data</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;phase&quot;</span><span class="p">:</span><span class="s2">&quot;llm_end&quot;</span><span class="p">,</span><span class="s2">&quot;model&quot;</span><span class="p">:</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">}</span>
+
+<span class="n">event</span><span class="p">:</span> <span class="n">done</span>
+<span class="n">data</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;model_used&quot;</span><span class="p">:</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">,</span><span class="s2">&quot;pack_id&quot;</span><span class="p">:</span><span class="s2">&quot;pk_abc&quot;</span><span class="p">,</span><span class="s2">&quot;citations&quot;</span><span class="p">:[</span><span class="o">...</span><span class="p">]}</span>
+</pre></div>
+</div>
+<p>前端用浏览器收到每个 <code class="docutils literal notranslate"><span class="pre">phase</span></code> 事件时的 <code class="docutils literal notranslate"><span class="pre">Date.now()</span></code> 时间戳,减去请求开始时间,即可算出 recall 与 LLM 两段的墙钟耗时,无需依赖后端时钟。这是分布式可观测性的常见技巧 —— 避免客户端/服务端时钟漂移。</p>
+</section>
+<section id="id10">
+<h2>6. 前端:控制平面架构<a class="headerlink" href="#id10" title="链接到此标题。"></a></h2>
+<div class="important admonition">
+<p class="admonition-title">重构背景</p>
+<p>前端曾是扁平的 demo 导航(Ingest/Graph/Ask/Browse/Ops/Settings 六个平级链接),且 API 客户端硬编码 <code class="docutils literal notranslate"><span class="pre">dev-key</span></code> / <code class="docutils literal notranslate"><span class="pre">user:alice</span></code>。随着后端能力扩展到 Cases、诊断召回、证据、演化审批、词表、时间短语、Understanding、导入导出、维护、Higher-Order、Playbooks,扁平导航不再能覆盖。重构(commit <code class="docutils literal notranslate"><span class="pre">e2645de</span></code>,PR #13)把前端升级为<strong>控制平面</strong>:左侧持久化分组导航 + 13 个视图。</p>
+</div>
+<section id="id11">
+<h3>6.1 信息架构:左侧分组导航<a class="headerlink" href="#id11" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">frontend/src/App.vue</span></code> 用固定左侧栏(<code class="docutils literal notranslate"><span class="pre">.control-rail</span></code>)把全部能力按职责分四组,上下文标题栏(<code class="docutils literal notranslate"><span class="pre">.context-bar</span></code>)显示当前页标题与健康状态:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>分组</p></th>
+<th class="head"><p>路由</p></th>
+<th class="head"><p>视图</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Observe</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/overview</span></code> <code class="docutils literal notranslate"><span class="pre">/ops</span></code></p></td>
+<td><p>Overview(健康/版本/存储/队列/特性概览)、Operations(jobs/worker/Dreaming/Higher-Order)</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Operate</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/ingest</span></code> <code class="docutils literal notranslate"><span class="pre">/data</span></code> <code class="docutils literal notranslate"><span class="pre">/cases</span></code> <code class="docutils literal notranslate"><span class="pre">/playbooks</span></code> <code class="docutils literal notranslate"><span class="pre">/qa</span></code></p></td>
+<td><p>Ingest、Data operations(文档/批量/导入导出/Evidence)、Cases &amp; Diagnosis、Playbooks、Ask</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Inspect</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/graph</span></code> <code class="docutils literal notranslate"><span class="pre">/browse</span></code> <code class="docutils literal notranslate"><span class="pre">/understanding</span></code></p></td>
+<td><p>Knowledge Graph、Memory Browser、Understanding</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Govern</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/governance</span></code> <code class="docutils literal notranslate"><span class="pre">/api-console</span></code> <code class="docutils literal notranslate"><span class="pre">/settings</span></code></p></td>
+<td><p>Governance(演化审批/反馈/词表/时间短语/Erasure)、API Console、Settings</p></td>
+</tr>
+</tbody>
+</table>
+<p>默认落地页从 <code class="docutils literal notranslate"><span class="pre">/ingest</span></code> 改为 <code class="docutils literal notranslate"><span class="pre">/overview</span></code>。移动端(<code class="docutils literal notranslate"><span class="pre">&#64;media</span> <span class="pre">max-width:</span> <span class="pre">980px</span></code>)左侧栏折叠为抽屉,由上下文栏的 ☰ 按钮唤出。</p>
+</section>
+<section id="pinia-store-scope-settings">
+<h3>6.2 Pinia store:scope 与 settings<a class="headerlink" href="#pinia-store-scope-settings" title="链接到此标题。"></a></h3>
+<p>接入认证上移到上游应用后,前端<strong>不再需要连接凭据 store</strong>——旧的 <code class="docutils literal notranslate"><span class="pre">connection.ts</span></code>(token/actor/admin-key 的 localStorage 持久化)已移除。现在 <code class="docutils literal notranslate"><span class="pre">frontend/src/stores/</span></code> 只保留:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">scope.ts</span></code>:<code class="docutils literal notranslate"><span class="pre">useScopeStore</span></code> 维护全局 scope 选择(localStorage 持久化),启动时从 <code class="docutils literal notranslate"><span class="pre">/v1/scopes/list</span></code> 动态拉取候选,供 Ingest/检索等需要 scope 的调用读取。</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">settings.ts</span></code>:<code class="docutils literal notranslate"><span class="pre">useSettingsStore</span></code> 是 mock 模式开关的遗留(Mock 已移除,<code class="docutils literal notranslate"><span class="pre">useMock</span></code> 固定 <code class="docutils literal notranslate"><span class="pre">false</span></code>、不可切换)——前端永远走 Live API。</p></li>
+</ul>
+<p>请求头不再由前端注入 <code class="docutils literal notranslate"><span class="pre">Authorization</span></code> / <code class="docutils literal notranslate"><span class="pre">X-Cortex-Actor</span></code> / admin-key;需要认证时由上游网关统一附加,前端按无状态 SPA 处理。</p>
+</section>
+<section id="sse-eventsource-fetch">
+<h3>6.3 SSE 从 EventSource 改为 fetch<a class="headerlink" href="#sse-eventsource-fetch" title="链接到此标题。"></a></h3>
+<p>原 SSE 订阅用 <code class="docutils literal notranslate"><span class="pre">EventSource</span></code>,但 <code class="docutils literal notranslate"><span class="pre">EventSource</span></code> <strong>无法附加自定义请求头</strong>,因此流式端点在带鉴权时无法直连。重构把 SSE 改为 <code class="docutils literal notranslate"><span class="pre">fetch</span></code> + <code class="docutils literal notranslate"><span class="pre">AbortController</span></code> + 手写 SSE 帧解析(通用 <code class="docutils literal notranslate"><span class="pre">subscribeApiStream</span></code>)。认证头上移后前端不再注入自定义头,<code class="docutils literal notranslate"><span class="pre">fetch</span></code> 直接打相对路径、由上游网关统一鉴权:</p>
+<div class="highlight-typescript notranslate"><div class="highlight"><pre><span></span><span class="c1">// frontend/src/api/index.ts</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">subscribeApiStream</span><span class="p">(</span><span class="nx">path</span><span class="p">,</span><span class="w"> </span><span class="nx">onFrame</span><span class="p">,</span><span class="w"> </span><span class="nx">onError</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">controller</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">AbortController</span><span class="p">()</span>
+<span class="w">  </span><span class="nx">fetch</span><span class="p">(</span><span class="sb">`/v1</span><span class="si">${</span><span class="nx">path</span><span class="si">}</span><span class="sb">`</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">headers</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Accept</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;text/event-stream&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">                        </span><span class="nx">signal</span><span class="o">:</span><span class="w"> </span><span class="kt">controller.signal</span><span class="w"> </span><span class="p">})</span>
+<span class="w">    </span><span class="p">.</span><span class="nx">then</span><span class="p">(</span><span class="cm">/* reader.read() 循环 + 按 \n\n 切块 + parseSseBlock */</span><span class="w"> </span><span class="p">)</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">controller</span><span class="p">.</span><span class="nx">abort</span><span class="p">()</span><span class="w">   </span><span class="c1">// 返回 unsubscribe</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">subscribeLifecycle</span></code> 等老封装改为内部调 <code class="docutils literal notranslate"><span class="pre">subscribeApiStream</span></code>,对外 API 不变。返回值仍是&quot;取消订阅&quot;函数,组件 unmount 时调用即可中断流。</p>
+</section>
+<section id="id12">
+<h3>6.4 全量端点封装<a class="headerlink" href="#id12" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">api/index.ts</span></code> 从只覆盖点状需求扩展到<strong>完整后端能力面</strong>,统一走 <code class="docutils literal notranslate"><span class="pre">requestApi&lt;T&gt;(method,</span> <span class="pre">path,</span> <span class="pre">{params,</span> <span class="pre">data})</span></code>:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>领域</p></th>
+<th class="head"><p>函数</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>健康</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">getHealth</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>文档/批量/导入导出</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ingestDocument</span></code> <code class="docutils literal notranslate"><span class="pre">bulkExperience</span></code> <code class="docutils literal notranslate"><span class="pre">runImport</span></code> <code class="docutils literal notranslate"><span class="pre">getImportStatus</span></code> <code class="docutils literal notranslate"><span class="pre">exportScope</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>证据</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">registerEvidence</span></code> <code class="docutils literal notranslate"><span class="pre">attachEvidenceClaim</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Cases/诊断</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">listCases</span></code> <code class="docutils literal notranslate"><span class="pre">getCase</span></code> <code class="docutils literal notranslate"><span class="pre">createCase</span></code> <code class="docutils literal notranslate"><span class="pre">updateCase</span></code> <code class="docutils literal notranslate"><span class="pre">addCaseEvent</span></code> <code class="docutils literal notranslate"><span class="pre">getCaseWorkspace</span></code> <code class="docutils literal notranslate"><span class="pre">promoteCaseFacts</span></code> <code class="docutils literal notranslate"><span class="pre">diagnosisRecall</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>演化审批/反馈</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">listEvolutionCandidates</span></code> <code class="docutils literal notranslate"><span class="pre">reviewEvolutionCandidate</span></code> <code class="docutils literal notranslate"><span class="pre">listFeedback</span></code> <code class="docutils literal notranslate"><span class="pre">submitFeedback</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>词表/时间短语</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">listVocabularies</span></code> <code class="docutils literal notranslate"><span class="pre">createVocabulary</span></code> <code class="docutils literal notranslate"><span class="pre">deleteVocabulary</span></code> <code class="docutils literal notranslate"><span class="pre">listTemporalPhrases</span></code> <code class="docutils literal notranslate"><span class="pre">createTemporalPhrase</span></code> <code class="docutils literal notranslate"><span class="pre">deleteTemporalPhrase</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Erasure</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">previewErasure</span></code> <code class="docutils literal notranslate"><span class="pre">executeErasure</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Understanding</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">listUnderstanding</span></code> <code class="docutils literal notranslate"><span class="pre">understandingCoverage</span></code> <code class="docutils literal notranslate"><span class="pre">synthesizeUnderstanding</span></code> <code class="docutils literal notranslate"><span class="pre">getUnderstanding</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>维护/高阶</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">runMaintenance</span></code> <code class="docutils literal notranslate"><span class="pre">runHigherOrder</span></code> <code class="docutils literal notranslate"><span class="pre">listHigherOrder</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="id13">
+<h3>6.5 复用组件<a class="headerlink" href="#id13" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>组件</p></th>
+<th class="head"><p>作用</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PageHeader.vue</span></code></p></td>
+<td><p>页内标题 + 说明 + 操作槽,统一各视图顶部样式</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">JsonResult.vue</span></code></p></td>
+<td><p>深色 <code class="docutils literal notranslate"><span class="pre">&lt;pre&gt;</span></code> 渲染任意 JSON 响应,API Console / 调试视图复用</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RetrievalControlPanel.vue</span></code></p></td>
+<td><p>检索控制面(六通道调音 + 三融合策略 + 四信号开关 + A/B 预览)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ScopeSelector.vue</span></code></p></td>
+<td><p>全局 scope 选择(已存在,接入上下文栏)</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="retrievalcontrolpanel">
+<h3>6.6 检索控制面(RetrievalControlPanel)<a class="headerlink" href="#retrievalcontrolpanel" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">frontend/src/components/RetrievalControlPanel.vue</span></code> 是检索调参的核心 UI,嵌入 SettingsView 的检索 Tab。它把后端 <code class="docutils literal notranslate"><span class="pre">/v1/admin/retrieval/effective</span></code> 返回的<strong>三层视图</strong>(配置值 / 有效值 / 依赖就绪态)分开呈现,让运维清楚区分&quot;我配的&quot;和&quot;实际生效的&quot;:</p>
+<ul class="simple">
+<li><p><strong>六通道独立行</strong>:每通道(vector/bm25/graph/entity_name/synonym/temporal)一行,各带 <code class="docutils literal notranslate"><span class="pre">enabled</span></code> 开关、<code class="docutils literal notranslate"><span class="pre">weight</span></code> 滑块、<code class="docutils literal notranslate"><span class="pre">top_k</span></code> 输入。通道关闭或其依赖(如 vector/graph 依赖 embedding)未就绪时,显示降级徽标而非静默失效。</p></li>
+<li><p><strong>融合策略选择</strong>:<code class="docutils literal notranslate"><span class="pre">rrf</span></code> / <code class="docutils literal notranslate"><span class="pre">weighted_rrf</span></code> / <code class="docutils literal notranslate"><span class="pre">priority</span></code> 三选一。选 <code class="docutils literal notranslate"><span class="pre">weighted_rrf</span></code> 时各通道 weight 生效;选 <code class="docutils literal notranslate"><span class="pre">priority</span></code> 时 weight 失效(按通道顺序拼接)。</p></li>
+<li><p><strong>四信号独立开关</strong>:Salience / Usage / Usefulness / Exploration 各自一个 <code class="docutils literal notranslate"><span class="pre">NSwitch</span></code>,配各自的权重/参数输入。开关状态直接映射 <code class="docutils literal notranslate"><span class="pre">AdvancedRetrievalCfg</span></code> 的 <code class="docutils literal notranslate"><span class="pre">*_enabled</span></code> 字段。</p></li>
+<li><p><strong>Rerank 控制</strong>:<code class="docutils literal notranslate"><span class="pre">enabled</span></code> 开关 + <code class="docutils literal notranslate"><span class="pre">threshold</span></code> / <code class="docutils literal notranslate"><span class="pre">top_n</span></code> / <code class="docutils literal notranslate"><span class="pre">timeout</span></code>。</p></li>
+<li><p><strong>命名 Profile</strong>:可创建/切换 Profile,每个 Profile 是一份完整 tuning + 专属 rerank 覆盖。<code class="docutils literal notranslate"><span class="pre">active_profile</span></code> 标记当前激活。</p></li>
+</ul>
+<section id="a-b-preview">
+<h4>A/B Preview(无副作用预览)<a class="headerlink" href="#a-b-preview" title="链接到此标题。"></a></h4>
+<p>面板内置 <strong>Active-vs-Draft A/B 预览</strong>:输入一个 query,选择 1–4 个配置变体(不同 profile 或临时 overrides),点&quot;预览&quot;调 <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/admin/retrieval/preview</span></code>。返回每个变体的 fact 排名 + 每通道候选数 + 耗时,并标注与 baseline(第一个变体)的排名差异。</p>
+<div class="admonition important">
+<p class="admonition-title">重要</p>
+<p>预览请求后端以 <code class="docutils literal notranslate"><span class="pre">track_usage=False</span></code> 执行:<strong>不递增 <code class="docutils literal notranslate"><span class="pre">retrieval_count</span></code>、不写 <code class="docutils literal notranslate"><span class="pre">recall_packs</span></code> 缓存</strong>。这是反复调参的前提——否则每次预览都会污染线上计数与缓存。运维可以放心地反复试不同 weight/通道开关,找到最优配置再保存生效。</p>
+</div>
+</section>
+</section>
+</section>
+<section id="settingsview">
+<h2>7. 前端:SettingsView 配置中心<a class="headerlink" href="#settingsview" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">frontend/src/views/SettingsView.vue</span></code> 是 4 个 Tab 的配置编辑器。核心设计:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">original</span></code>(后端返回的脱敏配置)与 <code class="docutils literal notranslate"><span class="pre">working</span></code>(深拷贝工作副本)双份。<code class="docutils literal notranslate"><span class="pre">dirty</span></code> computed 比较两者 JSON(剔除被脱敏的 <code class="docutils literal notranslate"><span class="pre">api_key</span></code>)。</p></li>
+<li><p>LLM/Rerank 卡片里 api_key 用独立的 <code class="docutils literal notranslate"><span class="pre">newApiKeys</span></code> reactive 对象收集;后端只返回 <code class="docutils literal notranslate"><span class="pre">***</span></code> + <code class="docutils literal notranslate"><span class="pre">has_key</span></code>,用户重新输入才视为变更。</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">buildPatch()</span></code> 只发变更字段,最小化补丁体积。</p></li>
+<li><p>保存调 <code class="docutils literal notranslate"><span class="pre">patchConfig(patch,</span> <span class="pre">persist)</span></code>,返回值覆盖 <code class="docutils literal notranslate"><span class="pre">original</span></code>,完成闭环。</p></li>
+</ul>
+<section id="tab-1">
+<h3>7.1 Tab 1:功能开关<a class="headerlink" href="#tab-1" title="链接到此标题。"></a></h3>
+<p>三个 <code class="docutils literal notranslate"><span class="pre">NCard</span></code>:Feedback / Dreaming / Higher-Order。每张卡片:</p>
+<ul class="simple">
+<li><p>头部一个 <code class="docutils literal notranslate"><span class="pre">NSwitch</span></code> 绑定 <code class="docutils literal notranslate"><span class="pre">working.&lt;feat&gt;.enabled</span></code>,即时切换状态徽标(已启用/已停用)。</p></li>
+<li><p>折叠面板内是该功能的数值参数,用 <code class="docutils literal notranslate"><span class="pre">NSlider</span></code>(连续值,如 <code class="docutils literal notranslate"><span class="pre">positive_weight</span></code>、<code class="docutils literal notranslate"><span class="pre">similarity_threshold</span></code>)或 <code class="docutils literal notranslate"><span class="pre">NInputNumber</span></code>(整数,如 <code class="docutils literal notranslate"><span class="pre">lookback_days</span></code>、<code class="docutils literal notranslate"><span class="pre">min_cluster_size</span></code>)。</p></li>
+</ul>
+</section>
+<section id="tab-2-api">
+<h3>7.2 Tab 2:上游 API<a class="headerlink" href="#tab-2-api" title="链接到此标题。"></a></h3>
+<p>4 张 <code class="docutils literal notranslate"><span class="pre">NCard</span></code>:Extraction / Answer / Synthesis LLM + Rerank。每张:</p>
+<ul class="simple">
+<li><p>Provider 只读展示。</p></li>
+<li><p>Model / API Base / Temperature 可编辑。</p></li>
+<li><p>API Key 是 <code class="docutils literal notranslate"><span class="pre">type=&quot;password&quot;</span></code> 输入,placeholder 显示 <code class="docutils literal notranslate"><span class="pre">***</span> <span class="pre">(已配置)</span></code> 或 <code class="docutils literal notranslate"><span class="pre">输入新的</span> <span class="pre">API</span> <span class="pre">Key</span></code>;输入值进入 <code class="docutils literal notranslate"><span class="pre">newApiKeys[tier]</span></code>,不在 <code class="docutils literal notranslate"><span class="pre">working</span></code> 里。</p></li>
+<li><p>头部徽标根据 <code class="docutils literal notranslate"><span class="pre">has_key</span></code> 显示绿色「已配置」或红色「未配置」。</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">extra_body</span></code> 透传</strong>:<code class="docutils literal notranslate"><span class="pre">EmbeddingCfg</span></code> / <code class="docutils literal notranslate"><span class="pre">RerankCfg</span></code> / <code class="docutils literal notranslate"><span class="pre">LLMTierCfg</span></code> 都带 <code class="docutils literal notranslate"><span class="pre">extra_body:</span> <span class="pre">Optional[Dict]</span></code>,运行时配置支持把额外的请求体字段(如 provider 专属参数)原样透传给上游,无需改代码。此字段在 <code class="docutils literal notranslate"><span class="pre">working</span></code> 里可直接编辑。</p></li>
+</ul>
+</section>
+<section id="tab-3">
+<h3>7.3 Tab 3:检索调参<a class="headerlink" href="#tab-3" title="链接到此标题。"></a></h3>
+<p>一个 <code class="docutils literal notranslate"><span class="pre">NCard</span></code> 内的 <code class="docutils literal notranslate"><span class="pre">NForm</span></code>,扁平检索参数与 <code class="docutils literal notranslate"><span class="pre">advanced</span></code> 子对象:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">top_k</span></code>(NInputNumber,5–500)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rrf_k</span></code> / <code class="docutils literal notranslate"><span class="pre">graph_weight</span></code> / <code class="docutils literal notranslate"><span class="pre">salience_weight</span></code>(<code class="docutils literal notranslate"><span class="pre">NSlider</span></code>)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">hyde_enabled</span></code> / <code class="docutils literal notranslate"><span class="pre">multihop_enabled</span></code> / <code class="docutils literal notranslate"><span class="pre">question_routing</span></code> / <code class="docutils literal notranslate"><span class="pre">entity_vector_seed</span></code>(<code class="docutils literal notranslate"><span class="pre">NSwitch</span></code>)</p></li>
+</ul>
+<p>读写通过 <code class="docutils literal notranslate"><span class="pre">getRetrievalNumber</span></code> / <code class="docutils literal notranslate"><span class="pre">getRetrievalAdvanced</span></code> / <code class="docutils literal notranslate"><span class="pre">setRetrievalField</span></code> 等辅助函数,绕过 Vue 对动态键的可选链限制。</p>
+</section>
+<section id="tab-4">
+<h3>7.4 Tab 4:系统<a class="headerlink" href="#tab-4" title="链接到此标题。"></a></h3>
+<ul class="simple">
+<li><p><strong>版本信息</strong>:Cortex 版本、schema 表数量(由独立的 <code class="docutils literal notranslate"><span class="pre">getVersion()</span></code> 拉取,不随 config 重置)、数据库 schema、数据库 URL(脱敏)。</p></li>
+<li><p><strong>Worker 配置</strong>:<code class="docutils literal notranslate"><span class="pre">visibility_timeout_secs</span></code> / <code class="docutils literal notranslate"><span class="pre">reaper_interval_secs</span></code> / <code class="docutils literal notranslate"><span class="pre">max_attempts</span></code>。</p></li>
+<li><p><strong>API 管理</strong>:<code class="docutils literal notranslate"><span class="pre">cors_origins</span></code> 只读展示（CORS 属启动时传输设置，页面提示需通过部署配置修改并重启 API，不可在线编辑）。(<code class="docutils literal notranslate"><span class="pre">API</span> <span class="pre">Console</span></code> 视图承载对上游认证的原始调用,见第 10 节。)</p></li>
+</ul>
+</section>
+<section id="id14">
+<h3>7.5 顶栏操作<a class="headerlink" href="#id14" title="链接到此标题。"></a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>[开关即时生效;API密钥需保存后才持久化]  [☑ 持久化到文件]  [重置]  [保存]
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><strong>保存</strong>:调 <code class="docutils literal notranslate"><span class="pre">patchConfig(buildPatch(),</span> <span class="pre">persist)</span></code>。成功后 <code class="docutils literal notranslate"><span class="pre">original</span> <span class="pre">=</span> <span class="pre">updated</span></code>,显示 <code class="docutils literal notranslate"><span class="pre">已保存并持久化到文件</span></code> 或 <code class="docutils literal notranslate"><span class="pre">配置已保存</span></code>。</p></li>
+<li><p><strong>持久化到文件</strong> 复选框:控制 <code class="docutils literal notranslate"><span class="pre">persist</span></code> 查询参数。</p></li>
+<li><p><strong>重置</strong>:<code class="docutils literal notranslate"><span class="pre">working</span> <span class="pre">=</span> <span class="pre">structuredClone(original)</span></code>,清空 <code class="docutils literal notranslate"><span class="pre">newApiKeys</span></code>。</p></li>
+</ul>
+</section>
+</section>
+<section id="opsview">
+<h2>8. 前端:OpsView 运维监控<a class="headerlink" href="#opsview" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">frontend/src/views/OpsView.vue</span></code> 是实时运维仪表盘,每 5 秒 <code class="docutils literal notranslate"><span class="pre">refreshAll()</span></code> 并发拉 <code class="docutils literal notranslate"><span class="pre">getMetrics()</span></code> 与 <code class="docutils literal notranslate"><span class="pre">getJobs()</span></code>。</p>
+<section id="id15">
+<h3>8.1 统计卡片<a class="headerlink" href="#id15" title="链接到此标题。"></a></h3>
+<p>两行 <code class="docutils literal notranslate"><span class="pre">NStatistic</span></code>:</p>
+<ul class="simple">
+<li><p><strong>存储指标</strong>(6 项):Events / Facts / Beliefs / Entities / Episodes / Blobs。</p></li>
+<li><p><strong>任务队列概览</strong>(4 项):Queued(info) / Running(warning) / Completed(success) / Failed(error),用彩色 <code class="docutils literal notranslate"><span class="pre">NTag</span></code> 渲染数字。</p></li>
+</ul>
+<p>队列计数从 <code class="docutils literal notranslate"><span class="pre">metrics.jobs_by_status</span></code> 读取,存储计数从 <code class="docutils literal notranslate"><span class="pre">metrics</span></code> 顶层字段读取。</p>
+</section>
+<section id="worker">
+<h3>8.2 活跃 Worker<a class="headerlink" href="#worker" title="链接到此标题。"></a></h3>
+<div class="admonition important">
+<p class="admonition-title">重要</p>
+<p>活跃 worker 不是独立端点,而是前端从 <code class="docutils literal notranslate"><span class="pre">jobs</span></code> 列表推导:
+筛选 <code class="docutils literal notranslate"><span class="pre">status</span> <span class="pre">===</span> <span class="pre">'running'</span> <span class="pre">&amp;&amp;</span> <span class="pre">locked_by</span></code> 的 job,映射出 <code class="docutils literal notranslate"><span class="pre">{worker_id,</span> <span class="pre">job_type,</span> <span class="pre">scope}</span></code>。
+这等价于 <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">DISTINCT</span> <span class="pre">locked_by</span> <span class="pre">FROM</span> <span class="pre">jobs</span> <span class="pre">WHERE</span> <span class="pre">status='running'</span></code>,但复用了已拉取的 job 数据,省一次请求。空闲 worker 不可见。</p>
+</div>
+<p>每个活跃 worker 渲染为一个 warning 色 <code class="docutils literal notranslate"><span class="pre">NTag</span></code>:<code class="docutils literal notranslate"><span class="pre">worker_id</span> <span class="pre">·</span> <span class="pre">job_type</span> <span class="pre">(scope)</span></code>,带 Tooltip。</p>
+</section>
+<section id="id16">
+<h3>8.3 任务队列表<a class="headerlink" href="#id16" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">NDataTable</span></code> 列定义(均用 <code class="docutils literal notranslate"><span class="pre">render</span></code> 函数定制):</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>列</p></th>
+<th class="head"><p>渲染</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job_type</span></code></p></td>
+<td><p>彩色 <code class="docutils literal notranslate"><span class="pre">NTag</span></code>(<code class="docutils literal notranslate"><span class="pre">extract=info</span></code> / <code class="docutils literal notranslate"><span class="pre">dream=purple</span></code> / <code class="docutils literal notranslate"><span class="pre">higher_order=cyan</span></code> / <code class="docutils literal notranslate"><span class="pre">synthesize=success</span></code> / <code class="docutils literal notranslate"><span class="pre">methylation=warning</span></code> / <code class="docutils literal notranslate"><span class="pre">consolidate=teal</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">scope</span></code></p></td>
+<td><p>截断 + Tooltip</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">status</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">NTag</span></code>,<code class="docutils literal notranslate"><span class="pre">running</span></code> 加 <code class="docutils literal notranslate"><span class="pre">pulse-tag</span></code> 1.4s 脉冲动画</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">attempts</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">attempts/max_attempts</span></code>,重试 &gt;1 时红色加粗</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">worker</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">locked_by</span></code> 用 <code class="docutils literal notranslate"><span class="pre">&lt;code&gt;</span></code> 渲染</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">耗时</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">fmtDuration(started_at,</span> <span class="pre">completed_at)</span></code>,running 时用 <code class="docutils literal notranslate"><span class="pre">Date.now()</span></code> 持续计时</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">error</span></code></p></td>
+<td><p>截断到 60 字符 + 省略号,Tooltip 显示全文</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">created_at</span></code></p></td>
+<td><p>本地化时间</p></td>
+</tr>
+</tbody>
+</table>
+<p>表头两个 <code class="docutils literal notranslate"><span class="pre">NSelect</span></code> 过滤器(<code class="docutils literal notranslate"><span class="pre">status</span></code> / <code class="docutils literal notranslate"><span class="pre">job_type</span></code>),通过 <code class="docutils literal notranslate"><span class="pre">filteredJobs</span></code> computed 应用。分页 15/30/50。</p>
+</section>
+<section id="dreaming">
+<h3>8.4 Dreaming 控制<a class="headerlink" href="#dreaming" title="链接到此标题。"></a></h3>
+<ul class="simple">
+<li><p>「立即运行」按钮调 <code class="docutils literal notranslate"><span class="pre">runDreaming(scope,</span> <span class="pre">dryRun,</span> <span class="pre">asyncEnqueue=true)</span></code>。</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dry_run</span></code> 开关:预演不落库。</p></li>
+<li><p>返回 <code class="docutils literal notranslate"><span class="pre">run_id</span></code> 后,每 3 秒轮询 <code class="docutils literal notranslate"><span class="pre">getDreamingRun(runId)</span></code>,直到 <code class="docutils literal notranslate"><span class="pre">status</span></code> 为 <code class="docutils literal notranslate"><span class="pre">completed</span></code>/<code class="docutils literal notranslate"><span class="pre">failed</span></code>。</p></li>
+<li><p>结果展示 5 个指标:<code class="docutils literal notranslate"><span class="pre">status</span></code> / <code class="docutils literal notranslate"><span class="pre">phase0_closed</span></code> / <code class="docutils literal notranslate"><span class="pre">phase_a_clusters</span></code> / <code class="docutils literal notranslate"><span class="pre">phase_b_issues</span></code> / <code class="docutils literal notranslate"><span class="pre">phase_c_actions</span></code> / <code class="docutils literal notranslate"><span class="pre">timing_ms</span></code>。</p></li>
+</ul>
+</section>
+</section>
+<section id="qaview-ask">
+<h2>9. 前端:QaView Ask 诊断面板<a class="headerlink" href="#qaview-ask" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">frontend/src/views/QaView.vue</span></code> 在回答区与 Raw pack 之间插入了一个可折叠的诊断面板,含四个维度。数据来自 SSE <code class="docutils literal notranslate"><span class="pre">phase</span></code> 事件与最终 pack 的 <code class="docutils literal notranslate"><span class="pre">diagnostics</span></code> / <code class="docutils literal notranslate"><span class="pre">provenance</span></code> 字段。</p>
+<section id="phase">
+<h3>9.1 监听 phase 事件<a class="headerlink" href="#phase" title="链接到此标题。"></a></h3>
+<div class="highlight-typescript notranslate"><div class="highlight"><pre><span></span><span class="kd">const</span><span class="w"> </span><span class="nx">phaseEvents</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">ref</span><span class="o">&lt;</span><span class="nx">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="o">&gt;&gt;</span><span class="p">({})</span><span class="w">  </span><span class="c1">// phase → 收到时的 Date.now()</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">recallTimeMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">ref</span><span class="o">&lt;</span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="o">&gt;</span><span class="p">(</span><span class="kc">null</span><span class="p">)</span><span class="w">        </span><span class="c1">// recall_done 携带的耗时</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">llmModel</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">ref</span><span class="o">&lt;</span><span class="kt">string</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="o">&gt;</span><span class="p">(</span><span class="kc">null</span><span class="p">)</span><span class="w">            </span><span class="c1">// llm_start 携带的模型名</span>
+
+<span class="nx">es</span><span class="p">.</span><span class="nx">addEventListener</span><span class="p">(</span><span class="s1">&#39;phase&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">ev</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">d</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">JSON</span><span class="p">.</span><span class="nx">parse</span><span class="p">((</span><span class="nx">ev</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">MessageEvent</span><span class="p">).</span><span class="nx">data</span><span class="p">)</span>
+<span class="w">  </span><span class="nx">phaseEvents</span><span class="p">.</span><span class="nx">value</span><span class="p">[</span><span class="nx">d</span><span class="p">.</span><span class="nx">phase</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Date</span><span class="p">.</span><span class="nx">now</span><span class="p">()</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">d</span><span class="p">.</span><span class="nx">phase</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;recall_done&#39;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">d</span><span class="p">.</span><span class="nx">time_ms</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;number&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">recallTimeMs</span><span class="p">.</span><span class="nx">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">d</span><span class="p">.</span><span class="nx">time_ms</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">d</span><span class="p">.</span><span class="nx">phase</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;llm_start&#39;</span><span class="p">)</span><span class="w"> </span><span class="nx">llmModel</span><span class="p">.</span><span class="nx">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">d</span><span class="p">.</span><span class="nx">model</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="kc">null</span>
+<span class="p">})</span>
+</pre></div>
+</div>
+</section>
+<section id="id17">
+<h3>9.2 阶段耗时瀑布图<a class="headerlink" href="#id17" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">stageTimings</span></code> computed 从 <code class="docutils literal notranslate"><span class="pre">phaseEvents</span></code> 推导三段耗时:</p>
+<div class="highlight-typescript notranslate"><div class="highlight"><pre><span></span><span class="kd">const</span><span class="w"> </span><span class="nx">stageTimings</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">computed</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">phaseEvents</span><span class="p">.</span><span class="nx">value</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">recallMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">recallTimeMs</span><span class="p">.</span><span class="nx">value</span>
+<span class="w">    </span><span class="o">??</span><span class="w"> </span><span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">recall_done</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nx">recall_done</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">askStartTime.value</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">null</span><span class="p">)</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">llmMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">llm_start</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nx">llm_end</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span>
+<span class="w">    </span><span class="o">?</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nx">llm_end</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">p.llm_start</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">null</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">totalMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nx">done</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nx">done</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">askStartTime.value</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">null</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">recallMs</span><span class="p">,</span><span class="w"> </span><span class="nx">llmMs</span><span class="p">,</span><span class="w"> </span><span class="nx">totalMs</span><span class="w"> </span><span class="p">}</span>
+<span class="p">})</span>
+</pre></div>
+</div>
+<p>渲染为三行横向进度条,宽度按 <code class="docutils literal notranslate"><span class="pre">ms</span> <span class="pre">/</span> <span class="pre">stageMax</span> <span class="pre">*</span> <span class="pre">100%</span></code>。<strong>瓶颈检测</strong>:任一阶段 <code class="docutils literal notranslate"><span class="pre">&gt;</span> <span class="pre">5000ms</span></code> 时进度条加 <code class="docutils literal notranslate"><span class="pre">is-bottleneck</span></code> class,触发脉冲动画,提示用户哪一段拖慢了响应。</p>
+</section>
+<section id="id18">
+<h3>9.3 6 通道命中数<a class="headerlink" href="#id18" title="链接到此标题。"></a></h3>
+<div class="highlight-typescript notranslate"><div class="highlight"><pre><span></span><span class="kd">const</span><span class="w"> </span><span class="nx">CHANNEL_META</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">vector</span><span class="o">:</span><span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;#2080f0&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;向量&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nx">bm25</span><span class="o">:</span><span class="w">        </span><span class="p">{</span><span class="w"> </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;#18a058&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;BM25&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nx">graph</span><span class="o">:</span><span class="w">       </span><span class="p">{</span><span class="w"> </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;#f0a020&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;图谱&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nx">entity_name</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;#d03050&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;实体名&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nx">synonym</span><span class="o">:</span><span class="w">     </span><span class="p">{</span><span class="w"> </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;#7c3aed&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;同义词&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nx">temporal</span><span class="o">:</span><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;#2080f0&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;时序&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>从 <code class="docutils literal notranslate"><span class="pre">pack.diagnostics.channels</span></code> 读取每通道命中候选数,渲染为 6 条彩色条形图。若全为 0,显示警告「所有通道命中均为 0,召回可能未命中任何候选」—— 这是召回调优的关键信号(通常是 embedding 维度不匹配或 scope 写错)。</p>
+</section>
+<section id="provenance-trail">
+<h3>9.4 provenance trail(数据漏斗)<a class="headerlink" href="#provenance-trail" title="链接到此标题。"></a></h3>
+<p>从 <code class="docutils literal notranslate"><span class="pre">pack.provenance.trail</span></code> 读取召回管线每步的 <code class="docutils literal notranslate"><span class="pre">kept</span></code> 计数,渲染为顺序 <code class="docutils literal notranslate"><span class="pre">NTag</span></code> 链:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>1. fetch → 240   2. fuse_rrf → 60   3. rerank → 25
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">trailKeptTotal()</span></code> 兼容 <code class="docutils literal notranslate"><span class="pre">kept</span></code> 是数字(fetch 步可能是各通道计数的 dict)的情况,dict 时求和。这条漏斗直观展示了候选从 6 通道抓取 → RRF 融合 → rerank 精排的逐级收敛。</p>
+</section>
+<section id="llm">
+<h3>9.5 LLM 状态指示器<a class="headerlink" href="#llm" title="链接到此标题。"></a></h3>
+<div class="highlight-typescript notranslate"><div class="highlight"><pre><span></span><span class="kd">const</span><span class="w"> </span><span class="nx">llmStatus</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">computed</span><span class="o">&lt;</span><span class="nx">LlmStatus</span><span class="o">&gt;</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">phaseEvents</span><span class="p">.</span><span class="nx">value</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">llm_end</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">text</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;✅ 生成完成&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;#18a058&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">cls</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;llm-st-done&#39;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">answerText</span><span class="p">.</span><span class="nx">value</span><span class="p">)</span><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">text</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;✍️ 正在生成回答...&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;#2080f0&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">cls</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;llm-st-answer&#39;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">llm_start</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">text</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;🧠 正在思考...&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;#7c3aed&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">cls</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;llm-st-thinking&#39;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">text</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;⏳ 等待 Recall...&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;#909399&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">cls</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;llm-st-wait&#39;</span><span class="w"> </span><span class="p">}</span>
+<span class="p">})</span>
+</pre></div>
+</div>
+<p>四态:⏳等待 Recall → 🧠思考(reasoning 阶段)→ ✍️生成(answer 文本流入)→ ✅完成。旁边显示模型名 <code class="docutils literal notranslate"><span class="pre">NTag</span></code> 与已生成字符数。</p>
+<p><strong>卡住检测</strong>:<code class="docutils literal notranslate"><span class="pre">stuckDetected</span></code> computed 在 <code class="docutils literal notranslate"><span class="pre">llm_start</span></code> 已触发但 10 秒内无 reasoning/answer 文本时返回 true(<code class="docutils literal notranslate"><span class="pre">nowTick</span></code> 每秒刷新驱动重算),触发警告「LLM 正在响应但尚无输出,可能模型正在思考或上游 API 超时」。这对推理模型(长 think)尤其有用 —— 区分「正常长思考」与「上游卡死」。</p>
+</section>
+</section>
+<section id="id19">
+<h2>10. 新增视图速览<a class="headerlink" href="#id19" title="链接到此标题。"></a></h2>
+<p>控制平面重构后共 <strong>13 个视图</strong>,覆盖后端全部能力面:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>视图</p></th>
+<th class="head"><p>分组</p></th>
+<th class="head"><p>路由</p></th>
+<th class="head"><p>职责</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>OverviewView</strong></p></td>
+<td><p>Observe</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/overview</span></code></p></td>
+<td><p>health/version/storage/queue/active features/pending governance 概览 + 快捷动作</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>OpsView</strong></p></td>
+<td><p>Observe</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/ops</span></code></p></td>
+<td><p>jobs/worker 状态、Dreaming/Higher-Order 运行记录、维护操作入口</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>IngestView</strong></p></td>
+<td><p>Operate</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/ingest</span></code></p></td>
+<td><p>单条/批量文档录入,modality/intent 选择</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>DataOpsView</strong></p></td>
+<td><p>Operate</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/data</span></code></p></td>
+<td><p>文档 ingest、批量 experience、import/export、Evidence 登记</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>CasesView</strong></p></td>
+<td><p>Operate</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/cases</span></code></p></td>
+<td><p>Case CRUD/lifecycle、workspace graph、promotion、diagnosis recall</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>PlaybookView</strong></p></td>
+<td><p>Operate</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/playbooks</span></code></p></td>
+<td><p>诊断剧本管理:三个 Tab（Playbook 列表 / 导入入库 / 正向推理调试）</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>QaView</strong></p></td>
+<td><p>Operate</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/qa</span></code></p></td>
+<td><p>Ask 诊断面板 + 阶段事件瀑布流 + 卡住检测</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>GraphView</strong></p></td>
+<td><p>Inspect</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/graph</span></code></p></td>
+<td><p>知识图谱可视化（Three.js WebGPU/WebGL2 渲染 + d3-force 混合布局），实体/事实浏览</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>BrowseView</strong></p></td>
+<td><p>Inspect</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/browse</span></code></p></td>
+<td><p>Memory Browser,分层级浏览事件/事实/信念</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>UnderstandingView</strong></p></td>
+<td><p>Inspect</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/understanding</span></code></p></td>
+<td><p>概念合成、coverage、detail、related concepts</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>GovernanceView</strong></p></td>
+<td><p>Govern</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/governance</span></code></p></td>
+<td><p>evolution 审批、feedback、vocabularies、synonyms、temporal phrases、Erasure</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>SettingsView</strong></p></td>
+<td><p>Govern</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/settings</span></code></p></td>
+<td><p>配置中心(检索调参/信号总线/feature flag)、检索控制面板</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>ApiConsoleView</strong></p></td>
+<td><p>Govern</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/api-console</span></code></p></td>
+<td><p>全端点目录 + 认证原始调用(回退兜底)</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>设计意图</strong>:Observe/Operate/Inspect/Govern 四组对应运维生命周期 —— 观察 → 操作 → 审视 → 治理。API Console 作为&quot;原始回退&quot;,保证任何后端能力(含尚未建专用 UI 的新端点)都能通过控制平面调用,不再需要 curl。</p>
+<section id="playbookview">
+<h3>10.1 PlaybookView（诊断剧本管理）<a class="headerlink" href="#playbookview" title="链接到此标题。"></a></h3>
+<p>PlaybookView 对应后端 <code class="docutils literal notranslate"><span class="pre">diagnostic_playbooks</span></code> + <code class="docutils literal notranslate"><span class="pre">forward_reasoning</span></code> 两套 API，由三个 Tab 组成：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Tab</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Playbook 列表</strong></p></td>
+<td><p>浏览现有 playbook（表格 + 抽屉详情：节点/边/入口节点/适用性），支持状态标签与版本展示</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>导入 / 入库</strong></p></td>
+<td><p>从 JSON 导入 playbook（跨环境迁移），或新建入库</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>正向推理</strong></p></td>
+<td><p>内置 forward reasoning 调试面板——输入症状+观测数据，实时看到遍历 trace、匹配结果与 next_actions（含 Raw JSON）</p></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<div><p>注：当前版本不提供可视化 DAG 编辑器（节点/边拖拽、版本 diff）；playbook 的结构编辑以 JSON 导入与 API 写入为主，前端侧重浏览与推理调试。</p>
+</div></blockquote>
+<p>GraphView 的知识图谱渲染用 <strong>Three.js</strong>（优先 WebGPU，回退 WebGL2）绘制节点与边，布局由 <code class="docutils literal notranslate"><span class="pre">graph/hybrid-layout.ts</span></code> 的 <strong>d3-force</strong> 混合力导向模拟（<code class="docutils literal notranslate"><span class="pre">forceSimulation</span></code> + <code class="docutils literal notranslate"><span class="pre">forceLink</span></code> + <code class="docutils literal notranslate"><span class="pre">forceManyBody</span></code>，另有社区级 meta 图布局）计算，节点按实体类型着色。</p>
+<p><strong>与 CasesView 的关系</strong>:CasesView 处理&quot;具体一次故障怎么查&quot;(案例),PlaybookView 处理&quot;这类故障应该怎么查&quot;(规程)。两者在 UI 中通过 Operate 分组下的 Tab 切换,数据层完全独立。</p>
+<div class="admonition seealso">
+<p class="admonition-title">参见</p>
+<p>配置项的语义与默认值见 <code class="docutils literal notranslate"><span class="pre">src/cortex/infra/config.py</span></code> 的 Pydantic 模型定义(<code class="docutils literal notranslate"><span class="pre">RetrievalCfg</span></code> / <code class="docutils literal notranslate"><span class="pre">DreamingCfg</span></code> / <code class="docutils literal notranslate"><span class="pre">HigherOrderCfg</span></code> 等)。API 端点完整列表见第18章。前端控制平面的完整设计文档见主仓 <code class="docutils literal notranslate"><span class="pre">DESIGN.md</span></code>。</p>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="23-architecture-diagrams.html" class="btn btn-neutral float-left" title="第23章 架构视图（4+1 视图模型）" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="25-competitive-analysis.html" class="btn btn-neutral float-right" title="第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

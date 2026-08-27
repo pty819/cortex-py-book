@@ -1,0 +1,1202 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论" href="13-higher-order.html" />
+    <link rel="prev" title="第11章 Feedback 回灌 — 用修正信号优化召回" href="11-feedback.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">四阶段管线</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#phase-0">Phase 0: 精确去重</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#phase-a">Phase A: 候选发现</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#pg-trgm">可选的 pg_trgm 预筛</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#phase-b-c-llm">Phase B+C: 两阶段 LLM（跨簇并发）</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#phase-b-llm-1">Phase B: 关系检测(LLM #1)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#phase-c-llm-2">Phase C: 行动规划(LLM #2)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#execute-actions-pending">_execute_actions — 写 pending 候选,不直接改知识图</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">并发与调度</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#advisory-lock">advisory lock</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#worker-scheduler">worker scheduler</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#heartbeat">heartbeat</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#dreaming-runs">dreaming_runs 表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#llm-key">无 LLM key 降级</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#api">API</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#post-v1-admin-dreaming">POST /v1/admin/dreaming</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#get-v1-admin-dreaming-run-id">GET /v1/admin/dreaming/{run_id}</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#mcp">MCP</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id4">配置</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/12-dreaming.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="dreaming-llm">
+<h1>第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重<a class="headerlink" href="#dreaming-llm" title="链接到此标题。"></a></h1>
+<section id="id1">
+<h2>概述<a class="headerlink" href="#id1" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">dreaming.py</span></code> 实现 cortex-py 的<strong>离线记忆巩固</strong>(offline memory consolidation):在系统空闲期扫描同一主体下累积的事实,完成精确去重、冲突仲裁与高阶信息提炼,让长期运行的图谱不至于被重复/冲突/低价值 fact 污染而拖垮召回质量。</p>
+<p>设计上借鉴了 MindMemOS 的<strong>两阶段 LLM 分离</strong>思路——把&quot;发现问题&quot;(relation_detect)与&quot;决定动作&quot;(action_plan)拆成两次独立的 LLM 调用,各自拥有专属 prompt 与约束,避免单次调用既要分类又要规划导致输出失控。在此基础上,cortex-py 做了三点关键适配:</p>
+<ol class="arabic simple">
+<li><p><strong>双时态软关</strong>:不使用 <code class="docutils literal notranslate"><span class="pre">status='archived'</span></code> 这类状态标记,而是写 <code class="docutils literal notranslate"><span class="pre">recorded_to=now()</span></code> 把事实软关,保留历史可回溯(见 <code class="docutils literal notranslate"><span class="pre">facts.recorded_to</span></code>)。合并产生的新 fact 的 <code class="docutils literal notranslate"><span class="pre">valid_from</span></code> 取源 fact 中最早的一个,保证时间链不断裂。</p></li>
+<li><p><strong>代码层 Subject 守卫</strong>:聚簇与 LLM 输入的边界由 SQL <code class="docutils literal notranslate"><span class="pre">GROUP</span> <span class="pre">BY</span> <span class="pre">subject_id</span></code> 在代码层强制,不依赖 prompt 约束 LLM&quot;只比较同一主体&quot;——prompt 不可靠,代码可靠。</p></li>
+<li><p><strong>精确去重先行</strong>:Phase 0 复用 <code class="docutils literal notranslate"><span class="pre">consolidation_run</span></code>(纯 SQL、无 LLM),先清掉完全相同的重复项,再让昂贵的 LLM 只处理语义层面的疑似关系。</p></li>
+</ol>
+<p>核心源码位于 <code class="docutils literal notranslate"><span class="pre">src/cortex/memory/dreaming.py</span></code>(~487 行),配置在 <code class="docutils literal notranslate"><span class="pre">src/cortex/infra/config.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">DreamingCfg</span></code>,调度与心跳在 <code class="docutils literal notranslate"><span class="pre">src/cortex/interfaces/worker/runner.py</span></code>。</p>
+</section>
+<section id="id2">
+<h2>四阶段管线<a class="headerlink" href="#id2" title="链接到此标题。"></a></h2>
+<pre  class="mermaid">
+        graph TB
+    subgraph Phase0[&quot;Phase 0: 精确去重(无 LLM)&quot;]
+        P0[&quot;consolidation_run&lt;br/&gt;min_age_hours=0&lt;br/&gt;纯 SQL 完全重复消除&quot;]
+    end
+    subgraph PhaseA[&quot;Phase A: 候选发现(纯 SQL)&quot;]
+        PA[&quot;GROUP BY subject_id&lt;br/&gt;HAVING count &gt;= min_cluster_size&lt;br/&gt;时间窗 lookback_days&lt;br/&gt;可选 pg_trgm 预筛&quot;]
+    end
+    subgraph PhaseBC[&quot;Phase B + C: 两阶段 LLM(per 簇)&quot;]
+        PB[&quot;Phase B: _relation_detect&lt;br/&gt;LLM #1 分类 7 种 issue_type&quot;]
+        PC[&quot;Phase C: _action_plan&lt;br/&gt;LLM #2 规划 5 种动作&quot;]
+        PB --&gt; PC
+    end
+    subgraph PhaseD[&quot;Phase D: 异步重合成&quot;]
+        PD[&quot;enqueue_job synthesize&lt;br/&gt;priority=-1&quot;]
+    end
+    P0 --&gt; PA --&gt; PB --&gt; PC --&gt; PD
+
+    LLM{&quot;services.llm_configured&lt;br/&gt;(synthesis tier)?&quot;}
+    PA --&gt; LLM
+    LLM --&gt;|未配置| SKIP[&quot;跳过 B/C&lt;br/&gt;仅 Phase 0 增强版&quot;]
+    LLM --&gt;|已配置| PB
+    </pre><p>整个管线由 <code class="docutils literal notranslate"><span class="pre">dream_run()</span></code>（<code class="docutils literal notranslate"><span class="pre">dreaming.py</span></code>，主体实现在 <code class="docutils literal notranslate"><span class="pre">_dream_run_impl</span></code>）编排。每个阶段的结果都汇总进 <code class="docutils literal notranslate"><span class="pre">summary[&quot;phases&quot;]</span></code>,最终写入 <code class="docutils literal notranslate"><span class="pre">dreaming_runs</span></code> 表。</p>
+</section>
+<section id="phase-0">
+<h2>Phase 0: 精确去重<a class="headerlink" href="#phase-0" title="链接到此标题。"></a></h2>
+<p>Phase 0 直接复用第 21 章介绍的 <code class="docutils literal notranslate"><span class="pre">consolidation_run</span></code>,但有一个关键参数差异:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># dreaming.py `dream_run` 的 Phase 0 分支</span>
+<span class="k">if</span> <span class="n">dry_run</span><span class="p">:</span>
+    <span class="n">p0</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;consolidation&quot;</span><span class="p">,</span> <span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;facts_closed&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+          <span class="s2">&quot;groups&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;note&quot;</span><span class="p">:</span> <span class="s2">&quot;dry_run skipped&quot;</span><span class="p">}</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">p0</span> <span class="o">=</span> <span class="n">consolidation_run</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">min_age_hours</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">consolidation_run</span></code> 的默认签名是 <code class="docutils literal notranslate"><span class="pre">min_age_hours=24</span></code>（见 <code class="docutils literal notranslate"><span class="pre">maintenance.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">consolidation_run</span></code> 定义），意为常规后台合并只处理入库满 24 小时的事实，避免对刚抽取的事实操作。但 Dreaming 是<strong>手动或定时触发</strong>的离线任务，操作员主动调用时不希望再等 24 小时，因此这里显式传 <code class="docutils literal notranslate"><span class="pre">min_age_hours=0</span></code>，让精确去重覆盖所有 live fact。</p>
+<p><code class="docutils literal notranslate"><span class="pre">dry_run=True</span></code> 时 Phase 0 被跳过（不写库），仅做候选发现以供预览，随后直接返回（<code class="docutils literal notranslate"><span class="pre">dreaming.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">dreaming_run</span></code> 入口）。把 Phase 0 放在最前的价值在于：完全相同的重复项用 SQL 一次清掉成本极低，不应消耗 LLM token，只有 SQL 无法判定的语义关系才进入后续阶段。</p>
+</section>
+<section id="phase-a">
+<h2>Phase A: 候选发现<a class="headerlink" href="#phase-a" title="链接到此标题。"></a></h2>
+<p>Phase A 由 <code class="docutils literal notranslate"><span class="pre">_discover_clusters()</span></code> 实现（<code class="docutils literal notranslate"><span class="pre">dreaming.py</span></code>），纯 SQL 聚簇，无 LLM 参与。核心查询按 <code class="docutils literal notranslate"><span class="pre">subject_id</span></code> 分组，只取 live fact（<code class="docutils literal notranslate"><span class="pre">recorded_to</span> <span class="pre">IS</span> <span class="pre">NULL</span> <span class="pre">AND</span> <span class="pre">valid_to</span> <span class="pre">IS</span> <span class="pre">NULL</span></code>），并施加时间窗：</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="c1">-- dreaming.py `_discover_clusters`</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="n">subject_id</span><span class="p">::</span><span class="nb">text</span><span class="p">,</span><span class="w"> </span><span class="n">array_agg</span><span class="p">(</span><span class="n">fact_id</span><span class="p">::</span><span class="nb">text</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">fids</span><span class="p">,</span><span class="w"> </span><span class="k">count</span><span class="p">(</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">n</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">facts</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="k">scope</span><span class="o">=</span><span class="p">:</span><span class="n">s</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">recorded_to</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">valid_to</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NULL</span>
+<span class="w">  </span><span class="k">AND</span><span class="w"> </span><span class="n">extracted_at</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">now</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">make_interval</span><span class="p">(</span><span class="n">secs</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">:</span><span class="n">secs</span><span class="p">)</span><span class="w">    </span><span class="c1">-- 下界:至少 min_age_hours 前</span>
+<span class="w">  </span><span class="k">AND</span><span class="w"> </span><span class="n">extracted_at</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">now</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">make_interval</span><span class="p">(</span><span class="n">days</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">:</span><span class="n">lb</span><span class="p">)</span><span class="w">      </span><span class="c1">-- 上界:lookback_days 内</span>
+<span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">subject_id</span>
+<span class="k">HAVING</span><span class="w"> </span><span class="k">count</span><span class="p">(</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="p">:</span><span class="k">min</span><span class="w">    </span><span class="c1">-- min_cluster_size</span>
+<span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="k">count</span><span class="p">(</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">DESC</span>
+<span class="k">LIMIT</span><span class="w"> </span><span class="p">:</span><span class="k">max</span><span class="w">                 </span><span class="c1">-- max_scopes_per_run</span>
+</pre></div>
+</div>
+<p>时间窗是<strong>双界</strong>的:<code class="docutils literal notranslate"><span class="pre">extracted_at</span> <span class="pre">∈</span> <span class="pre">[now-lookback_days,</span> <span class="pre">now-min_age_hours]</span></code>。下界 <code class="docutils literal notranslate"><span class="pre">min_age_hours</span></code> 避免对刚抽取、尚可能被后续事件修正的事实下手;上界 <code class="docutils literal notranslate"><span class="pre">lookback_days</span></code> 限制扫描范围,防止对超大 scope 全表回溯。</p>
+<p><strong>Subject 守卫</strong>是这一阶段最重要的设计决策:聚簇键就是 <code class="docutils literal notranslate"><span class="pre">subject_id</span></code>,代码层保证送入 LLM 的一组 fact 必然属于同一主体。<code class="docutils literal notranslate"><span class="pre">_discover_clusters</span></code> 注释明确写道&quot;代码层 Subject 守卫:只把同 subject 的 fact 送 LLM(不靠 prompt)&quot;。这把&quot;不要跨主体比较&quot;这条约束从不可靠的 prompt 提示下沉到 SQL <code class="docutils literal notranslate"><span class="pre">GROUP</span> <span class="pre">BY</span></code>,从根上杜绝了 LLM 误判跨主体关系的可能。</p>
+<section id="pg-trgm">
+<h3>可选的 pg_trgm 预筛<a class="headerlink" href="#pg-trgm" title="链接到此标题。"></a></h3>
+<p>当 <code class="docutils literal notranslate"><span class="pre">similarity_threshold</span></code> 落在 <code class="docutils literal notranslate"><span class="pre">(0,</span> <span class="pre">1]</span></code> 区间时(默认 0.85 即满足),Phase A 会额外调用 <code class="docutils literal notranslate"><span class="pre">_similarity_prefilter()</span></code>(<code class="docutils literal notranslate"><span class="pre">dreaming.py</span></code>),用 PostgreSQL 的 <code class="docutils literal notranslate"><span class="pre">pg_trgm</span></code> 扩展做三元组相似度预筛:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># 0 表示显式关闭;正常的 (0,1] 阈值必须实际参与候选发现。</span>
+<span class="c1"># complementary 的广域分析应使用较低阈值或 0,同时仍受单簇硬上限保护。</span>
+<span class="k">if</span> <span class="mf">0.0</span> <span class="o">&lt;</span> <span class="n">similarity_threshold</span> <span class="o">&lt;=</span> <span class="mf">1.0</span><span class="p">:</span>
+    <span class="n">facts</span> <span class="o">=</span> <span class="n">_similarity_prefilter</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">facts</span><span class="p">,</span> <span class="n">similarity_threshold</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">_similarity_prefilter</span></code> 不在 Python 里做 O(n²) 两两比较,而是把簇内 fact 拼成 <code class="docutils literal notranslate"><span class="pre">predicate</span> <span class="pre">+</span> <span class="pre">object_text</span></code> 的 <code class="docutils literal notranslate"><span class="pre">body</span></code>,一次性打包成 jsonb 传给<strong>单条集合式 SQL</strong>——<code class="docutils literal notranslate"><span class="pre">jsonb_to_recordset</span></code> 展开后自连接,用 <code class="docutils literal notranslate"><span class="pre">pg_trgm</span></code> 的 <code class="docutils literal notranslate"><span class="pre">similarity()</span></code> 在数据库内完成全部两两比较:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">items</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;fact_id&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">fact</span><span class="p">[</span><span class="s2">&quot;fact_id&quot;</span><span class="p">]),</span>
+     <span class="s2">&quot;body&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">fact</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;predicate&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">fact</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;object_text&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">strip</span><span class="p">()}</span>
+    <span class="k">for</span> <span class="n">fact</span> <span class="ow">in</span> <span class="n">facts</span>
+<span class="p">]</span>
+<span class="n">rows</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    WITH items AS (</span>
+<span class="s2">      SELECT fact_id, body</span>
+<span class="s2">      FROM jsonb_to_recordset(CAST(:items AS jsonb)) AS item(fact_id text, body text)</span>
+<span class="s2">      WHERE body &lt;&gt; &#39;&#39;</span>
+<span class="s2">    )</span>
+<span class="s2">    SELECT DISTINCT left_item.fact_id</span>
+<span class="s2">    FROM items left_item</span>
+<span class="s2">    JOIN items right_item</span>
+<span class="s2">      ON left_item.fact_id &lt;&gt; right_item.fact_id</span>
+<span class="s2">     AND similarity(left_item.body, right_item.body) &gt;= :threshold</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span> <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="n">threshold</span><span class="p">})</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>语义是&quot;只保留与组内<strong>至少一个</strong>其他 fact 相似度 &gt;= 阈值的 fact&quot;(DISTINCT 单侧 fact_id),而不是保留&quot;相似对&quot;——孤立的、与谁都不像的 fact 会被筛掉,有至少一个近邻的 fact 全部保留。一次网络往返 + 一条 SQL 完成整个簇的预筛,避免了 Python 循环逐对调用 <code class="docutils literal notranslate"><span class="pre">similarity()</span></code> 的 N²/2 次数据库往返。</p>
+<p>阈值语义:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">similarity_threshold</span></code></p></th>
+<th class="head"><p>行为</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">0.0</span></code></p></td>
+<td><p><strong>显式关闭</strong>预筛(广域 complementary 分析用,簇可能很大,仍受 <code class="docutils literal notranslate"><span class="pre">max_facts_per_cluster</span></code> 硬上限保护)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">(0,</span> <span class="pre">1]</span></code>(默认 <code class="docutils literal notranslate"><span class="pre">0.85</span></code>)</p></td>
+<td><p><strong>启用</strong> pg_trgm 预筛,只保留与组内至少一个其他 fact 相似度 &gt;= 阈值的 fact</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&gt;</span> <span class="pre">1.0</span></code></p></td>
+<td><p>配置层 <code class="docutils literal notranslate"><span class="pre">le=1.0</span></code> 校验拒绝,无法配出</p></td>
+</tr>
+</tbody>
+</table>
+<p>注意默认 <code class="docutils literal notranslate"><span class="pre">0.85</span></code> <strong>会触发预筛</strong>。若想关闭以做广域 complementary 分析(簇内可能包含文本相似度低但语义互补的 fact,如&quot;温度过高&quot;与&quot;散热风扇停转&quot;),应显式设为 <code class="docutils literal notranslate"><span class="pre">0</span></code>。配置项有 <code class="docutils literal notranslate"><span class="pre">ge=0.0,</span> <span class="pre">le=1.0</span></code> 约束。</p>
+<p>聚簇完成后,<code class="docutils literal notranslate"><span class="pre">_load_facts_detail()</span></code> 加载每条 fact 的详情(predicate、object_text、effective_time、assertion_status、salience、retrieval_count、knowledge_tier、case_id、operating_regime 与 evidence_count),供后续 LLM 阶段使用。其中 <code class="docutils literal notranslate"><span class="pre">effective_time</span></code> 已在 SQL 里预计算为 <code class="docutils literal notranslate"><span class="pre">coalesce(valid_from,</span> <span class="pre">extracted_at)</span></code>,供 Phase C 的 latest-wins 仲裁直接取用。</p>
+</section>
+</section>
+<section id="phase-b-c-llm">
+<h2>Phase B+C: 两阶段 LLM（跨簇并发）<a class="headerlink" href="#phase-b-c-llm" title="链接到此标题。"></a></h2>
+<p>Phase B 与 Phase C 各是一次 LLM 调用，簇间互相独立。Phase B 对所有簇<strong>并发</strong>跑关系检测，收集全部 issue 后，Phase C 对所有 (cluster, issue) 对<strong>并发</strong>跑行动规划，最后串行执行写入（事务安全）。这种分离设计的核心收益是<strong>职责单一、约束可校验</strong>:Phase B 只负责分类,输出是受控的 7 选 1 枚举;Phase C 只负责规划,输入是已分类的 issue + 相关 fact,输出是受约束的 5 种动作。两次调用各自可以独立做异常处理与降级。</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">cortex.infra.concurrency</span><span class="w"> </span><span class="kn">import</span> <span class="n">parallel_map</span>
+
+<span class="n">valid_clusters</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">clusters</span><span class="p">[:</span><span class="n">max_clusters</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">c</span><span class="p">[</span><span class="s2">&quot;facts&quot;</span><span class="p">])</span> <span class="o">&gt;=</span> <span class="n">min_cluster_size</span><span class="p">]</span>
+
+<span class="c1"># Phase B:所有簇的 relation_detect 并发(N 簇 → N 路 LLM 同时跑)</span>
+<span class="n">phase_b_results</span> <span class="o">=</span> <span class="n">parallel_map</span><span class="p">(</span>
+    <span class="k">lambda</span> <span class="n">c</span><span class="p">:</span> <span class="n">_relation_detect</span><span class="p">(</span><span class="n">c</span><span class="p">[</span><span class="s2">&quot;facts&quot;</span><span class="p">]),</span> <span class="n">valid_clusters</span>
+<span class="p">)</span>
+<span class="c1"># 收集 (cluster, issue) 对,跨簇跨 issue 全部独立</span>
+<span class="n">issue_pairs</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">cluster</span><span class="p">,</span> <span class="n">issues</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">valid_clusters</span><span class="p">,</span> <span class="n">phase_b_results</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">issues</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">issue</span> <span class="ow">in</span> <span class="n">issues</span><span class="p">:</span>
+            <span class="n">issue_pairs</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">cluster</span><span class="p">,</span> <span class="n">issue</span><span class="p">))</span>
+
+<span class="c1"># Phase C:所有 (cluster, issue) 的 action_plan 并发(M 对 → M 路 LLM 同时跑)</span>
+<span class="n">phase_c_results</span> <span class="o">=</span> <span class="n">parallel_map</span><span class="p">(</span>
+    <span class="k">lambda</span> <span class="n">pair</span><span class="p">:</span> <span class="n">_action_plan</span><span class="p">(</span><span class="n">pair</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;facts&quot;</span><span class="p">],</span> <span class="n">pair</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="n">issue_pairs</span>
+<span class="p">)</span> <span class="k">if</span> <span class="n">issue_pairs</span> <span class="k">else</span> <span class="p">[]</span>
+
+<span class="c1"># 写入串行执行(事务安全 + advisory lock 语义)</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="n">dry_run</span><span class="p">:</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">cluster</span><span class="p">,</span> <span class="n">_issue</span><span class="p">),</span> <span class="n">actions</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">issue_pairs</span><span class="p">,</span> <span class="n">phase_c_results</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">actions</span><span class="p">:</span>
+            <span class="n">_execute_actions</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">cluster</span><span class="p">[</span><span class="s2">&quot;facts&quot;</span><span class="p">])</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">parallel_map</span></code> 基于 <code class="docutils literal notranslate"><span class="pre">ThreadPoolExecutor</span></code>，GIL 在网络 <code class="docutils literal notranslate"><span class="pre">recv()</span></code> 处释放，N 个簇的 LLM 调用实现真并行。结果保序，单项异常返回 None 不阻断其余。写入（<code class="docutils literal notranslate"><span class="pre">_execute_actions</span></code>）保持串行以保证事务顺序和 advisory lock 语义。这把 N 个簇的串行 LLM 延迟从 O(N) 降到 O(N / max_workers)。</p>
+<section id="phase-b-llm-1">
+<h3>Phase B: 关系检测(LLM #1)<a class="headerlink" href="#phase-b-llm-1" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">_relation_detect()</span></code>（<code class="docutils literal notranslate"><span class="pre">dreaming.py</span></code>）把整簇 fact 序列化为 JSON 喂给 LLM,prompt 为 <code class="docutils literal notranslate"><span class="pre">DREAMING_RELATION_DETECT</span></code>（<code class="docutils literal notranslate"><span class="pre">prompts.py</span></code>）。该 prompt 定义了 <strong>7 种 issue_type</strong>:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>issue_type</p></th>
+<th class="head"><p>含义</p></th>
+<th class="head"><p>后续典型动作</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate</span></code></p></td>
+<td><p>完全重复(同 subject+predicate+object,仅来源不同)</p></td>
+<td><p>archive 冗余项</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">conflict</span></code></p></td>
+<td><p>同 subject+predicate 但 object 矛盾</p></td>
+<td><p>latest-wins 仲裁</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">near_duplicate</span></code></p></td>
+<td><p>语义近似但不完全相同</p></td>
+<td><p>merge</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">complementary</span></code></p></td>
+<td><p>同主题非冲突碎片,合并更完整</p></td>
+<td><p>merge / create</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">low_value</span></code></p></td>
+<td><p>低价值/无信息量(如&quot;设备存在&quot;)</p></td>
+<td><p>archive</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ambiguous</span></code></p></td>
+<td><p>关系不确定,无法判定</p></td>
+<td><p>update_quality 降权</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">other</span></code></p></td>
+<td><p>不属于以上类别</p></td>
+<td><p>不操作</p></td>
+</tr>
+</tbody>
+</table>
+<p>prompt 中特别强调了<strong>负面规则</strong>(什么不是冲突/重复),这是抑制 LLM 过度归并的关键:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">-</span> <span class="n">subject</span> <span class="n">相同但</span> <span class="n">predicate</span> <span class="n">不同</span> <span class="o">-&gt;</span> <span class="n">不是重复</span><span class="p">(</span><span class="n">是不同维度的信息</span><span class="p">)</span>
+<span class="o">-</span> <span class="n">predicate</span> <span class="n">相同但</span> <span class="n">subject</span> <span class="n">不同</span> <span class="o">-&gt;</span> <span class="n">不是冲突</span><span class="p">(</span><span class="n">是不同主体</span><span class="p">)</span>
+<span class="o">-</span> <span class="nb">object</span> <span class="n">相同但</span> <span class="p">(</span><span class="n">subject</span><span class="p">,</span> <span class="n">predicate</span><span class="p">)</span> <span class="n">不同</span> <span class="o">-&gt;</span> <span class="n">两条都可保留</span>
+<span class="o">-</span> <span class="n">仅共享一个宽泛类别</span><span class="p">(</span><span class="n">如</span><span class="s2">&quot;都是故障&quot;</span><span class="p">)</span><span class="n">不构成重复</span>
+</pre></div>
+</div>
+<p>LLM 返回的 JSON 经 <code class="docutils literal notranslate"><span class="pre">services.parse_llm_json()</span></code> 解析,取 <code class="docutils literal notranslate"><span class="pre">issues</span></code> 数组;解析或调用异常时返回空列表(降级,不阻断后续簇处理),见 <code class="docutils literal notranslate"><span class="pre">_relation_detect</span></code> 内的 try/except 包裹。</p>
+</section>
+<section id="phase-c-llm-2">
+<h3>Phase C: 行动规划(LLM #2)<a class="headerlink" href="#phase-c-llm-2" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">_action_plan()</span></code>（<code class="docutils literal notranslate"><span class="pre">dreaming.py</span></code>）接收 Phase B 产出的单个 issue 及其 <code class="docutils literal notranslate"><span class="pre">fact_ids</span></code> 对应的 fact 详情,调用 <code class="docutils literal notranslate"><span class="pre">DREAMING_ACTION_PLAN</span></code> prompt（<code class="docutils literal notranslate"><span class="pre">prompts.py</span></code>）规划具体动作。该 prompt 定义 <strong>5 种动作</strong>:</p>
+<ol class="arabic simple">
+<li><p><strong>archive</strong>:软关(<code class="docutils literal notranslate"><span class="pre">recorded_to=now()</span></code>)。适用 duplicate 冗余项、low_value 事实。</p></li>
+<li><p><strong>merge</strong>:合并多条为新 fact 并归档所有源 fact,新 fact 的 <code class="docutils literal notranslate"><span class="pre">valid_from</span></code> 取最早源 fact。</p></li>
+<li><p><strong>create</strong>:从多条 fact 提炼高阶结论,<strong>不归档</strong>源 fact。</p></li>
+<li><p><strong>update_quality</strong>:调整 <code class="docutils literal notranslate"><span class="pre">salience</span></code>,不归档。适用 ambiguous 或不确定时,只降权不删。</p></li>
+<li><p><strong>link</strong>:在 fact 间建立 supports 关联。</p></li>
+</ol>
+<p>prompt 中两条最重要的规则:</p>
+<ul class="simple">
+<li><p><strong>latest-wins</strong>:对 <code class="docutils literal notranslate"><span class="pre">conflict</span></code>,保留 <code class="docutils literal notranslate"><span class="pre">effective_time</span></code> 最新的 fact,归档旧的。<code class="docutils literal notranslate"><span class="pre">effective_time</span></code> 优先级 <code class="docutils literal notranslate"><span class="pre">valid_from</span> <span class="pre">&gt;</span> <span class="pre">extracted_at</span></code>,已在 Phase A 的 SQL 中预计算。</p></li>
+<li><p><strong>False archival is worse than leaving both active</strong>:不确定时宁可不操作。这条规则贯穿整个 Dreaming 的保守哲学——错误归档会丢失信息且难以恢复,而保留两条活跃 fact 的代价只是召回时多一份噪声。</p></li>
+</ul>
+<p>对 <code class="docutils literal notranslate"><span class="pre">new_salience</span></code>,prompt 明确约束 <strong>必须在 <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">2]</span></code> 范围内</strong>(0=完全降权,1=默认,2=最高)。即便 LLM 输出越界,代码层也会 clamp(见下一节)。对 <code class="docutils literal notranslate"><span class="pre">effective_time</span></code> 相同的冲突,prompt 要求双方都保留,最多标 <code class="docutils literal notranslate"><span class="pre">ambiguous</span></code> 降权,不归档任何一方。</p>
+</section>
+</section>
+<section id="execute-actions-pending">
+<h2>_execute_actions — 写 pending 候选,不直接改知识图<a class="headerlink" href="#execute-actions-pending" title="链接到此标题。"></a></h2>
+<div class="important admonition">
+<p class="admonition-title">关键设计变更</p>
+<p>Dreaming <strong>不再直接修改 facts 表</strong>(不再用 SAVEPOINT 隔离地执行 archive/merge/create)。现在 <code class="docutils literal notranslate"><span class="pre">_execute_actions</span></code> 把每个 LLM action 写成一条 <code class="docutils literal notranslate"><span class="pre">evolution_candidates(status='pending')</span></code> 候选,等人工审批(<code class="docutils literal notranslate"><span class="pre">evolution.review_candidate</span></code>)通过后才由 <code class="docutils literal notranslate"><span class="pre">_approve_dreaming</span></code> 执行真实变更。这是&quot;不污染 verified graph&quot;护栏的核心。</p>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># dreaming.py — _execute_actions</span>
+<span class="sd">&quot;&quot;&quot;把 LLM action 写成 pending review candidate;不直接修改知识。&quot;&quot;&quot;</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_execute_actions</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">cluster_facts</span><span class="p">):</span>
+    <span class="n">fact_map</span> <span class="o">=</span> <span class="p">{</span><span class="n">f</span><span class="p">[</span><span class="s2">&quot;fact_id&quot;</span><span class="p">]:</span> <span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">cluster_facts</span><span class="p">}</span>
+    <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">act</span> <span class="ow">in</span> <span class="n">actions</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">atype</span> <span class="o">=</span> <span class="n">act</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;action&quot;</span><span class="p">)</span>
+                <span class="n">fids</span> <span class="o">=</span> <span class="n">act</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fact_ids&quot;</span><span class="p">,</span> <span class="p">[])</span>
+                <span class="c1"># 只接受 4 种落地动作;link 动作被丢弃</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">fids</span> <span class="ow">or</span> <span class="n">atype</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;archive&quot;</span><span class="p">,</span> <span class="s2">&quot;merge&quot;</span><span class="p">,</span> <span class="s2">&quot;create&quot;</span><span class="p">,</span> <span class="s2">&quot;update_quality&quot;</span><span class="p">}:</span>
+                    <span class="k">continue</span>
+                <span class="n">source</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">fact_map</span><span class="p">[</span><span class="n">fid</span><span class="p">]</span> <span class="k">for</span> <span class="n">fid</span> <span class="ow">in</span> <span class="n">fids</span> <span class="k">if</span> <span class="n">fid</span> <span class="ow">in</span> <span class="n">fact_map</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">source</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    INSERT INTO evolution_candidates(</span>
+<span class="s2">                        scope,source_type,proposed_action,subject_id,predicate,payload,</span>
+<span class="s2">                        source_fact_ids,status,proposed_confidence,reasoning)</span>
+<span class="s2">                    VALUES(:s,&#39;dreaming&#39;,:action,CAST(:subject AS uuid),:predicate,</span>
+<span class="s2">                           CAST(:payload AS jsonb),CAST(:ids AS uuid[]),</span>
+<span class="s2">                           &#39;pending&#39;,:confidence,:reasoning)</span>
+<span class="s2">                &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="o">...</span><span class="p">})</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>  <span class="c1"># 单个坏 proposal 不阻断整轮</span>
+                <span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;dreaming proposal failed (action=</span><span class="si">%s</span><span class="s2">), skipped: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">atype</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>设计要点:</p>
+<ul class="simple">
+<li><p><strong>不碰 facts 表</strong>:每个 action 落一条 <code class="docutils literal notranslate"><span class="pre">evolution_candidates(status='pending',</span> <span class="pre">source_type='dreaming')</span></code>,<code class="docutils literal notranslate"><span class="pre">payload</span></code> 存完整 LLM action JSON,<code class="docutils literal notranslate"><span class="pre">source_fact_ids</span></code> 存涉及的 fact。真实 archive/merge/create/update_quality 只在审批通过后由 <code class="docutils literal notranslate"><span class="pre">evolution._approve_dreaming</span></code> 执行。</p></li>
+<li><p><strong>try/except 隔离</strong>:单个坏 proposal(如不合法 fact_id)只 <code class="docutils literal notranslate"><span class="pre">log.warning</span></code> 跳过,不阻断整轮。旧版的 SAVEPOINT 不再需要——因为这里不再有&quot;部分写入已落到 facts&quot;的风险,候选写入要么成功要么跳过。</p></li>
+<li><p><strong>4 种落地动作</strong>:<code class="docutils literal notranslate"><span class="pre">archive</span></code>/<code class="docutils literal notranslate"><span class="pre">merge</span></code>/<code class="docutils literal notranslate"><span class="pre">create</span></code>/<code class="docutils literal notranslate"><span class="pre">update_quality</span></code>。第 5 种 <code class="docutils literal notranslate"><span class="pre">link</span></code>(关系建议)被直接 <code class="docutils literal notranslate"><span class="pre">continue</span></code> 丢弃。</p></li>
+<li><p><strong>salience clamp 移到审批阶段</strong>:<code class="docutils literal notranslate"><span class="pre">_approve_dreaming</span></code> 执行 <code class="docutils literal notranslate"><span class="pre">update_quality</span></code> 时才 clamp salience 到 <code class="docutils literal notranslate"><span class="pre">[0,2]</span></code>,生成阶段不碰。</p></li>
+</ul>
+<p>这与 Higher-Order(第13章)的&quot;只生成 candidate tier 待审&quot;是同一套审批门设计,统一由 <code class="docutils literal notranslate"><span class="pre">evolution.review_candidate</span></code> 把关(见第2章 evolution_candidates 表)。审批通过才改 verified graph,避免 LLM 幻觉直接污染知识。</p>
+</section>
+<section id="id3">
+<h2>并发与调度<a class="headerlink" href="#id3" title="链接到此标题。"></a></h2>
+<p>Dreaming 的并发控制分三层:数据库 advisory lock、worker scheduler、heartbeat。三者共同保证同一 scope 的 dream job 不会被重复执行或并发执行。</p>
+<pre  class="mermaid">
+        graph LR
+    subgraph Scheduler[&quot;Worker scheduler&quot;]
+        S1[&quot;_maybe_schedule_dreaming&lt;br/&gt;每 schedule_interval_hours 检查一次&quot;]
+        S2[&quot;查 dreaming_runs 最后完成时间&quot;]
+        S3{&quot;已有 queued/running&lt;br/&gt;dream job?&quot;}
+        S4[&quot;enqueue dream job&lt;br/&gt;priority=-1, min_age_hours=0&quot;]
+        S1 --&gt; S2 --&gt; S3
+        S3 --&gt;|是| SKIP[&quot;跳过,不重复排程&quot;]
+        S3 --&gt;|否| S4
+    end
+    subgraph Dispatch[&quot;Worker dispatch&quot;]
+        D1[&quot;claim dream job&quot;]
+        D2[&quot;_JobHeartbeat 启动&lt;br/&gt;(所有 job 共用,vis/3 间隔)&quot;]
+        D3[&quot;dream_run&quot;]
+        D4[&quot;advisory lock&lt;br/&gt;pg_try_advisory_lock (session 级)&quot;]
+        D1 --&gt; D2 --&gt; D3
+        D3 --&gt; D4
+        D4 -.-&gt;|finally unlock| D3
+    end
+    S4 --&gt; D1
+    </pre><section id="advisory-lock">
+<h3>advisory lock<a class="headerlink" href="#advisory-lock" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">dream_run()</span></code> 入口处用 PostgreSQL <strong>会话级</strong> advisory lock 序列化同一 scope 的并发 run(<code class="docutils literal notranslate"><span class="pre">dreaming.py</span></code>):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># dreaming.py — dream_run 入口</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">dream_run</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="o">...</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Hold a session advisory lock for the complete Dreaming run, not only setup.&quot;&quot;&quot;</span>
+    <span class="n">lock_conn</span> <span class="o">=</span> <span class="n">get_engine</span><span class="p">()</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>   <span class="c1"># 独立 connection,覆盖完整 run</span>
+    <span class="n">lock_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;dream:</span><span class="si">{</span><span class="n">scope</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">locked</span> <span class="o">=</span> <span class="n">lock_conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;SELECT pg_try_advisory_lock(hashtext(:key))&quot;</span><span class="p">),</span>
+                                   <span class="p">{</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="n">lock_key</span><span class="p">})</span><span class="o">.</span><span class="n">scalar</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">locked</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;skipped&quot;</span><span class="p">:</span> <span class="s2">&quot;another dream run in progress for this scope&quot;</span><span class="p">}</span>
+        <span class="k">return</span> <span class="n">_dream_run_impl</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">lock_conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;SELECT pg_advisory_unlock(hashtext(:key))&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="n">lock_key</span><span class="p">})</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">lock_conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>关键设计:</p>
+<ul class="simple">
+<li><p><strong>会话级 <code class="docutils literal notranslate"><span class="pre">pg_try_advisory_lock</span></code>(非事务级 <code class="docutils literal notranslate"><span class="pre">pg_try_advisory_xact_lock</span></code>)</strong>。因为 dream run 会进出多个 <code class="docutils literal notranslate"><span class="pre">session_scope</span></code>(Phase 0/A/B/C 各自的事务),事务级锁会在第一个 session 提交时释放,无法覆盖完整 run。会话级锁绑定一个<strong>独立 connection</strong>(<code class="docutils literal notranslate"><span class="pre">lock_conn</span></code>),覆盖从入口到 <code class="docutils literal notranslate"><span class="pre">_dream_run_impl</span></code> 返回的整个生命周期,<code class="docutils literal notranslate"><span class="pre">finally</span></code> 里显式 <code class="docutils literal notranslate"><span class="pre">pg_advisory_unlock</span></code> 释放。</p></li>
+<li><p><strong>lock key 是 <code class="docutils literal notranslate"><span class="pre">f&quot;dream:{scope}&quot;</span></code></strong>(非裸 scope),<code class="docutils literal notranslate"><span class="pre">hashtext</span></code> 映射为 32 位整数。命名空间前缀避免与其他子系统的 advisory lock 冲突。</p></li>
+<li><p>非阻塞:拿不到锁立即返回 false,本次 run 跳过(返回 <code class="docutils literal notranslate"><span class="pre">skipped</span></code>)而非等待。这是最后一道防线——即使 scheduler 的 H2 去重因竞态漏过,advisory lock 也能阻止两个 worker 同时跑同一 scope 的 dream。</p></li>
+</ul>
+</section>
+<section id="worker-scheduler">
+<h3>worker scheduler<a class="headerlink" href="#worker-scheduler" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">_maybe_schedule_dreaming()</span></code>（<code class="docutils literal notranslate"><span class="pre">runner.py</span></code>）是嵌入 worker 主循环的轻量调度器,每次 reaper 周期触发一次检查:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># 调度间隔检查</span>
+<span class="n">interval</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">dreaming</span><span class="o">.</span><span class="n">schedule_interval_hours</span> <span class="o">*</span> <span class="mi">3600</span>
+<span class="k">if</span> <span class="n">now</span> <span class="o">-</span> <span class="n">last_check</span> <span class="o">&lt;</span> <span class="n">interval</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">last_check</span>
+</pre></div>
+</div>
+<p>它扫描所有有 live fact 的 scope,查 <code class="docutils literal notranslate"><span class="pre">dreaming_runs</span></code> 表中该 scope 最后一次 <code class="docutils literal notranslate"><span class="pre">status='completed'</span></code> 的时间,若超过 <code class="docutils literal notranslate"><span class="pre">schedule_interval_hours</span></code>(默认 24h)则触发。触发前有 <strong>H2 去重守卫</strong>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># H2:仅在无 queued/running dream job 时插入(防多 worker 重复排程)</span>
+<span class="n">already</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span>
+    <span class="s2">&quot;SELECT 1 FROM jobs WHERE job_type=&#39;dream&#39; AND scope=:s &quot;</span>
+    <span class="s2">&quot;AND status IN (&#39;queued&#39;,&#39;running&#39;) LIMIT 1&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">sc</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+<span class="k">if</span> <span class="n">already</span><span class="p">:</span>
+    <span class="k">continue</span>
+</pre></div>
+</div>
+<p>插入的 dream job 携带 <code class="docutils literal notranslate"><span class="pre">payload={&quot;min_age_hours&quot;:</span> <span class="pre">0}</span></code>,让 dream_run 跳过常规的 24h 年龄下界(见 Phase 0)。<code class="docutils literal notranslate"><span class="pre">priority=-1</span></code> 是低优先级,避免抢占 extract 等实时任务。</p>
+</section>
+<section id="heartbeat">
+<h3>heartbeat<a class="headerlink" href="#heartbeat" title="链接到此标题。"></a></h3>
+<p>Dream job 运行时间长(一次可能处理数十个聚簇、两次 LLM 调用 × 聚簇数),极易超过 worker 的 <code class="docutils literal notranslate"><span class="pre">visibility_timeout_secs</span></code>(默认 300s)。若不加保护,reaper 会在 300s 后误判 dream job 为僵尸并重置其状态,导致另一个 worker 重新 claim 并<strong>并发执行同一 dream job</strong>。</p>
+<div class="important admonition">
+<p class="admonition-title">设计变更</p>
+<p>旧版有一个 dream 专用的 <code class="docutils literal notranslate"><span class="pre">_DreamHeartbeat</span></code> 类。现已重构为<strong>所有 job 共用的 <code class="docutils literal notranslate"><span class="pre">_JobHeartbeat</span></code></strong>(<code class="docutils literal notranslate"><span class="pre">runner.py</span></code>),在 <code class="docutils literal notranslate"><span class="pre">run_worker</span></code> 外层包裹<strong>每个</strong> job(不只是 dream),带 <strong>owner-fencing</strong>:lease 丢失(被别的 worker 抢走)则 <code class="docutils literal notranslate"><span class="pre">stop.set()</span></code> 自停。</p>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">_JobHeartbeat</span></code>(<code class="docutils literal notranslate"><span class="pre">runner.py</span></code>)是所有 job 共用的上下文管理器,不再为 dream 专用:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># runner.py — 所有 job 共用的心跳(含 owner fencing)</span>
+<span class="nd">@contextmanager</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_JobHeartbeat</span><span class="p">(</span><span class="n">job_id</span><span class="p">,</span> <span class="n">worker_id</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mf">60.0</span><span class="p">):</span>
+    <span class="n">stop</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_beat</span><span class="p">():</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="n">stop</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">interval</span><span class="p">):</span>
+            <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">c</span><span class="p">:</span>
+                <span class="c1"># heartbeat_job 带 owner fencing:lease 丢失则返回 False</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">heartbeat_job</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">job_id</span><span class="p">,</span> <span class="n">worker_id</span><span class="p">):</span>
+                    <span class="n">stop</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>   <span class="c1"># 别的 worker 抢走了,停止续租</span>
+                    <span class="k">return</span>
+    <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">_beat</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">stop</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>关键设计:</p>
+<ul class="simple">
+<li><p><strong>所有 job 共用</strong>,在 <code class="docutils literal notranslate"><span class="pre">run_worker</span></code> 的 job 循环外层包裹(<code class="docutils literal notranslate"><span class="pre">with</span> <span class="pre">_JobExecutionLock(job[&quot;job_id&quot;]):</span> <span class="pre">with</span> <span class="pre">_JobHeartbeat(job[&quot;job_id&quot;],</span> <span class="pre">worker_id,</span> <span class="pre">heartbeat_interval):</span></code>),dream job 不再有专用心跳,也不在 <code class="docutils literal notranslate"><span class="pre">_dispatch</span></code> 的 dream 分支内单独包裹。</p></li>
+<li><p><strong>心跳外套一层 <code class="docutils literal notranslate"><span class="pre">_JobExecutionLock</span></code></strong>:<code class="docutils literal notranslate"><span class="pre">_JobHeartbeat</span></code> 外面还有 <code class="docutils literal notranslate"><span class="pre">_JobExecutionLock(job_id)</span></code>(基于 <code class="docutils literal notranslate"><span class="pre">pg_advisory_lock(hashtext('job:&lt;id&gt;'))</span></code> 的独立连接锁),防止 handler 的副作用仍在执行时被 reaper 回收/重新分配——即使 heartbeat 已停,执行锁也保证同一个 job 不会被并发跑两次。</p></li>
+<li><p><strong>心跳间隔随 visibility_timeout 动态算</strong>:<code class="docutils literal notranslate"><span class="pre">heartbeat_interval</span> <span class="pre">=</span> <span class="pre">max(1.0,</span> <span class="pre">min(60.0,</span> <span class="pre">vis</span> <span class="pre">/</span> <span class="pre">3.0))</span></code>(<code class="docutils literal notranslate"><span class="pre">vis</span> <span class="pre">=</span> <span class="pre">cfg.worker.visibility_timeout_secs</span></code>),非固定 60s。</p></li>
+<li><p><strong>owner fencing</strong>:<code class="docutils literal notranslate"><span class="pre">heartbeat_job(c,</span> <span class="pre">job_id,</span> <span class="pre">worker_id)</span></code> 内部用 <code class="docutils literal notranslate"><span class="pre">WHERE</span> <span class="pre">job_id=:j</span> <span class="pre">AND</span> <span class="pre">locked_by=:w</span></code> 条件更新——如果 lease 已被别的 worker 抢走(reaper 重排后),更新影响 0 行返回 False,心跳线程 <code class="docutils literal notranslate"><span class="pre">stop.set()</span></code> 自停,避免为不属于自己的 job 续命。</p></li>
+</ul>
+</section>
+</section>
+<section id="dreaming-runs">
+<h2>dreaming_runs 表<a class="headerlink" href="#dreaming-runs" title="链接到此标题。"></a></h2>
+<p>每次 <code class="docutils literal notranslate"><span class="pre">dream_run</span></code> 在入口创建一条 <code class="docutils literal notranslate"><span class="pre">dreaming_runs</span></code> 记录,结束时回写统计。DDL 位于 <code class="docutils literal notranslate"><span class="pre">schema.sql</span></code> 的 Dreaming 运行记录段落:</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">cortex</span><span class="p">.</span><span class="n">dreaming_runs</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">run_id</span><span class="w">           </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">            </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">started_at</span><span class="w">       </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">completed_at</span><span class="w">     </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">status</span><span class="w">           </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;running&#39;</span>
+<span class="w">                     </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;running&#39;</span><span class="p">,</span><span class="s1">&#39;completed&#39;</span><span class="p">,</span><span class="s1">&#39;failed&#39;</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">phase0_closed</span><span class="w">    </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">    </span><span class="c1">-- 精确去重关了多少 fact</span>
+<span class="w">    </span><span class="n">phase_a_clusters</span><span class="w"> </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">    </span><span class="c1">-- 发现多少候选簇</span>
+<span class="w">    </span><span class="n">phase_b_issues</span><span class="w">   </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">    </span><span class="c1">-- LLM 发现多少 issue</span>
+<span class="w">    </span><span class="n">phase_c_actions</span><span class="w">  </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">    </span><span class="c1">-- 执行多少动作</span>
+<span class="w">    </span><span class="n">summary</span><span class="w">          </span><span class="n">JSONB</span><span class="w">                       </span><span class="c1">-- 详细统计</span>
+<span class="p">);</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">idx_dreaming_runs_scope</span>
+<span class="w">    </span><span class="k">ON</span><span class="w"> </span><span class="n">cortex</span><span class="p">.</span><span class="n">dreaming_runs</span><span class="w"> </span><span class="p">(</span><span class="k">scope</span><span class="p">,</span><span class="w"> </span><span class="n">started_at</span><span class="w"> </span><span class="k">DESC</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>各列含义:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>列</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">run_id</span></code></p></td>
+<td><p>主键,<code class="docutils literal notranslate"><span class="pre">dream_run</span></code> 返回的 <code class="docutils literal notranslate"><span class="pre">summary</span></code> 不含 run_id,需通过 API 查询</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">scope</span></code></p></td>
+<td><p>巩固的作用域</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">started_at</span></code></p></td>
+<td><p>创建记录时(<code class="docutils literal notranslate"><span class="pre">INSERT</span> <span class="pre">...</span> <span class="pre">DEFAULT</span> <span class="pre">now()</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">completed_at</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">_complete_run</span></code> 或失败分支回写</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">status</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">running</span></code> → <code class="docutils literal notranslate"><span class="pre">completed</span></code> / <code class="docutils literal notranslate"><span class="pre">failed</span></code>。异常时（<code class="docutils literal notranslate"><span class="pre">dream_run</span></code> 的 except 分支）回写 <code class="docutils literal notranslate"><span class="pre">failed</span></code> 并存 <code class="docutils literal notranslate"><span class="pre">summary.error</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">phase0_closed</span></code></p></td>
+<td><p>Phase 0 精确去重关闭的 fact 数</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">phase_a_clusters</span></code></p></td>
+<td><p>Phase A 发现的候选聚簇数</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">phase_b_issues</span></code></p></td>
+<td><p>Phase B LLM 发现的 issue 总数</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">phase_c_actions</span></code></p></td>
+<td><p>Phase C 执行的动作总数</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">summary</span></code></p></td>
+<td><p>完整 <code class="docutils literal notranslate"><span class="pre">summary</span></code> dict 的 JSON,含各阶段明细</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">_complete_run()</span></code>（<code class="docutils literal notranslate"><span class="pre">dreaming.py</span></code>）在写完统计后还做两件事:失效该 scope 的 <code class="docutils literal notranslate"><span class="pre">recall_packs</span></code> 缓存(<code class="docutils literal notranslate"><span class="pre">DELETE</span> <span class="pre">FROM</span> <span class="pre">recall_packs</span> <span class="pre">WHERE</span> <span class="pre">scope=:s</span></code>),确保下次召回能看到 dreaming 期间的 archive/merge 改动;并 <code class="docutils literal notranslate"><span class="pre">emit_lifecycle(kind=&quot;dreamed&quot;)</span></code> 发出生命周期事件。失败分支同样会失效 <code class="docutils literal notranslate"><span class="pre">recall_packs</span></code>。</p>
+</section>
+<section id="llm-key">
+<h2>无 LLM key 降级<a class="headerlink" href="#llm-key" title="链接到此标题。"></a></h2>
+<p>Dreaming 的 LLM 阶段依赖 <code class="docutils literal notranslate"><span class="pre">synthesis</span></code> tier(默认)。若该 tier 未配置 API key,<code class="docutils literal notranslate"><span class="pre">dream_run</span></code> 会优雅降级——只运行 Phase 0,跳过 Phase B/C:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># `dream_run` 入口的 LLM tier 检查</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="n">services</span><span class="o">.</span><span class="n">llm_configured</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">dreaming</span><span class="o">.</span><span class="n">llm_tier</span><span class="p">):</span>
+    <span class="n">summary</span><span class="p">[</span><span class="s2">&quot;note&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;LLM tier &#39;</span><span class="si">{</span><span class="n">cfg</span><span class="o">.</span><span class="n">dreaming</span><span class="o">.</span><span class="n">llm_tier</span><span class="si">}</span><span class="s2">&#39; not configured, skipping Phase B/C&quot;</span>
+    <span class="n">_complete_run</span><span class="p">(</span><span class="n">run_id</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">p0</span><span class="p">[</span><span class="s2">&quot;facts_closed&quot;</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">clusters</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">summary</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">summary</span>
+</pre></div>
+</div>
+<p>此时 Dreaming 等价于一次<strong>增强版 consolidation</strong>:Phase 0 精确去重照常执行(<code class="docutils literal notranslate"><span class="pre">min_age_hours=0</span></code>),Phase A 候选发现照常运行(但不送 LLM),<code class="docutils literal notranslate"><span class="pre">phase_b_issues</span></code> 和 <code class="docutils literal notranslate"><span class="pre">phase_c_actions</span></code> 记为 0。<code class="docutils literal notranslate"><span class="pre">summary.note</span></code> 字段记录降级原因,供运维排查。</p>
+<p>这一设计意味着 <code class="docutils literal notranslate"><span class="pre">DreamingCfg.enabled=true</span></code> 但未配 LLM key 的部署不会报错,只是巩固能力退化为纯精确去重——对初期试运行或成本敏感场景很友好。</p>
+</section>
+<section id="api">
+<h2>API<a class="headerlink" href="#api" title="链接到此标题。"></a></h2>
+<section id="post-v1-admin-dreaming">
+<h3>POST /v1/admin/dreaming<a class="headerlink" href="#post-v1-admin-dreaming" title="链接到此标题。"></a></h3>
+<p>触发一次 dreaming 巩固。请求体 <code class="docutils literal notranslate"><span class="pre">DreamingRequest</span></code>（<code class="docutils literal notranslate"><span class="pre">schemas.py</span></code>）:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">DreamingRequest</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">dry_run</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">async_enqueue</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+</pre></div>
+</div>
+<p>实现位于 <code class="docutils literal notranslate"><span class="pre">operations.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">admin_dreaming</span></code> 路由:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@router</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">&quot;/v1/admin/dreaming&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">admin_dreaming</span><span class="p">(</span><span class="n">body</span><span class="p">:</span> <span class="n">schemas</span><span class="o">.</span><span class="n">DreamingRequest</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">body</span><span class="o">.</span><span class="n">async_enqueue</span><span class="p">:</span>
+        <span class="n">job_id</span> <span class="o">=</span> <span class="n">enqueue_job</span><span class="p">(</span>
+            <span class="n">job_type</span><span class="o">=</span><span class="s2">&quot;dream&quot;</span><span class="p">,</span>
+            <span class="n">scope</span><span class="o">=</span><span class="n">body</span><span class="o">.</span><span class="n">scope</span><span class="p">,</span>
+            <span class="n">payload</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;dry_run&quot;</span><span class="p">:</span> <span class="n">body</span><span class="o">.</span><span class="n">dry_run</span><span class="p">},</span>
+            <span class="n">priority</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;queued&quot;</span><span class="p">,</span> <span class="s2">&quot;job_id&quot;</span><span class="p">:</span> <span class="n">job_id</span><span class="p">,</span> <span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="n">body</span><span class="o">.</span><span class="n">scope</span><span class="p">}</span>
+    <span class="k">return</span> <span class="n">dream_run</span><span class="p">(</span><span class="n">body</span><span class="o">.</span><span class="n">scope</span><span class="p">,</span> <span class="n">dry_run</span><span class="o">=</span><span class="n">body</span><span class="o">.</span><span class="n">dry_run</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">async_enqueue=True</span></code> 时入队 dream job 立即返回 <code class="docutils literal notranslate"><span class="pre">job_id</span></code>,由 worker 异步执行(会触发前述的 heartbeat 机制);<code class="docutils literal notranslate"><span class="pre">False</span></code> 时同步阻塞执行,直接返回 <code class="docutils literal notranslate"><span class="pre">dream_run</span></code> 的 <code class="docutils literal notranslate"><span class="pre">summary</span></code>。<code class="docutils literal notranslate"><span class="pre">dry_run=True</span></code> 仅发现候选不执行任何写操作,用于预览巩固范围。该端点挂在 <code class="docutils literal notranslate"><span class="pre">operations</span></code> 路由上,未套鉴权依赖(与第13章 admin 端点一致)。</p>
+</section>
+<section id="get-v1-admin-dreaming-run-id">
+<h3>GET /v1/admin/dreaming/{run_id}<a class="headerlink" href="#get-v1-admin-dreaming-run-id" title="链接到此标题。"></a></h3>
+<p>查询某次运行的结果（<code class="docutils literal notranslate"><span class="pre">operations.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">admin_dreaming_get</span></code> 路由）,同样挂在 operations 路由上,无鉴权依赖(原 <code class="docutils literal notranslate"><span class="pre">auth</span></code> 依赖已移除):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/v1/admin/dreaming/</span><span class="si">{run_id}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">admin_dreaming_get</span><span class="p">(</span><span class="n">run_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">get_dreaming_run</span><span class="p">(</span><span class="n">run_id</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">result</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="mi">404</span><span class="p">,</span> <span class="s2">&quot;dreaming run not found&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">get_dreaming_run()</span></code>（<code class="docutils literal notranslate"><span class="pre">dreaming.py</span></code>）从 <code class="docutils literal notranslate"><span class="pre">dreaming_runs</span></code> 表读取一行并组装为 dict 返回,字段对应表中各列。</p>
+</section>
+<section id="mcp">
+<h3>MCP<a class="headerlink" href="#mcp" title="链接到此标题。"></a></h3>
+<p>Dreaming 通过 <code class="docutils literal notranslate"><span class="pre">dreaming_run</span></code> MCP 工具暴露给 agent,封装 <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/admin/dreaming</span></code> 的能力,使外部 agent 能以标准协议触发离线巩固。</p>
+</section>
+</section>
+<section id="id4">
+<h2>配置<a class="headerlink" href="#id4" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">DreamingCfg</span></code>（<code class="docutils literal notranslate"><span class="pre">infra/config.py</span></code>）集中管理所有 dreaming 参数:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">DreamingCfg</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Dreaming 离线巩固:两阶段 LLM(relation_detect + action_plan)+ 精确去重先行。&quot;&quot;&quot;</span>
+    <span class="n">enabled</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>              <span class="c1"># 默认关,需配 LLM key 后开</span>
+    <span class="n">lookback_days</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">7</span>             <span class="c1"># 候选发现时间窗</span>
+    <span class="n">max_scopes_per_run</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span>       <span class="c1"># 单次最多处理聚簇数</span>
+    <span class="n">min_cluster_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>          <span class="c1"># &lt;2 跳过 LLM</span>
+    <span class="n">similarity_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mf">0.85</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">max_facts_per_cluster</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">500</span><span class="p">)</span>
+    <span class="n">max_input_chars</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">30000</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">500000</span><span class="p">)</span>
+    <span class="n">max_issues_per_cluster</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+    <span class="n">max_issues_per_run</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">10000</span><span class="p">)</span>
+    <span class="n">max_actions_per_issue</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+    <span class="n">schedule_interval_hours</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">24</span>  <span class="c1"># worker scheduler 触发间隔</span>
+    <span class="n">llm_tier</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;synthesis&quot;</span>        <span class="c1"># Dreaming LLM 用的 tier</span>
+</pre></div>
+</div>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>字段</p></th>
+<th class="head"><p>默认值</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">enabled</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
+<td><p>全局开关。默认关,因为 Dreaming 依赖 LLM key,未配置时不应自动触发</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">lookback_days</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">7</span></code></p></td>
+<td><p>Phase A 候选发现的时间窗上界,只扫近 7 天入库的 fact</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_scopes_per_run</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">50</span></code></p></td>
+<td><p>单次 run 最多处理的聚簇数(<code class="docutils literal notranslate"><span class="pre">clusters[:max_clusters]</span></code>),控成本</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">min_cluster_size</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
+<td><p>聚簇最小成员数,<code class="docutils literal notranslate"><span class="pre">&lt;2</span></code> 不送 LLM(单条 fact 无关系可言)。<code class="docutils literal notranslate"><span class="pre">ge=2</span></code> 约束</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">similarity_threshold</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.85</span></code></p></td>
+<td><p>pg_trgm 预筛阈值。注意:<strong>落在 <code class="docutils literal notranslate"><span class="pre">(0,</span> <span class="pre">1]</span></code> 区间就会触发预筛</strong>,默认 0.85 即启用;<code class="docutils literal notranslate"><span class="pre">0</span></code> 显式关闭</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_facts_per_cluster</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">40</span></code></p></td>
+<td><p>单簇送入 LLM 的 fact 上限(硬上限,防超大簇超 token)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_input_chars</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">30000</span></code></p></td>
+<td><p>单次 LLM 输入的最大字符数</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_issues_per_cluster</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">10</span></code></p></td>
+<td><p>单簇最多产出的 issue 数</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_issues_per_run</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">100</span></code></p></td>
+<td><p>单次 run 最多处理的 issue 总数</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_actions_per_issue</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">20</span></code></p></td>
+<td><p>单 issue 最多规划的动作数</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">schedule_interval_hours</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">24</span></code></p></td>
+<td><p>worker scheduler 的检查间隔,每 24h 检查各 scope 是否该触发 dreaming</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">llm_tier</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;synthesis&quot;</span></code></p></td>
+<td><p>Phase B/C 使用的 LLM tier,默认复用 synthesis tier</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">dream_run()</span></code> 的所有可选参数默认 <code class="docutils literal notranslate"><span class="pre">None</span></code>,意为回落到 <code class="docutils literal notranslate"><span class="pre">DreamingCfg</span></code>（见 <code class="docutils literal notranslate"><span class="pre">_dream_run_impl</span></code>,<code class="docutils literal notranslate"><span class="pre">dreaming.py</span></code>）,操作员调参即时生效。唯一例外是 <code class="docutils literal notranslate"><span class="pre">min_age_hours</span></code>,函数内硬编码默认 <code class="docutils literal notranslate"><span class="pre">24</span></code>(用于候选发现的 fact 年龄下界),但 scheduler 入队的 dream job payload 显式传 <code class="docutils literal notranslate"><span class="pre">{&quot;min_age_hours&quot;:</span> <span class="pre">0}</span></code>,API 同步调用时不传该参数故用默认 24h 下界——这一差异是有意的:手动触发可以保守一点等 24h,定时触发则覆盖全部 live fact。</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="11-feedback.html" class="btn btn-neutral float-left" title="第11章 Feedback 回灌 — 用修正信号优化召回" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="13-higher-order.html" class="btn btn-neutral float-right" title="第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

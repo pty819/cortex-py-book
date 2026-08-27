@@ -1,0 +1,1167 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第14章 检索系统概述" href="14-retrieval-system.html" />
+    <link rel="prev" title="第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重" href="12-dreaming.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">13.1 概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#vs">13.2 一阶 vs 高阶事实</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#predicate-definitions">13.3 predicate_definitions 表</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#seed-predicate-definitions">seed_predicate_definitions()</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#generate-higher-order">13.4 generate_higher_order 流程</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id2">流程图</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#gate-ordering">13.4.1 检查门序列（gate ordering）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#evidence-window">13.4.2 证据窗加载（evidence window）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id3">13.4.3 证据数量门控(单一门槛)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#llm-synthesis">13.4.4 LLM synthesis</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#candidate-tier-fact-evolution-candidates-verified-graph">13.4.5 生成 candidate tier fact + evolution_candidates(不直接改 verified graph)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#extract-enqueue">13.5 触发机制：extract 后异步 enqueue</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#llm-extraction-pipeline-py-extract-event">13.5.1 LLM 抽取路径（<code class="docutils literal notranslate"><span class="pre">extraction/pipeline.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">extract_event</span></code> 收尾阶段）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#extraction-pipeline-py-direct-write-triple">13.5.2 三元组直写路径（<code class="docutils literal notranslate"><span class="pre">extraction/pipeline.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">_direct_write_triple</span></code>）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#inline-insert-enqueue-job">13.5.3 为什么用 inline INSERT 而非 enqueue_job</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id4">13.6 召回集成：higher_order 层</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#candidate-tier">13.7 质量保护:candidate tier + 人工审批门</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#api-mcp">13.8 API 与 MCP</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#post-v1-admin-higher-order">13.8.1 管理接口 <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/admin/higher-order</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#get-v1-higher-order">13.8.2 查询接口 <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/higher-order</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#mcp-higher-order-generate">13.8.3 MCP 工具 <code class="docutils literal notranslate"><span class="pre">higher_order_generate</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id5">13.9 配置</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/13-higher-order.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="higher-order">
+<h1>第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论<a class="headerlink" href="#higher-order" title="链接到此标题。"></a></h1>
+<div class="important admonition">
+<p class="admonition-title">重大重构:认知晋升门 + evidence_quality + candidate tier</p>
+<p>本章曾以&quot;<code class="docutils literal notranslate"><span class="pre">access_count</span></code> 热度门控 + 直接写 <code class="docutils literal notranslate"><span class="pre">confirmed</span></code> 高阶 fact&quot;为核心。两项均已过时,请以下述为准:</p>
+<ol class="arabic simple">
+<li><p><strong>不再读 <code class="docutils literal notranslate"><span class="pre">access_count</span></code></strong>:证据窗排序与门控改用 <code class="docutils literal notranslate"><span class="pre">facts.evidence_quality</span></code>(<code class="docutils literal notranslate"><span class="pre">min_access_count</span></code> 已 <code class="docutils literal notranslate"><span class="pre">deprecated=0</span></code>,使用热度不参与认知晋升)。唯一门控是证据数量 <code class="docutils literal notranslate"><span class="pre">min_evidence_count</span></code>。</p></li>
+<li><p><strong>不再直接写 <code class="docutils literal notranslate"><span class="pre">confirmed</span></code></strong>:LLM 归纳只能生成 <code class="docutils literal notranslate"><span class="pre">assertion_status='hypothesized'</span> <span class="pre">/</span> <span class="pre">knowledge_tier='candidate'</span></code> 的待审 fact + 同步落 <code class="docutils literal notranslate"><span class="pre">evolution_candidates(status='pending',</span> <span class="pre">proposed_action='promote')</span></code>。需人工 <code class="docutils literal notranslate"><span class="pre">review_candidate</span></code> 审批后才晋升 <code class="docutils literal notranslate"><span class="pre">verified</span></code>。召回层只返回 <code class="docutils literal notranslate"><span class="pre">knowledge_tier='verified'</span></code> 的高阶 fact。</p></li>
+<li><p>认知晋升质量由<strong>人工审批门</strong>(检查 confirmed + 独立闭环 Case + 回归证据)保证,不再由召回热度保证。</p></li>
+</ol>
+</div>
+<section id="id1">
+<h2>13.1 概述<a class="headerlink" href="#id1" title="链接到此标题。"></a></h2>
+<p>Dreaming 与 Higher-Order 是记忆自演化的两条互补热路径：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>机制</p></th>
+<th class="head"><p>方向</p></th>
+<th class="head"><p>操作</p></th>
+<th class="head"><p>典型产物</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Dreaming（第12章）</p></td>
+<td><p>减法</p></td>
+<td><p>去重 / 合并 / 归档</p></td>
+<td><p>三元组收敛、冷数据下沉</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Higher-Order</strong></p></td>
+<td><p><strong>加法</strong></p></td>
+<td><p><strong>归纳 / 抽象</strong></p></td>
+<td><p><strong>从一阶事实合成高阶结论</strong></p></td>
+</tr>
+</tbody>
+</table>
+<p>Dreaming 做的是&quot;压缩&quot;——把语义重复的三元组合并；Higher-Order 做的是&quot;升华&quot;——把零散的一阶观察（first-order facts）抽象成行为模式、故障规律、性格特质等高阶结论。设计借鉴自 MindMemOS 的 <code class="docutils literal notranslate"><span class="pre">_schema_higher_order.py</span></code>：以 evidence-driven LLM summarization 为核心，用一阶事实作为证据，让 LLM 归纳出 <code class="docutils literal notranslate"><span class="pre">order=2</span></code> 谓词描述的抽象断言。</p>
+<p>一个直观的例子：</p>
+<blockquote>
+<div><p>某设备在过去半年累积了 10 条一阶事实 <code class="docutils literal notranslate"><span class="pre">(device_X,</span> <span class="pre">caused_by,</span> <span class="pre">&quot;PSU_aging&quot;)</span></code>、<code class="docutils literal notranslate"><span class="pre">(device_X,</span> <span class="pre">caused_by,</span> <span class="pre">&quot;capacitor_leak&quot;)</span></code> ……散落在多次 incident 事件里。召回时返回 10 条平铺事件既冗余又难以诊断。Higher-Order 在后台用 LLM 把它们归纳成一条高阶事实：</p>
+<p><code class="docutils literal notranslate"><span class="pre">(device_X,</span> <span class="pre">failure_mode,</span> <span class="pre">&quot;recurrent</span> <span class="pre">PSU/capacitor</span> <span class="pre">hardware</span> <span class="pre">fault</span> <span class="pre">pattern&quot;)</span></code></p>
+<p>一条抽象结论替代 10 条零散事件，诊断效率显著提升。</p>
+</div></blockquote>
+<p>高阶事实与一阶事实<strong>同表共存</strong>（<code class="docutils literal notranslate"><span class="pre">facts</span></code> 表），用 <code class="docutils literal notranslate"><span class="pre">is_higher_order</span></code> 列区分层级；高阶事实额外携带 <code class="docutils literal notranslate"><span class="pre">higher_order_reasoning</span></code>（LLM 归纳推理过程）和 <code class="docutils literal notranslate"><span class="pre">evidence_fact_ids</span></code>（指向一阶证据的 UUID 数组），形成可追溯的证据链。</p>
+<pre  class="mermaid">
+        graph LR
+    subgraph 一阶层[一阶事实 order=1]
+        F1[&quot;(device_X, caused_by, PSU_aging)&quot;]
+        F2[&quot;(device_X, caused_by, capacitor_leak)&quot;]
+        F3[&quot;(device_X, occurred_at, 2026-03)&quot;]
+    end
+
+    subgraph 高阶层[高阶事实 order=2]
+        H[&quot;(device_X, failure_mode,&lt;br/&gt;recurrent PSU/capacitor fault)&lt;br/&gt;reasoning: ...&lt;br/&gt;evidence: [F1, F2, F3]&quot;]
+    end
+
+    F1 -.evidence.-&gt; H
+    F2 -.evidence.-&gt; H
+    F3 -.evidence.-&gt; H
+    </pre></section>
+<section id="vs">
+<h2>13.2 一阶 vs 高阶事实<a class="headerlink" href="#vs" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">facts</span></code> 表通过三列扩展实现<strong>同表两级结构</strong>（<code class="docutils literal notranslate"><span class="pre">schema.sql</span></code> 的高阶事实段落）：</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="c1">-- facts 表加高阶标记</span>
+<span class="k">ALTER</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">cortex</span><span class="p">.</span><span class="n">facts</span><span class="w"> </span><span class="k">ADD</span><span class="w"> </span><span class="k">COLUMN</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">is_higher_order</span><span class="w"> </span><span class="nb">BOOLEAN</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">false</span><span class="p">;</span>
+<span class="k">ALTER</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">cortex</span><span class="p">.</span><span class="n">facts</span><span class="w"> </span><span class="k">ADD</span><span class="w"> </span><span class="k">COLUMN</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">higher_order_reasoning</span><span class="w"> </span><span class="nb">TEXT</span><span class="p">;</span>
+<span class="k">ALTER</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">cortex</span><span class="p">.</span><span class="n">facts</span><span class="w"> </span><span class="k">ADD</span><span class="w"> </span><span class="k">COLUMN</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">evidence_fact_ids</span><span class="w"> </span><span class="n">UUID</span><span class="p">[]</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="p">;</span>
+</pre></div>
+</div>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>列</p></th>
+<th class="head"><p>一阶事实</p></th>
+<th class="head"><p>高阶事实</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">is_higher_order</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code>（默认）</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">higher_order_reasoning</span></code></p></td>
+<td><p>NULL</p></td>
+<td><p>LLM 归纳推理过程（一句话解释&quot;为什么从这些 evidence 能得出此结论&quot;）</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">evidence_fact_ids</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">{}</span></code>（空数组）</p></td>
+<td><p>指向一阶证据 <code class="docutils literal notranslate"><span class="pre">fact_id</span></code> 的 UUID 数组</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">extraction_model</span></code></p></td>
+<td><p>LLM 模型名</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">'higher-order'</span></code>（固定标记，标识由高阶归纳产生）</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">predicate</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">order=1</span></code> 谓词（<code class="docutils literal notranslate"><span class="pre">caused_by</span></code>、<code class="docutils literal notranslate"><span class="pre">located_in</span></code> …）</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">order=2</span></code> 谓词（<code class="docutils literal notranslate"><span class="pre">failure_mode</span></code>、<code class="docutils literal notranslate"><span class="pre">behavior_pattern</span></code> …）</p></td>
+</tr>
+</tbody>
+</table>
+<p>高阶事实的写入见 <code class="docutils literal notranslate"><span class="pre">higher_order.py</span></code> 的 generate_higher_order 写入段的 INSERT 语句——<code class="docutils literal notranslate"><span class="pre">confidence=candidate_confidence</span></code>(默认 0.5)、<code class="docutils literal notranslate"><span class="pre">assertion_status='hypothesized'</span></code>、<code class="docutils literal notranslate"><span class="pre">knowledge_tier='candidate'</span></code>、<code class="docutils literal notranslate"><span class="pre">object_type='literal'</span></code>，并显式填入 <code class="docutils literal notranslate"><span class="pre">is_higher_order=true</span></code>、<code class="docutils literal notranslate"><span class="pre">higher_order_reasoning</span></code>、<code class="docutils literal notranslate"><span class="pre">evidence_fact_ids</span></code>。注意生成阶段只产 candidate tier 待审 fact,需人工审批(<code class="docutils literal notranslate"><span class="pre">evolution.review_candidate</span></code>)通过后才晋升 <code class="docutils literal notranslate"><span class="pre">verified</span></code>(见 13.4.5)。</p>
+<p>为加速热路径检索，<code class="docutils literal notranslate"><span class="pre">schema.sql</span></code> 的&quot;记忆自演化热路径索引&quot;段落专门建了部分索引：</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">idx_facts_higher_order</span>
+<span class="w">    </span><span class="k">ON</span><span class="w"> </span><span class="n">cortex</span><span class="p">.</span><span class="n">facts</span><span class="w"> </span><span class="p">(</span><span class="k">scope</span><span class="p">,</span><span class="w"> </span><span class="n">subject_id</span><span class="p">)</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">is_higher_order</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">true</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">recorded_to</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NULL</span><span class="p">;</span>
+</pre></div>
+</div>
+</section>
+<section id="predicate-definitions">
+<h2>13.3 predicate_definitions 表<a class="headerlink" href="#predicate-definitions" title="链接到此标题。"></a></h2>
+<p>高阶归纳需要一个<strong>谓词本体</strong>告诉 LLM&quot;哪些是 <code class="docutils literal notranslate"><span class="pre">order=2</span></code> 的高阶谓词、它们的语义和示例&quot;。这个本体从 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 的硬编码迁移到了 DB 可配表（<code class="docutils literal notranslate"><span class="pre">schema.sql</span></code>）：</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">cortex</span><span class="p">.</span><span class="n">predicate_definitions</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">predicate</span><span class="w">       </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span>
+<span class="w">    </span><span class="n">category</span><span class="w">        </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">category</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;structural&#39;</span><span class="p">,</span><span class="s1">&#39;causal&#39;</span><span class="p">,</span><span class="s1">&#39;diagnostic&#39;</span><span class="p">,</span><span class="s1">&#39;state&#39;</span><span class="p">,</span><span class="s1">&#39;higher_order&#39;</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">prop_order</span><span class="w">      </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">prop_order</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">)),</span><span class="w">  </span><span class="c1">-- 1=一阶, 2=高阶</span>
+<span class="w">    </span><span class="n">description</span><span class="w">     </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="k">cardinality</span><span class="w">     </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;multi&#39;</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="k">cardinality</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;single&#39;</span><span class="p">,</span><span class="s1">&#39;multi&#39;</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">example</span><span class="w">         </span><span class="nb">TEXT</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+<p>关键列：</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">prop_order</span></code></strong>：<code class="docutils literal notranslate"><span class="pre">1</span></code> = 一阶谓词（从事件/文档直接抽取），<code class="docutils literal notranslate"><span class="pre">2</span></code> = 高阶谓词（只能由 Higher-Order 归纳产生）。<code class="docutils literal notranslate"><span class="pre">generate_higher_order</span></code> 第一步就查 <code class="docutils literal notranslate"><span class="pre">WHERE</span> <span class="pre">prop_order=2</span></code> 决定 LLM 能用哪些谓词（<code class="docutils literal notranslate"><span class="pre">higher_order.py</span></code> 的谓词加载段）。</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">category</span></code></strong>：谓词类别枚举。一阶侧覆盖 <code class="docutils literal notranslate"><span class="pre">structural</span></code>/<code class="docutils literal notranslate"><span class="pre">causal</span></code>/<code class="docutils literal notranslate"><span class="pre">diagnostic</span></code>/<code class="docutils literal notranslate"><span class="pre">state</span></code>，高阶侧用 <code class="docutils literal notranslate"><span class="pre">higher_order</span></code>。这是多维度本体分类，不与 <code class="docutils literal notranslate"><span class="pre">prop_order</span></code> 冗余——一个 <code class="docutils literal notranslate"><span class="pre">order=2</span></code> 谓词的 <code class="docutils literal notranslate"><span class="pre">category</span></code> 既可以是 <code class="docutils literal notranslate"><span class="pre">higher_order</span></code> 也可以归到 <code class="docutils literal notranslate"><span class="pre">causal</span></code> 表示它是关于因果规律的抽象。</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">cardinality</span></code></strong>：<code class="docutils literal notranslate"><span class="pre">single</span></code>（单值，如 <code class="docutils literal notranslate"><span class="pre">failure_mode</span></code> 一个实体一个主导模式）或 <code class="docutils literal notranslate"><span class="pre">multi</span></code>（多值）。</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">description</span></code> / <code class="docutils literal notranslate"><span class="pre">example</span></code></strong>：注入 LLM prompt，让模型理解谓词语义。</p></li>
+</ul>
+<section id="seed-predicate-definitions">
+<h3>seed_predicate_definitions()<a class="headerlink" href="#seed-predicate-definitions" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">maintenance.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">seed_predicate_definitions()</span></code> 遍历 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">PREDICATE_DICTIONARY</span></code>，把每个谓词的类别、基数、语义与示例<strong>幂等 upsert</strong> 到该表：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">seed_predicate_definitions</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;把 ontology.PREDICATE_DICTIONARY 预置到 predicate_definitions 表(一阶,order=1)。幂等。返回 upsert 数。&quot;&quot;&quot;</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">pred</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">PREDICATE_DICTIONARY</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">card</span> <span class="o">=</span> <span class="n">PREDICATE_CARDINALITY</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="s2">&quot;multi&quot;</span><span class="p">)</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                INSERT INTO predicate_definitions (predicate, category, prop_order, cardinality, description, example)</span>
+<span class="s2">                VALUES (:p, :c, 1, :card, :desc, :ex)</span>
+<span class="s2">                ON CONFLICT (predicate) DO UPDATE</span>
+<span class="s2">                SET category=:c, cardinality=:card, description=:desc, example=:ex</span>
+<span class="s2">            &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;p&quot;</span><span class="p">:</span> <span class="n">pred</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">:</span> <span class="n">d</span><span class="o">.</span><span class="n">category</span><span class="p">,</span> <span class="s2">&quot;card&quot;</span><span class="p">:</span> <span class="n">card</span><span class="p">,</span> <span class="s2">&quot;desc&quot;</span><span class="p">:</span> <span class="n">d</span><span class="o">.</span><span class="n">meaning</span><span class="p">,</span> <span class="s2">&quot;ex&quot;</span><span class="p">:</span> <span class="n">d</span><span class="o">.</span><span class="n">example</span><span class="p">})</span>
+            <span class="n">n</span> <span class="o">+=</span> <span class="n">r</span><span class="o">.</span><span class="n">rowcount</span> <span class="ow">or</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="n">n</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">PREDICATE_DICTIONARY</span></code> 的每个条目是 <code class="docutils literal notranslate"><span class="pre">PredicateDef</span></code>（自带 <code class="docutils literal notranslate"><span class="pre">category</span></code> / <code class="docutils literal notranslate"><span class="pre">meaning</span></code> / <code class="docutils literal notranslate"><span class="pre">example</span></code>），因此 seed 一次就能把本体语义全部带入 DB。</p>
+<p>注意：seed 只预置 <strong><code class="docutils literal notranslate"><span class="pre">prop_order=1</span></code></strong> 的一阶谓词。<code class="docutils literal notranslate"><span class="pre">order=2</span></code> 的高阶谓词（<code class="docutils literal notranslate"><span class="pre">failure_mode</span></code>、<code class="docutils literal notranslate"><span class="pre">behavior_pattern</span></code>、<code class="docutils literal notranslate"><span class="pre">personality_trait</span></code> 等）需要管理员手动 INSERT 或后续迁移脚本补入。这是有意为之——高阶谓词代表&quot;系统想抽象出什么样的结论&quot;，属于业务语义决策，不应与抽取本体自动绑定。</p>
+</section>
+</section>
+<section id="generate-higher-order">
+<h2>13.4 generate_higher_order 流程<a class="headerlink" href="#generate-higher-order" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">higher_order.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">generate_higher_order(entity_id,</span> <span class="pre">*,</span> <span class="pre">new_fact_id=None)</span></code> 是整个机制的核心。它接受一个实体 ID（可选传入触发本次归纳的新 <code class="docutils literal notranslate"><span class="pre">fact_id</span></code>），返回 <code class="docutils literal notranslate"><span class="pre">{&quot;synthesized&quot;:</span> <span class="pre">n,</span> <span class="pre">...}</span></code> 或带 <code class="docutils literal notranslate"><span class="pre">skipped</span></code> 原因。</p>
+<section id="id2">
+<h3>流程图<a class="headerlink" href="#id2" title="链接到此标题。"></a></h3>
+<pre  class="mermaid">
+        flowchart TD
+    A([generate_higher_order entity_id]) --&gt; B{enabled?}
+    B -- no --&gt; S1[&quot;skip: disabled&quot;]
+    B -- yes --&gt; C{entity 存在&lt;br/&gt;且未 merged_into?}
+    C -- no --&gt; S2[&quot;skip: not found/merged&quot;]
+    C -- yes --&gt; D[&quot;加载一阶正向 live facts&lt;br/&gt;ORDER BY new_fact_id DESC,&lt;br/&gt;evidence_quality DESC, valid_from DESC&lt;br/&gt;LIMIT lookback_facts&quot;]
+    D --&gt; E{len ≥ min_evidence_count?&lt;br/&gt;默认 ≥2}
+    E -- no --&gt; S3[&quot;skip: insufficient evidence&quot;]
+    E -- yes --&gt; G{order=2 谓词存在?&lt;br/&gt;predicate_definitions}
+    G -- no --&gt; S5[&quot;skip: no order=2 predicates&quot;]
+    G -- yes --&gt; H{LLM tier 配置?&lt;br/&gt;最后检查}
+    H -- no --&gt; S6[&quot;skip: LLM not configured&quot;]
+    H -- yes --&gt; I[&quot;加载已有高阶 facts&lt;br/&gt;新 session&quot;]
+    I --&gt; J[&quot;LLM synthesis&lt;br/&gt;HIGHER_ORDER_SYNTHESIZE&quot;]
+    J --&gt; K{解析 updates?}
+    K -- 空/异常 --&gt; S7[&quot;skip: no updates / LLM error&quot;]
+    K -- 有 updates --&gt; L[&quot;遍历 updates:&lt;br/&gt;create = INSERT 新 candidate fact&lt;br/&gt;update = 记录 supersedes_fact_id + INSERT 新 candidate&lt;br/&gt;(旧 fact 审批通过后才软关)&quot;]
+    L --&gt; M{n &gt; 0?}
+    M -- yes --&gt; N[&quot;emit_lifecycle&lt;br/&gt;higher_order_generated&quot;]
+    N --&gt; O([return synthesized=n])
+    M -- no --&gt; O
+    </pre></section>
+<section id="gate-ordering">
+<h3>13.4.1 检查门序列（gate ordering）<a class="headerlink" href="#gate-ordering" title="链接到此标题。"></a></h3>
+<p>设计上的关键细节是<strong>检查顺序</strong>——所有 DB 检查先于 LLM key 检查（<code class="docutils literal notranslate"><span class="pre">higher_order.py</span></code> 的门控序列）：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># LLM key 检查放在最后(DB 检查之后)</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="n">services</span><span class="o">.</span><span class="n">llm_configured</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">higher_order</span><span class="o">.</span><span class="n">llm_tier</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;synthesized&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;skipped&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;LLM tier &#39;</span><span class="si">{</span><span class="n">cfg</span><span class="o">.</span><span class="n">higher_order</span><span class="o">.</span><span class="n">llm_tier</span><span class="si">}</span><span class="s2">&#39; not configured&quot;</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>理由：LLM key 检查涉及配置/网络，应放在最便宜的 DB 检查之后，避免每次 cold-start skip 都无谓地触碰 LLM 配置层。</p>
+</section>
+<section id="evidence-window">
+<h3>13.4.2 证据窗加载（evidence window）<a class="headerlink" href="#evidence-window" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">higher_order.py</span></code> 加载该实体的一阶 live facts 作为 evidence：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># 取该实体的一阶正向 live facts(按 evidence_quality + valid_from DESC;使用热度不参与晋升)</span>
+<span class="c1"># 只取 polarity=&#39;positive&#39; AND assertion_status IN (&#39;observed&#39;,&#39;confirmed&#39;);ruled_out/rejected/negative 不得作归纳依据</span>
+<span class="c1"># M4:若有 new_fact_id(触发本归纳的新 fact),强制它排在证据窗首位(即便 evidence_quality=0)</span>
+<span class="n">nf_order</span> <span class="o">=</span> <span class="s2">&quot;(f.fact_id = CAST(:nf AS uuid)) DESC, &quot;</span> <span class="k">if</span> <span class="n">new_fact_id</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+<span class="n">first_order</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;SELECT fact_id::text, predicate,</span>
+<span class="s2">    coalesce(o.canonical_name, f.object_value-&gt;&gt;&#39;value&#39;) AS object_text,</span>
+<span class="s2">    f.valid_from::text, f.assertion_status,</span>
+<span class="s2">    coalesce(f.evidence_quality,0.0) AS evidence_quality,</span>
+<span class="s2">    coalesce(f.case_id,(SELECT max(e.case_id) FROM events e WHERE e.event_id = ANY(f.supports))) AS case_id</span>
+<span class="s2">    FROM facts f LEFT JOIN entities o ON o.entity_id=f.object_entity_id</span>
+<span class="s2">    WHERE f.subject_id=CAST(:e AS uuid) AND f.scope=:s</span>
+<span class="s2">      AND f.is_higher_order=false AND f.recorded_to IS NULL AND f.valid_to IS NULL</span>
+<span class="s2">      AND f.polarity=&#39;positive&#39; AND f.assertion_status IN (&#39;observed&#39;,&#39;confirmed&#39;)</span>
+<span class="s2">    ORDER BY </span><span class="si">{</span><span class="n">nf_order</span><span class="si">}</span><span class="s2"> evidence_quality DESC, f.valid_from DESC</span>
+<span class="s2">    LIMIT :n&quot;&quot;&quot;</span><span class="p">),</span> <span class="o">...</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>三个要点：</p>
+<ol class="arabic simple">
+<li><p><strong>按 <code class="docutils literal notranslate"><span class="pre">evidence_quality</span></code> 排序(非 access_count)</strong>——证据质量高的 fact 优先进入证据窗。<code class="docutils literal notranslate"><span class="pre">access_count</span></code> 热度不再参与认知晋升门控(<code class="docutils literal notranslate"><span class="pre">min_access_count</span></code> 已 <code class="docutils literal notranslate"><span class="pre">deprecated=0</span></code>)。</p></li>
+<li><p><strong>正向证据过滤</strong>:只取 <code class="docutils literal notranslate"><span class="pre">polarity='positive'</span> <span class="pre">AND</span> <span class="pre">assertion_status</span> <span class="pre">IN</span> <span class="pre">('observed','confirmed')</span></code>。被 <code class="docutils literal notranslate"><span class="pre">wrong</span></code> 反馈推翻(<code class="docutils literal notranslate"><span class="pre">ruled_out</span></code>)或负向(<code class="docutils literal notranslate"><span class="pre">negative</span></code>)的 fact 不得作为归纳依据——这是质量护栏。</p></li>
+<li><p><strong>M4 fix:<code class="docutils literal notranslate"><span class="pre">new_fact_id</span></code> 强制进证据窗首位</strong>——刚抽取触发本次归纳的新事实 <code class="docutils literal notranslate"><span class="pre">evidence_quality=0</span></code>,正常排序会排在末尾甚至被 <code class="docutils literal notranslate"><span class="pre">LIMIT</span></code> 截掉。<code class="docutils literal notranslate"><span class="pre">(f.fact_id</span> <span class="pre">=</span> <span class="pre">CAST(:nf</span> <span class="pre">AS</span> <span class="pre">uuid))</span> <span class="pre">DESC</span></code> 把它强制顶到首位,保证&quot;触发源&quot;一定进入 LLM 视野。</p></li>
+</ol>
+</section>
+<section id="id3">
+<h3>13.4.3 证据数量门控(单一门槛)<a class="headerlink" href="#id3" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">first_order</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">cfg</span><span class="o">.</span><span class="n">higher_order</span><span class="o">.</span><span class="n">min_evidence_count</span><span class="p">:</span>      <span class="c1"># 默认 2</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;synthesized&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;skipped&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;insufficient evidence(</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">first_order</span><span class="p">)</span><span class="si">}</span><span class="s2"> &lt; </span><span class="si">{</span><span class="n">min_evidence_count</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">}</span>
+<span class="c1"># 注意:已无 access_count 热度门槛;min_access_count deprecated=0,使用热度不参与认知晋升</span>
+</pre></div>
+</div>
+<p>单一门槛:<strong>证据数量</strong>(至少 <code class="docutils literal notranslate"><span class="pre">min_evidence_count</span></code> 条一阶正向事实)。使用热度(<code class="docutils literal notranslate"><span class="pre">access_count</span></code>/<code class="docutils literal notranslate"><span class="pre">retrieval_count</span></code>)不参与认知晋升——晋升质量由后续人工审批门保证(见 13.4.5)。</p>
+</section>
+<section id="llm-synthesis">
+<h3>13.4.4 LLM synthesis<a class="headerlink" href="#llm-synthesis" title="链接到此标题。"></a></h3>
+<p>通过所有门后，构造 <code class="docutils literal notranslate"><span class="pre">material</span></code> JSON（实体信息 + evidence + 已有高阶值 + <code class="docutils literal notranslate"><span class="pre">order=2</span></code> 谓词定义）调用 <code class="docutils literal notranslate"><span class="pre">HIGHER_ORDER_SYNTHESIZE</span></code> prompt（<code class="docutils literal notranslate"><span class="pre">prompts.py</span></code>）。Prompt 核心规则：</p>
+<ul class="simple">
+<li><p><strong>只从 evidence 归纳</strong>——不编造、不引入 evidence 没有的信息。</p></li>
+<li><p><strong>用 <code class="docutils literal notranslate"><span class="pre">order=2</span></code> 谓词</strong>——<code class="docutils literal notranslate"><span class="pre">behavior_pattern</span></code> / <code class="docutils literal notranslate"><span class="pre">failure_mode</span></code> / <code class="docutils literal notranslate"><span class="pre">personality_trait</span></code> 等。</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">action=create|update</span></code></strong>——新建或修正/强化已有结论。</p></li>
+<li><p><strong>必须给 <code class="docutils literal notranslate"><span class="pre">reasoning</span></code></strong>——归纳推理过程一句话，写入 <code class="docutils literal notranslate"><span class="pre">higher_order_reasoning</span></code> 列。</p></li>
+</ul>
+<p>输出格式：</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;updates&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;predicate&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;failure_mode&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;update&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;recurrent PSU/capacitor hardware fault pattern&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;reasoning&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;3 次 incident 均指向电源/电容老化，故障模式一致&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="candidate-tier-fact-evolution-candidates-verified-graph">
+<h3>13.4.5 生成 candidate tier fact + evolution_candidates(不直接改 verified graph)<a class="headerlink" href="#candidate-tier-fact-evolution-candidates-verified-graph" title="链接到此标题。"></a></h3>
+<div class="important admonition">
+<p class="admonition-title">关键设计变更</p>
+<p>LLM 归纳<strong>不再直接写 <code class="docutils literal notranslate"><span class="pre">assertion_status='confirmed'</span></code> 高阶 fact</strong>。现在只生成 <code class="docutils literal notranslate"><span class="pre">assertion_status='hypothesized'</span> <span class="pre">/</span> <span class="pre">knowledge_tier='candidate'</span></code> 的待审 fact,并同步落一条 <code class="docutils literal notranslate"><span class="pre">evolution_candidates(status='pending',</span> <span class="pre">proposed_action='promote')</span></code>。旧 fact 的软关也推迟到审批阶段。需人工 <code class="docutils literal notranslate"><span class="pre">review_candidate</span></code> 审批通过后才晋升 <code class="docutils literal notranslate"><span class="pre">verified</span></code>。</p>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">allowed_predicates</span> <span class="o">=</span> <span class="p">{</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">ho_predicates</span><span class="p">}</span>  <span class="c1"># order=2 谓词白名单</span>
+<span class="k">for</span> <span class="n">upd</span> <span class="ow">in</span> <span class="n">updates</span><span class="p">:</span>
+    <span class="n">predicate</span> <span class="o">=</span> <span class="n">upd</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;predicate&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">predicate</span> <span class="ow">or</span> <span class="n">predicate</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed_predicates</span><span class="p">:</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;higher_order rejected unapproved predicate: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">predicate</span><span class="p">)</span>
+        <span class="k">continue</span>   <span class="c1"># LLM 输出的 predicate 必须在 order=2 定义里,否则 reject</span>
+    <span class="n">supersedes_fact_id</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;update&quot;</span><span class="p">:</span>
+        <span class="c1"># 找已有的同 predicate 高阶 fact;仅记录 proposed supersession</span>
+        <span class="c1"># 生成阶段绝不关闭现有 verified assertion</span>
+        <span class="n">old</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;SELECT fact_id::text FROM facts</span>
+<span class="s2">            WHERE subject_id=... AND predicate=:p AND is_higher_order=true</span>
+<span class="s2">              AND recorded_to IS NULL LIMIT 1&quot;&quot;&quot;</span><span class="p">),</span> <span class="o">...</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">old</span><span class="p">:</span>
+            <span class="n">supersedes_fact_id</span> <span class="o">=</span> <span class="n">old</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>   <span class="c1"># 只记下,不软关</span>
+    <span class="c1"># INSERT candidate tier fact(LLM 只能生成 candidate)</span>
+    <span class="n">new_fact_id</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;INSERT INTO facts (...,assertion_status,</span>
+<span class="s2">        extraction_model, knowledge_tier, is_higher_order, higher_order_reasoning, evidence_fact_ids)</span>
+<span class="s2">        VALUES (...,&#39;hypothesized&#39;, &#39;higher-order&#39;, &#39;candidate&#39;, true, :reasoning, ...)&quot;&quot;&quot;</span><span class="p">),</span> <span class="o">...</span><span class="p">)</span>
+    <span class="c1"># 同步落 evolution_candidates 待审</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;INSERT INTO evolution_candidates(</span>
+<span class="s2">        scope,source_type,proposed_action,subject_id,predicate,payload,</span>
+<span class="s2">        source_fact_ids,status,proposed_confidence,reasoning)</span>
+<span class="s2">        VALUES(:s,&#39;higher_order&#39;,&#39;promote&#39;,...,CAST(:payload AS jsonb),...,&#39;pending&#39;,:confidence,...)&quot;&quot;&quot;</span><span class="p">),</span>
+        <span class="p">{</span><span class="s2">&quot;payload&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;fact_id&quot;</span><span class="p">:</span> <span class="n">new_fact_id</span><span class="p">,</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">,</span>
+                                <span class="s2">&quot;supersedes_fact_id&quot;</span><span class="p">:</span> <span class="n">supersedes_fact_id</span><span class="p">})})</span>
+    <span class="n">n</span> <span class="o">+=</span> <span class="mi">1</span>
+</pre></div>
+</div>
+<p>设计要点:</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">assertion_status='hypothesized'</span></code> + <code class="docutils literal notranslate"><span class="pre">knowledge_tier='candidate'</span></code></strong>:LLM 归纳只能生成待审候选,不直接进 verified graph。<code class="docutils literal notranslate"><span class="pre">confidence</span></code> 读 <code class="docutils literal notranslate"><span class="pre">cfg.higher_order.candidate_confidence</span></code>(默认 0.5),非硬编 0.7。</p></li>
+<li><p><strong>predicate 白名单</strong>:LLM 输出的 predicate 必须在 <code class="docutils literal notranslate"><span class="pre">predicate_definitions</span></code> 的 <code class="docutils literal notranslate"><span class="pre">order=2</span></code> 集合里,否则 reject。防止 LLM 编造未定义的高阶谓词。</p></li>
+<li><p><strong>update 只记录 <code class="docutils literal notranslate"><span class="pre">supersedes_fact_id</span></code>,不软关旧 fact</strong>:旧 fact 的软关推迟到审批通过后由 <code class="docutils literal notranslate"><span class="pre">evolution._approve_higher_order</span></code> 执行。生成阶段绝不关闭现有 verified assertion。</p></li>
+<li><p><strong>同步落 <code class="docutils literal notranslate"><span class="pre">evolution_candidates(proposed_action='promote',</span> <span class="pre">status='pending')</span></code></strong>:与 Dreaming(第12章)共用同一套审批门。人工 <code class="docutils literal notranslate"><span class="pre">review_candidate</span></code> 通过后才晋升 <code class="docutils literal notranslate"><span class="pre">confirmed/verified</span></code> 并(若有)软关被取代的旧 fact。</p></li>
+</ul>
+<p>成功归纳后 <code class="docutils literal notranslate"><span class="pre">emit_lifecycle(kind=&quot;higher_order_generated&quot;,</span> <span class="pre">...)</span></code> 发生命周期事件。注意:此时只是&quot;候选已生成&quot;,尚未晋升 verified——召回层不会返回 candidate tier 的高阶 fact(见 13.6)。</p>
+</section>
+</section>
+<section id="extract-enqueue">
+<h2>13.5 触发机制：extract 后异步 enqueue<a class="headerlink" href="#extract-enqueue" title="链接到此标题。"></a></h2>
+<p>Higher-Order 不由用户同步调用触发，而是<strong>抽取管线 extract 完成后异步 enqueue</strong> 一个 <code class="docutils literal notranslate"><span class="pre">higher_order</span></code> job。抽取管线有两条路径，都内置了这个触发点：</p>
+<section id="llm-extraction-pipeline-py-extract-event">
+<h3>13.5.1 LLM 抽取路径（<code class="docutils literal notranslate"><span class="pre">extraction/pipeline.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">extract_event</span></code> 收尾阶段）<a class="headerlink" href="#llm-extraction-pipeline-py-extract-event" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># ── Higher-Order 异步触发:extract 后对该 event 涉及的实体 enqueue 高阶归纳 ──</span>
+<span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">higher_order</span><span class="o">.</span><span class="n">enabled</span> <span class="ow">and</span> <span class="n">fact_ids</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">subj_ids</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT DISTINCT subject_id::text FROM facts WHERE fact_id = ANY(CAST(:ids AS uuid[]))&quot;</span><span class="p">),</span>
+            <span class="p">{</span><span class="s2">&quot;ids&quot;</span><span class="p">:</span> <span class="s2">&quot;{&quot;</span> <span class="o">+</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">fact_ids</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;}&quot;</span><span class="p">})</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()]</span>
+        <span class="k">for</span> <span class="n">sid</span> <span class="ow">in</span> <span class="n">subj_ids</span><span class="p">:</span>
+            <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;INSERT INTO jobs (job_type, scope, priority, payload)</span>
+<span class="s2">                VALUES (&#39;higher_order&#39;, :s, -1, CAST(:p AS jsonb))&quot;&quot;&quot;</span><span class="p">),</span>
+                <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;p&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;entity_id&quot;</span><span class="p">:</span> <span class="n">sid</span><span class="p">,</span> <span class="s2">&quot;new_fact_id&quot;</span><span class="p">:</span> <span class="n">fact_ids</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">fact_ids</span> <span class="k">else</span> <span class="kc">None</span><span class="p">})})</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># noqa: BLE001  高阶触发不阻塞 extract</span>
+        <span class="k">pass</span>
+</pre></div>
+</div>
+<p>发生在 <code class="docutils literal notranslate"><span class="pre">embed_status='done'</span></code> 之后（<code class="docutils literal notranslate"><span class="pre">extraction/pipeline.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">extract_event</span></code> 收尾）。对本次抽取产生的每个 <code class="docutils literal notranslate"><span class="pre">subject_id</span></code> 各 enqueue 一个 job，payload 携带 <code class="docutils literal notranslate"><span class="pre">entity_id</span></code> 和 <code class="docutils literal notranslate"><span class="pre">new_fact_id</span></code>（首个新 fact，用于 13.4.2 的 M4 强制进证据窗）。</p>
+</section>
+<section id="extraction-pipeline-py-direct-write-triple">
+<h3>13.5.2 三元组直写路径（<code class="docutils literal notranslate"><span class="pre">extraction/pipeline.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">_direct_write_triple</span></code>）<a class="headerlink" href="#extraction-pipeline-py-direct-write-triple" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Higher-Order 异步触发(triple 直写路径)</span>
+<span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">higher_order</span><span class="o">.</span><span class="n">enabled</span> <span class="ow">and</span> <span class="n">res</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fact_ids&quot;</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">fids</span> <span class="o">=</span> <span class="n">res</span><span class="p">[</span><span class="s2">&quot;fact_ids&quot;</span><span class="p">]</span>
+        <span class="n">subj_ids</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT DISTINCT subject_id::text FROM facts WHERE fact_id = ANY(CAST(:ids AS uuid[]))&quot;</span><span class="p">),</span>
+            <span class="p">{</span><span class="s2">&quot;ids&quot;</span><span class="p">:</span> <span class="s2">&quot;{&quot;</span> <span class="o">+</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">fids</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;}&quot;</span><span class="p">})</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()]</span>
+        <span class="k">for</span> <span class="n">sid</span> <span class="ow">in</span> <span class="n">subj_ids</span><span class="p">:</span>
+            <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;INSERT INTO jobs (job_type, scope, priority, payload)</span>
+<span class="s2">                VALUES (&#39;higher_order&#39;, :s, -1, CAST(:p AS jsonb))&quot;&quot;&quot;</span><span class="p">),</span>
+                <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">ev</span><span class="o">.</span><span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;p&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;entity_id&quot;</span><span class="p">:</span> <span class="n">sid</span><span class="p">,</span> <span class="s2">&quot;new_fact_id&quot;</span><span class="p">:</span> <span class="n">fids</span><span class="p">[</span><span class="mi">0</span><span class="p">]})})</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># noqa: BLE001</span>
+        <span class="k">pass</span>
+</pre></div>
+</div>
+<p>逻辑与 LLM 路径完全对称，只是触发点在 <code class="docutils literal notranslate"><span class="pre">emit_lifecycle(...,</span> <span class="pre">model=&quot;triple-direct&quot;)</span></code> 之后。</p>
+</section>
+<section id="inline-insert-enqueue-job">
+<h3>13.5.3 为什么用 inline INSERT 而非 enqueue_job<a class="headerlink" href="#inline-insert-enqueue-job" title="链接到此标题。"></a></h3>
+<p>两处都用 <code class="docutils literal notranslate"><span class="pre">INSERT</span> <span class="pre">INTO</span> <span class="pre">jobs</span> <span class="pre">...</span> <span class="pre">VALUES</span> <span class="pre">('higher_order',</span> <span class="pre">:s,</span> <span class="pre">-1,</span> <span class="pre">...)</span></code> 而非调 <code class="docutils literal notranslate"><span class="pre">enqueue_job()</span></code>——因为 extract 本身已在一个 <code class="docutils literal notranslate"><span class="pre">session_scope</span></code> 内，直接同事务写 job 表避免嵌套事务开销，且 extract 失败回滚时 job 也一起回滚（不会留下&quot;无对应 extract 的孤儿高阶 job&quot;）。<code class="docutils literal notranslate"><span class="pre">priority=-1</span></code> 表示低优先级，不与用户路径的 extract/erase job 抢资源。</p>
+<p>Worker 端（<code class="docutils literal notranslate"><span class="pre">worker/runner.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">_dispatch</span></code> higher_order 分支）处理 <code class="docutils literal notranslate"><span class="pre">higher_order</span></code> job：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">jt</span> <span class="o">==</span> <span class="s2">&quot;higher_order&quot;</span> <span class="ow">and</span> <span class="n">scope</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">...memory.higher_order</span><span class="w"> </span><span class="kn">import</span> <span class="n">generate_higher_order</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;payload&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+    <span class="k">return</span> <span class="n">generate_higher_order</span><span class="p">(</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entity_id&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span> <span class="n">new_fact_id</span><span class="o">=</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;new_fact_id&quot;</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>Worker 系统详见第20章。</p>
+</section>
+</section>
+<section id="id4">
+<h2>13.6 召回集成：higher_order 层<a class="headerlink" href="#id4" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">retrieval/pipeline.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">_assemble_pack</span></code> 在 <code class="docutils literal notranslate"><span class="pre">StratifiedPack</span></code> 里新增了 <code class="docutils literal notranslate"><span class="pre">higher_order</span></code> 层，与 <code class="docutils literal notranslate"><span class="pre">events</span></code>/<code class="docutils literal notranslate"><span class="pre">facts</span></code>/<code class="docutils literal notranslate"><span class="pre">beliefs</span></code> 并列：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># higher_order 层:命中实体的 is_higher_order=true facts(归纳性结论 + 证据链)</span>
+<span class="n">higher_order</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">if</span> <span class="n">subj_ids</span><span class="p">:</span>
+    <span class="c1"># H5:与其他层契约一致——用 _scope_filter(支持 holistic/descend)+ temporal_where + valid_to IS NULL</span>
+    <span class="c1"># _scope_filter 返回形如 &quot;scope = :scope0&quot; / &quot;scope = ANY(:scopes)&quot; / &quot;(scope = :scope0 OR scope LIKE :scopep)&quot;</span>
+    <span class="c1"># 用正则给列名 scope 加 f. 前缀,但不碰 bind param 名(:scope0 / :scopes / :scopep)</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">re</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_re</span>
+    <span class="n">sf_raw</span> <span class="o">=</span> <span class="n">scope_frag_sql</span> <span class="ow">or</span> <span class="s2">&quot;scope = :s&quot;</span>
+    <span class="n">sf</span> <span class="o">=</span> <span class="n">_re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;(?&lt;![.\w])scope(?=\s*[=L])&#39;</span><span class="p">,</span> <span class="s1">&#39;f.scope&#39;</span><span class="p">,</span> <span class="n">sf_raw</span><span class="p">)</span>
+    <span class="n">sp</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">scope_params</span><span class="p">)</span> <span class="k">if</span> <span class="n">scope_params</span> <span class="k">else</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">}</span>
+    <span class="n">tw</span> <span class="o">=</span> <span class="n">temporal_where</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">tp</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">temporal_params</span><span class="p">)</span> <span class="k">if</span> <span class="n">temporal_params</span> <span class="k">else</span> <span class="p">{}</span>
+    <span class="n">sp</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">tp</span><span class="p">)</span>
+    <span class="n">sp</span><span class="p">[</span><span class="s2">&quot;a&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;{&quot;</span> <span class="o">+</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">subj_ids</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;}&quot;</span>
+    <span class="n">horows</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;SELECT f.fact_id::text, f.predicate, f.object_value-&gt;&gt;&#39;value&#39; AS value,</span>
+<span class="s2">        f.higher_order_reasoning, f.evidence_fact_ids::text[], f.confidence,</span>
+<span class="s2">        s.canonical_name AS subject_name, f.valid_from::text</span>
+<span class="s2">        FROM facts f JOIN entities s ON s.entity_id=f.subject_id</span>
+<span class="s2">        WHERE </span><span class="si">{</span><span class="n">sf</span><span class="si">}</span><span class="s2"> AND f.is_higher_order=true AND f.knowledge_tier=&#39;verified&#39;</span>
+<span class="s2">          AND f.recorded_to IS NULL AND f.valid_to IS NULL</span>
+<span class="s2">          </span><span class="si">{</span><span class="n">tw</span><span class="si">}</span><span class="s2"> AND f.subject_id = ANY(CAST(:a AS uuid[])) LIMIT 10</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="n">sp</span><span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+    <span class="n">higher_order</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;fact_id&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s2">&quot;predicate&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span>
+                     <span class="s2">&quot;reasoning&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="s2">&quot;evidence_fact_ids&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="ow">or</span> <span class="p">[]),</span>
+                     <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="mi">5</span><span class="p">],</span> <span class="s2">&quot;subject_name&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="mi">6</span><span class="p">],</span> <span class="s2">&quot;valid_from&quot;</span><span class="p">:</span> <span class="n">r</span><span class="p">[</span><span class="mi">7</span><span class="p">]}</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">horows</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>返回的 <code class="docutils literal notranslate"><span class="pre">StratifiedPack.layers</span></code> 结构（<code class="docutils literal notranslate"><span class="pre">_assemble_pack</span></code> 收尾）：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="s2">&quot;layers&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;events&quot;</span><span class="p">:</span> <span class="n">events</span><span class="p">,</span> <span class="s2">&quot;facts&quot;</span><span class="p">:</span> <span class="n">facts_out</span><span class="p">,</span> <span class="s2">&quot;beliefs&quot;</span><span class="p">:</span> <span class="n">beliefs</span><span class="p">,</span> <span class="s2">&quot;higher_order&quot;</span><span class="p">:</span> <span class="n">higher_order</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>三个设计要点：</p>
+<ol class="arabic simple">
+<li><p><strong>H5 一致性修正</strong>——早期版本该层没用 <code class="docutils literal notranslate"><span class="pre">_scope_filter</span></code> 和 <code class="docutils literal notranslate"><span class="pre">temporal_where</span></code>，导致 holistic/descend scope 和时间旅行查询时高阶层行为与其他层不一致。现版用正则 <code class="docutils literal notranslate"><span class="pre">_re.sub(r'(?&lt;![.\w])scope(?=\s*[=L])',</span> <span class="pre">'f.scope',</span> <span class="pre">sf_raw)</span></code> 给 scope 列名加 <code class="docutils literal notranslate"><span class="pre">f.</span></code> 前缀（因 SQL 里 facts 表别名为 <code class="docutils literal notranslate"><span class="pre">f</span></code>），同时保留 bind param 名不变，让 scope 片段和时间片段与其他层共享同一组参数。</p></li>
+<li><p><strong>过滤契约</strong>——<code class="docutils literal notranslate"><span class="pre">is_higher_order=true</span> <span class="pre">AND</span> <span class="pre">knowledge_tier='verified'</span> <span class="pre">AND</span> <span class="pre">recorded_to</span> <span class="pre">IS</span> <span class="pre">NULL</span> <span class="pre">AND</span> <span class="pre">valid_to</span> <span class="pre">IS</span> <span class="pre">NULL</span></code>。注意多一个 <code class="docutils literal notranslate"><span class="pre">knowledge_tier='verified'</span></code>:<strong>召回只返回已审批晋升 verified 的高阶 fact</strong>,candidate tier 的不返回。这与 13.4.5 的&quot;只生成 candidate 待审&quot;配套——未经人工审批的高阶结论不会进入召回结果。若要查看所有高阶 fact(含 candidate),用 <code class="docutils literal notranslate"><span class="pre">list_higher_order_facts</span></code> 接口(<code class="docutils literal notranslate"><span class="pre">higher_order.py</span></code>)。</p></li>
+<li><p><strong>LIMIT 10</strong>——高阶结论本身是浓缩产物，每个实体通常只有少数几条，10 条足够覆盖；过多会挤占召回 token 预算。</p></li>
+</ol>
+<p>召回系统的分层结构与 RRF 融合详见第10-12章。</p>
+</section>
+<section id="candidate-tier">
+<h2>13.7 质量保护:candidate tier + 人工审批门<a class="headerlink" href="#candidate-tier" title="链接到此标题。"></a></h2>
+<p>Higher-Order 默认<strong>禁用</strong>(<code class="docutils literal notranslate"><span class="pre">HigherOrderCfg.enabled=False</span></code>)。质量保护不再依赖召回热度门(<code class="docutils literal notranslate"><span class="pre">min_access_count</span></code> 已 <code class="docutils literal notranslate"><span class="pre">deprecated=0</span></code>),而是由两层护栏:</p>
+<ul class="simple">
+<li><p><strong>生成层:candidate tier</strong>。LLM 归纳只能生成 <code class="docutils literal notranslate"><span class="pre">assertion_status='hypothesized'</span> <span class="pre">/</span> <span class="pre">knowledge_tier='candidate'</span></code> 的待审 fact(见 13.4.5),<strong>不直接进 verified graph</strong>,召回层不返回(见 13.6)。即使 LLM 产生幻觉式高阶结论(把偶发抽取噪声归纳成&quot;模式&quot;),它也只是候选,污染不了知识。</p></li>
+<li><p><strong>晋升层:人工审批门</strong>。candidate 要晋升 <code class="docutils literal notranslate"><span class="pre">verified</span></code> 必须经 <code class="docutils literal notranslate"><span class="pre">evolution.review_candidate</span></code> 人工审批(<code class="docutils literal notranslate"><span class="pre">evolution.py</span></code>)。<code class="docutils literal notranslate"><span class="pre">_approve_higher_order</span></code> 在执行晋升前会检查:断言须 <code class="docutils literal notranslate"><span class="pre">confirmed</span></code>、需至少两个独立闭环 Case 支撑、有回归证据——这是&quot;认知晋升&quot;的硬质量门槛,比召回热度可靠得多。</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">min_evidence_count=2</span></code>(证据数量门槛)仍保留:至少 2 条一阶正向事实才允许 LLM 介入归纳,防止单条孤证被抽象。</p>
+<p>启用顺序通常是:配 LLM key → 手动 INSERT 几条 <code class="docutils literal notranslate"><span class="pre">order=2</span></code> 谓词定义 → <code class="docutils literal notranslate"><span class="pre">higher_order.enabled=true</span></code> → 抽取管线开始 enqueue 高阶 job → 候选落 <code class="docutils literal notranslate"><span class="pre">evolution_candidates</span></code> → 人工审批通过后晋升 verified、进入召回。<code class="docutils literal notranslate"><span class="pre">min_access_count</span></code> 字段保留但 deprecated(=0),使用热度不参与认知晋升。</p>
+</section>
+<section id="api-mcp">
+<h2>13.8 API 与 MCP<a class="headerlink" href="#api-mcp" title="链接到此标题。"></a></h2>
+<section id="post-v1-admin-higher-order">
+<h3>13.8.1 管理接口 <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/admin/higher-order</span></code><a class="headerlink" href="#post-v1-admin-higher-order" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">routes/operations.py</span></code> 的 higher-order admin 端点（<code class="docutils literal notranslate"><span class="pre">admin_higher_order</span></code> 路由），挂载于 <code class="docutils literal notranslate"><span class="pre">app.include_router(operations_router)</span></code>，<strong>无鉴权</strong>（actor 固定 <code class="docutils literal notranslate"><span class="pre">&quot;api&quot;</span></code>），承担两种职责：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@router</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">&quot;/v1/admin/higher-order&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">admin_higher_order</span><span class="p">(</span><span class="n">body</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+    <span class="n">scope</span> <span class="o">=</span> <span class="n">body</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;scope&quot;</span><span class="p">)</span>
+    <span class="n">entity_id</span> <span class="o">=</span> <span class="n">body</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entity_id&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">scope</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="mi">422</span><span class="p">,</span> <span class="s2">&quot;scope required&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">body</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;seed_predicates&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;seeded&quot;</span><span class="p">:</span> <span class="n">seed_predicate_definitions</span><span class="p">()}</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">entity_id</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="mi">422</span><span class="p">,</span> <span class="s2">&quot;entity_id required (or seed_predicates=true)&quot;</span><span class="p">)</span>
+    <span class="n">entity_scope</span> <span class="o">=</span> <span class="n">resource_scope</span><span class="p">(</span><span class="s2">&quot;entity&quot;</span><span class="p">,</span> <span class="n">entity_id</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">entity_scope</span> <span class="o">!=</span> <span class="n">scope</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="mi">409</span><span class="p">,</span> <span class="s2">&quot;entity and requested scope do not match&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">generate_higher_order</span><span class="p">(</span><span class="n">entity_id</span><span class="p">)</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">seed_predicates=true</span></code></strong>：调用 <code class="docutils literal notranslate"><span class="pre">seed_predicate_definitions()</span></code> 把 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 的 36 个一阶谓词 upsert 到 <code class="docutils literal notranslate"><span class="pre">predicate_definitions</span></code> 表。启用 Higher-Order 前的初始化步骤。</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">entity_id=...</span></code></strong>：<code class="docutils literal notranslate"><span class="pre">resource_scope(&quot;entity&quot;,</span> <span class="pre">entity_id)</span></code> 校验实体归属的 scope 与请求 scope 一致（不一致返回 409），再同步触发 <code class="docutils literal notranslate"><span class="pre">generate_higher_order</span></code>（通常用于调试或手动补归纳，生产路径走异步 job）。</p></li>
+</ul>
+<p>请求示例：</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># 初始化谓词本体</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8002/v1/admin/higher-order<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;scope&quot;:&quot;default&quot;,&quot;seed_predicates&quot;:true}&#39;</span>
+<span class="c1"># {&quot;seeded&quot;:36}</span>
+
+<span class="c1"># 手动触发某实体高阶归纳</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8002/v1/admin/higher-order<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;scope&quot;:&quot;default&quot;,&quot;entity_id&quot;:&quot;&lt;uuid&gt;&quot;}&#39;</span>
+<span class="c1"># {&quot;synthesized&quot;:1,&quot;entity_id&quot;:&quot;...&quot;,&quot;entity_name&quot;:&quot;device_X&quot;}</span>
+</pre></div>
+</div>
+</section>
+<section id="get-v1-higher-order">
+<h3>13.8.2 查询接口 <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/higher-order</span></code><a class="headerlink" href="#get-v1-higher-order" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">routes/operations.py</span></code> 的 higher-order 查询端点（<code class="docutils literal notranslate"><span class="pre">higher_order_list</span></code> 路由），同样无鉴权，委托 <code class="docutils literal notranslate"><span class="pre">list_higher_order_facts</span></code>（<code class="docutils literal notranslate"><span class="pre">higher_order.py</span></code>）：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/v1/higher-order&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">higher_order_list</span><span class="p">(</span>
+    <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">entity_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">),</span>
+    <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">200</span><span class="p">),</span>
+<span class="p">):</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="n">list_higher_order_facts</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">entity_id</span><span class="p">,</span> <span class="n">limit</span><span class="p">)}</span>
+</pre></div>
+</div>
+<p>可选按 <code class="docutils literal notranslate"><span class="pre">entity_id</span></code> 过滤，返回该实体或全 scope 的高阶事实（含 <code class="docutils literal notranslate"><span class="pre">reasoning</span></code> 和 <code class="docutils literal notranslate"><span class="pre">evidence_fact_ids</span></code>，便于追溯归纳依据）。</p>
+</section>
+<section id="mcp-higher-order-generate">
+<h3>13.8.3 MCP 工具 <code class="docutils literal notranslate"><span class="pre">higher_order_generate</span></code><a class="headerlink" href="#mcp-higher-order-generate" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">mcp_server.py</span></code> 的 higher-order MCP 工具：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">()</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">higher_order_generate</span><span class="p">(</span><span class="n">entity_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                          <span class="n">scope</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">Context</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate higher-order conclusions for an entity from its first-order facts.</span>
+
+<span class="sd">    Triggers LLM-based evidence-driven summarization: gathers the entity&#39;s recent</span>
+<span class="sd">    first-order facts as evidence, then induces higher-order conclusions (e.g.</span>
+<span class="sd">    behavior patterns, failure modes) using order=2 predicate definitions.</span>
+<span class="sd">    Requires higher_order.enabled=true and LLM key configured.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">...memory.higher_order</span><span class="w"> </span><span class="kn">import</span> <span class="n">generate_higher_order</span>
+    <span class="n">_resource_scope</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;entities&quot;</span><span class="p">,</span> <span class="s2">&quot;entity_id&quot;</span><span class="p">,</span> <span class="n">entity_id</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">generate_higher_order</span><span class="p">(</span><span class="n">entity_id</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>MCP 工具语义与 admin API 的 <code class="docutils literal notranslate"><span class="pre">entity_id</span></code> 路径一致，多了一步 <code class="docutils literal notranslate"><span class="pre">_resource_scope</span></code> 校验实体归属 scope，供 agent 主动触发归纳。MCP server 详见第19章。</p>
+</section>
+</section>
+<section id="id5">
+<h2>13.9 配置<a class="headerlink" href="#id5" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">HigherOrderCfg</span></code>（<code class="docutils literal notranslate"><span class="pre">config.py</span></code>）：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">HigherOrderCfg</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;高阶归纳:从一阶 fact LLM 归纳高阶结论(order=2 谓词)。&quot;&quot;&quot;</span>
+    <span class="n">enabled</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>              <span class="c1"># 默认关</span>
+    <span class="n">min_evidence_count</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span>        <span class="c1"># 至少 N 条一阶 fact 才归纳</span>
+    <span class="n">min_access_count</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>          <span class="c1"># deprecated:使用热度不再作为认知晋升门槛</span>
+    <span class="n">lookback_facts</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span>           <span class="c1"># 取最近 N 条一阶 fact 作 evidence</span>
+    <span class="n">llm_tier</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;synthesis&quot;</span>
+    <span class="n">candidate_confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span>  <span class="c1"># LLM 归纳只能生成待审核候选</span>
+</pre></div>
+</div>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>字段</p></th>
+<th class="head"><p>默认</p></th>
+<th class="head"><p>含义</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">enabled</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
+<td><p>全局开关。关时 extract 不 enqueue、<code class="docutils literal notranslate"><span class="pre">generate_higher_order</span></code> 直接 skip</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">min_evidence_count</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
+<td><p>证据数量下限，证据窗 facts 数 &lt; 此值则 skip</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">min_access_count</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p><strong>deprecated</strong>,使用热度不参与认知晋升(晋升由人工审批门保证)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">lookback_facts</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">10</span></code></p></td>
+<td><p>证据窗大小，<code class="docutils literal notranslate"><span class="pre">LIMIT</span></code> 取最近 N 条一阶事实</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">llm_tier</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;synthesis&quot;</span></code></p></td>
+<td><p>LLM tier 名（见 LLM 配置），走 <code class="docutils literal notranslate"><span class="pre">services.llm_chat</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">candidate_confidence</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.5</span></code></p></td>
+<td><p>生成的 candidate tier fact 的 confidence 值</p></td>
+</tr>
+</tbody>
+</table>
+<p>YAML 配置示例：</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">higher_order</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">min_evidence_count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span><span class="w">      </span><span class="c1"># 提高证据门槛，减少噪声归纳</span>
+<span class="w">  </span><span class="nt">lookback_facts</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20</span><span class="w">         </span><span class="c1"># 更大证据窗，捕捉长周期模式</span>
+<span class="w">  </span><span class="nt">llm_tier</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;synthesis&quot;</span>
+<span class="w">  </span><span class="nt">candidate_confidence</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5</span><span class="w">  </span><span class="c1"># 候选置信度(审批前)</span>
+</pre></div>
+</div>
+<p>调参直觉：</p>
+<ul class="simple">
+<li><p><strong>想更保守</strong>（生产、防幻觉）→ 抬高 <code class="docutils literal notranslate"><span class="pre">min_evidence_count</span></code>（如 3-5），只有更多独立证据支撑的事实才进归纳。</p></li>
+<li><p><strong>想更激进</strong>（实验、快速抽象）→ 降低 <code class="docutils literal notranslate"><span class="pre">min_evidence_count</span></code> 到 2，但注意会放大抽取噪声。</p></li>
+<li><p><strong>长周期模式</strong>（月度故障规律）→ 抬高 <code class="docutils literal notranslate"><span class="pre">lookback_facts</span></code> 到 30-50，让证据窗覆盖更长时间跨度。</p></li>
+</ul>
+<hr class="docutils" />
+<p>至此，记忆自演化的&quot;减法&quot;（Dreaming，第12章）与&quot;加法&quot;（Higher-Order，本章）闭环完成。前者收敛冗余、后者升华抽象，两者共同维护一个既精简又富有洞察力的知识图谱。</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="12-dreaming.html" class="btn btn-neutral float-left" title="第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="14-retrieval-system.html" class="btn btn-neutral float-right" title="第14章 检索系统概述" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

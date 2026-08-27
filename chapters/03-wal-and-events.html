@@ -1,0 +1,990 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第3章 WAL 与事件系统 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第4章 抽取管线" href="04-extraction-pipeline.html" />
+    <link rel="prev" title="第2章 数据模型" href="02-data-model.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第3章 WAL 与事件系统</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">写入路径概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#wal-write-ahead-log">WAL (Write-Ahead Log)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id2">设计原则</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id3">幂等机制</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id4">实现</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#experience-envelope">Experience Envelope</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#schema">Schema</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#postgres-as-queue">Postgres-as-Queue</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#redis">为什么不用 Redis？</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5">队列表</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id6">状态机</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#skip-locked">SKIP LOCKED 实现</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#scope">Scope 自动注册</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#lifecycle-events">Lifecycle Events</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id7">通知与同步等待</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id8">完整写入流程</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第3章 WAL 与事件系统</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/03-wal-and-events.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="wal">
+<h1>第3章 WAL 与事件系统<a class="headerlink" href="#wal" title="链接到此标题。"></a></h1>
+<section id="id1">
+<h2>写入路径概述<a class="headerlink" href="#id1" title="链接到此标题。"></a></h2>
+<pre  class="mermaid">
+        flowchart LR
+    A[用户请求] --&gt; B[Experience API]
+    B --&gt; C[WAL Append]
+    C --&gt; D[Postgres Queue]
+    D --&gt; E[Worker]
+    E --&gt; F[Extraction]
+    </pre></section>
+<section id="wal-write-ahead-log">
+<h2>WAL (Write-Ahead Log)<a class="headerlink" href="#wal-write-ahead-log" title="链接到此标题。"></a></h2>
+<section id="id2">
+<h3>设计原则<a class="headerlink" href="#id2" title="链接到此标题。"></a></h3>
+<div class="admonition-wal admonition">
+<p class="admonition-title">WAL 核心约束</p>
+<ol class="arabic simple">
+<li><p><strong>不可变</strong> —— 一旦写入，永不修改</p></li>
+<li><p><strong>Append-only</strong> —— 只能追加，不能删除（除非 erasure）</p></li>
+<li><p><strong>唯一真相源</strong> —— 所有派生层从此重建</p></li>
+<li><p><strong>幂等写入</strong> —— 同 key 同 body 返回既有，不同 body 报错</p></li>
+</ol>
+</div>
+</section>
+<section id="id3">
+<h3>幂等机制<a class="headerlink" href="#id3" title="链接到此标题。"></a></h3>
+<pre  class="mermaid">
+        sequenceDiagram
+    participant C as Client
+    participant API as Experience API
+    participant DB as PostgreSQL
+    
+    C-&gt;&gt;API: POST /experience (key=abc, body=X)
+    API-&gt;&gt;DB: INSERT event (key=abc, body=X)
+    DB--&gt;&gt;API: event_id=123
+    API--&gt;&gt;C: 200 {event_id: 123}
+
+    Note over C,API: 重试相同请求
+
+    C-&gt;&gt;API: POST /experience (key=abc, body=X)
+    API-&gt;&gt;DB: SELECT WHERE key=abc
+    DB--&gt;&gt;API: event_id=123, body=X
+    API--&gt;&gt;C: 200 {event_id: 123} (幂等返回,同 status)
+    
+    Note over C,API: 不同 body 的请求
+    
+    C-&gt;&gt;API: POST /experience (key=abc, body=Y)
+    API-&gt;&gt;DB: SELECT WHERE key=abc
+    DB--&gt;&gt;API: event_id=123, body=X
+    Note over API: X != Y, 冲突!
+    API--&gt;&gt;C: 409 Conflict
+    </pre></section>
+<section id="id4">
+<h3>实现<a class="headerlink" href="#id4" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">append_event</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">modality</span><span class="p">,</span> <span class="n">content</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">caller</span><span class="p">,</span> <span class="n">observed_actor</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">subject</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">directives</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">idempotency_key</span><span class="p">,</span> <span class="n">observed_at</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;append 一个 event。幂等:同 key+同 body → 返回既有;同 key+异 body → raise IdempotencyConflict。&quot;&quot;&quot;</span>
+    <span class="n">oactor</span> <span class="o">=</span> <span class="n">observed_actor</span> <span class="ow">or</span> <span class="n">caller</span>
+    <span class="n">sub</span> <span class="o">=</span> <span class="n">subject</span> <span class="ow">or</span> <span class="n">oactor</span>
+    <span class="n">obs_at</span> <span class="o">=</span> <span class="n">observed_at</span> <span class="ow">or</span> <span class="n">context</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;observed_at&quot;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">c</span><span class="p">:</span>
+        <span class="c1"># 先查幂等</span>
+        <span class="n">existing</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT event_id, wal_offset FROM events WHERE scope=:s AND idempotency_key=:k&quot;</span>
+        <span class="p">),</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;k&quot;</span><span class="p">:</span> <span class="n">idempotency_key</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">existing</span><span class="p">:</span>
+            <span class="c1"># 用 Python 端重算 body hash 对比(避免 PG jsonb 与 Python dict 的键序差异)</span>
+            <span class="n">ex_content</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;SELECT content FROM events WHERE event_id=:id&quot;</span><span class="p">),</span>
+                                   <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">existing</span><span class="o">.</span><span class="n">event_id</span><span class="p">})</span><span class="o">.</span><span class="n">scalar</span><span class="p">()</span>
+            <span class="n">ex_context</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;SELECT context FROM events WHERE event_id=:id&quot;</span><span class="p">),</span>
+                                   <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">existing</span><span class="o">.</span><span class="n">event_id</span><span class="p">})</span><span class="o">.</span><span class="n">scalar</span><span class="p">()</span>
+            <span class="n">ex_modality</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;SELECT modality FROM events WHERE event_id=:id&quot;</span><span class="p">),</span>
+                                    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">existing</span><span class="o">.</span><span class="n">event_id</span><span class="p">})</span><span class="o">.</span><span class="n">scalar</span><span class="p">()</span>
+            <span class="n">ex_body</span> <span class="o">=</span> <span class="n">_body_hash</span><span class="p">(</span><span class="n">ex_modality</span><span class="p">,</span> <span class="n">ex_content</span><span class="p">,</span> <span class="n">ex_context</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">ex_body</span> <span class="o">==</span> <span class="n">_body_hash</span><span class="p">(</span><span class="n">modality</span><span class="p">,</span> <span class="n">content</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+                <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">existing</span><span class="o">.</span><span class="n">event_id</span><span class="p">),</span> <span class="n">existing</span><span class="o">.</span><span class="n">wal_offset</span>
+            <span class="k">raise</span> <span class="n">IdempotencyConflict</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;idempotency_key=</span><span class="si">{</span><span class="n">idempotency_key</span><span class="si">}</span><span class="s2"> 已存在且 body 不同&quot;</span><span class="p">)</span>
+
+        <span class="c1"># 并发下用 ON CONFLICT DO NOTHING 兜底,避免竞态双写</span>
+        <span class="n">row</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">            INSERT INTO events (scope, modality, content, context, caller, observed_actor, subject,</span>
+<span class="s2">                                observed_at, directives, idempotency_key, case_id)</span>
+<span class="s2">            VALUES (:scope,:modality,CAST(:content AS jsonb),CAST(:context AS jsonb),:caller,:oa,:subj,</span>
+<span class="s2">                    COALESCE(:observed_at, now()), CAST(:directives AS jsonb), :ik, :case_id)</span>
+<span class="s2">            ON CONFLICT (scope,idempotency_key) DO NOTHING</span>
+<span class="s2">            RETURNING event_id, wal_offset</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;modality&quot;</span><span class="p">:</span> <span class="n">modality</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">content</span><span class="p">),</span>
+               <span class="s2">&quot;context&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">context</span><span class="p">),</span> <span class="s2">&quot;caller&quot;</span><span class="p">:</span> <span class="n">caller</span><span class="p">,</span> <span class="s2">&quot;oa&quot;</span><span class="p">:</span> <span class="n">oactor</span><span class="p">,</span> <span class="s2">&quot;subj&quot;</span><span class="p">:</span> <span class="n">sub</span><span class="p">,</span>
+               <span class="s2">&quot;observed_at&quot;</span><span class="p">:</span> <span class="n">obs_at</span><span class="p">,</span> <span class="s2">&quot;directives&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">directives</span><span class="p">)</span> <span class="k">if</span> <span class="n">directives</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+               <span class="s2">&quot;ik&quot;</span><span class="p">:</span> <span class="n">idempotency_key</span><span class="p">,</span> <span class="s2">&quot;case_id&quot;</span><span class="p">:</span> <span class="n">context</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;case_id&quot;</span><span class="p">)})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">row</span><span class="p">:</span>
+            <span class="c1"># 并发中另一事务已写入 → 重查并做幂等判定</span>
+            <span class="n">existing</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                SELECT event_id,wal_offset,modality,content,context FROM events</span>
+<span class="s2">                WHERE scope=:s AND idempotency_key=:k</span>
+<span class="s2">            &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;k&quot;</span><span class="p">:</span> <span class="n">idempotency_key</span><span class="p">})</span><span class="o">.</span><span class="n">one</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">_body_hash</span><span class="p">(</span><span class="n">existing</span><span class="o">.</span><span class="n">modality</span><span class="p">,</span> <span class="n">existing</span><span class="o">.</span><span class="n">content</span><span class="p">,</span> <span class="n">existing</span><span class="o">.</span><span class="n">context</span><span class="p">)</span> <span class="o">==</span> <span class="n">_body_hash</span><span class="p">(</span><span class="n">modality</span><span class="p">,</span> <span class="n">content</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+                <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">existing</span><span class="o">.</span><span class="n">event_id</span><span class="p">),</span> <span class="n">existing</span><span class="o">.</span><span class="n">wal_offset</span>
+            <span class="k">raise</span> <span class="n">IdempotencyConflict</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;idempotency_key=</span><span class="si">{</span><span class="n">idempotency_key</span><span class="si">}</span><span class="s2"> 已存在且 body 不同&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">_auto_provision_scope</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">scope</span><span class="p">)</span>
+            <span class="n">emit_lifecycle</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;captured&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">scope</span><span class="p">,</span> <span class="n">event_id</span><span class="o">=</span><span class="n">row</span><span class="o">.</span><span class="n">event_id</span><span class="p">)</span>
+            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">event_id</span><span class="p">),</span> <span class="n">row</span><span class="o">.</span><span class="n">wal_offset</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="experience-envelope">
+<h2>Experience Envelope<a class="headerlink" href="#experience-envelope" title="链接到此标题。"></a></h2>
+<p>每个 Event 遵循 Experience Envelope 格式：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="s2">&quot;org:acme/user:alice&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;modality&quot;</span><span class="p">:</span> <span class="s2">&quot;conversation&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;kind&quot;</span><span class="p">:</span> <span class="s2">&quot;message&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;Alice works at Acme Corp&quot;</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;context&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;observed_at&quot;</span><span class="p">:</span> <span class="s2">&quot;2024-01-15T10:00:00Z&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;work&quot;</span><span class="p">,</span> <span class="s2">&quot;introduction&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;intent&quot;</span><span class="p">:</span> <span class="s2">&quot;statement&quot;</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;observed_actor&quot;</span><span class="p">:</span> <span class="s2">&quot;alice&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;subject&quot;</span><span class="p">:</span> <span class="s2">&quot;alice&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;directives&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;skip_extraction&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
+    <span class="s2">&quot;idempotency_key&quot;</span><span class="p">:</span> <span class="s2">&quot;unique-key-123&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<section id="schema">
+<h3>Schema<a class="headerlink" href="#schema" title="链接到此标题。"></a></h3>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">events</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">event_id</span><span class="w">            </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">wal_offset</span><span class="w">          </span><span class="n">BIGSERIAL</span><span class="w"> </span><span class="k">UNIQUE</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">               </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">modality</span><span class="w">            </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">content</span><span class="w">             </span><span class="n">JSONB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">context</span><span class="w">             </span><span class="n">JSONB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">caller</span><span class="w">              </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">observed_actor</span><span class="w">      </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">subject</span><span class="w">             </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">observed_at</span><span class="w">         </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">recorded_at</span><span class="w">         </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">directives</span><span class="w">          </span><span class="n">JSONB</span><span class="p">,</span>
+<span class="w">    </span><span class="n">idempotency_key</span><span class="w">     </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">excluded_from_recall</span><span class="w"> </span><span class="nb">BOOLEAN</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">false</span><span class="p">,</span>
+<span class="w">    </span><span class="n">embed_status</span><span class="w">        </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">extraction_diagnostics</span><span class="w"> </span><span class="n">JSONB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;[]&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="n">access_count</span><span class="w">        </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="n">retrieval_count</span><span class="w">     </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="n">case_id</span><span class="w">             </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">methylated_at</span><span class="w">       </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">feedback_processed</span><span class="w">  </span><span class="nb">BOOLEAN</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">false</span><span class="p">,</span><span class="w">  </span><span class="c1">-- 反馈是否已被处理入权重</span>
+<span class="w">    </span><span class="n">last_recalled_at</span><span class="w">    </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span><span class="w">                     </span><span class="c1">-- 最近一次召回时间</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="k">UNIQUE</span><span class="w"> </span><span class="p">(</span><span class="k">scope</span><span class="p">,</span><span class="w"> </span><span class="n">idempotency_key</span><span class="p">)</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="postgres-as-queue">
+<h2>Postgres-as-Queue<a class="headerlink" href="#postgres-as-queue" title="链接到此标题。"></a></h2>
+<section id="redis">
+<h3>为什么不用 Redis？<a class="headerlink" href="#redis" title="链接到此标题。"></a></h3>
+<div class="admonition- admonition">
+<p class="admonition-title">设计决策</p>
+<ol class="arabic simple">
+<li><p><strong>简单</strong> —— 少一个依赖，少一个运维负担</p></li>
+<li><p><strong>事务一致</strong> —— 写 WAL 和入队在同一事务</p></li>
+<li><p><strong>足够快</strong> —— 个人/小团队规模，Postgres 完全够用</p></li>
+<li><p><strong>SKIP LOCKED</strong> —— 高效的任务抢占，避免锁竞争</p></li>
+</ol>
+</div>
+</section>
+<section id="id5">
+<h3>队列表<a class="headerlink" href="#id5" title="链接到此标题。"></a></h3>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">jobs</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">job_id</span><span class="w">          </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">job_type</span><span class="w">        </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">           </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">event_id</span><span class="w">        </span><span class="n">UUID</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">events</span><span class="p">(</span><span class="n">event_id</span><span class="p">),</span>
+<span class="w">    </span><span class="n">batch_id</span><span class="w">        </span><span class="n">UUID</span><span class="p">,</span>
+<span class="w">    </span><span class="n">status</span><span class="w">          </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;queued&#39;</span>
+<span class="w">                    </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;queued&#39;</span><span class="p">,</span><span class="s1">&#39;running&#39;</span><span class="p">,</span><span class="s1">&#39;completed&#39;</span><span class="p">,</span><span class="s1">&#39;failed&#39;</span><span class="p">,</span><span class="s1">&#39;cancelled&#39;</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">attempts</span><span class="w">        </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="n">max_attempts</span><span class="w">    </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="n">priority</span><span class="w">        </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="n">run_after</span><span class="w">       </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">locked_by</span><span class="w">       </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">locked_at</span><span class="w">       </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">payload</span><span class="w">         </span><span class="n">JSONB</span><span class="p">,</span>
+<span class="w">    </span><span class="k">result</span><span class="w">          </span><span class="n">JSONB</span><span class="p">,</span>
+<span class="w">    </span><span class="n">error</span><span class="w">           </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">created_at</span><span class="w">      </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">started_at</span><span class="w">      </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">completed_at</span><span class="w">    </span><span class="n">TIMESTAMPTZ</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+</section>
+<section id="id6">
+<h3>状态机<a class="headerlink" href="#id6" title="链接到此标题。"></a></h3>
+<pre  class="mermaid">
+        stateDiagram-v2
+    [*] --&gt; queued: 创建任务
+    queued --&gt; running: worker 锁定
+    running --&gt; completed: 成功
+    running --&gt; failed: 失败
+    running --&gt; queued: 重试 (&lt; 3次)
+    failed --&gt; [*]: 超过重试次数
+    queued --&gt; cancelled: 手动取消
+    </pre></section>
+<section id="skip-locked">
+<h3>SKIP LOCKED 实现<a class="headerlink" href="#skip-locked" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">claim_next_job</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">worker_id</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;原子抢一个到期且未超重试上限的 job (SKIP LOCKED)。&quot;&quot;&quot;</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        UPDATE jobs SET status=&#39;running&#39;, locked_by=:w, locked_at=now(), </span>
+<span class="s2">                        started_at=now(), attempts=attempts+1</span>
+<span class="s2">        WHERE job_id = (SELECT job_id FROM jobs</span>
+<span class="s2">                        WHERE status=&#39;queued&#39; AND run_after &lt;= now()</span>
+<span class="s2">                              AND attempts &lt; max_attempts</span>
+<span class="s2">                        ORDER BY priority DESC, run_after, created_at</span>
+<span class="s2">                        FOR UPDATE SKIP LOCKED LIMIT 1)</span>
+<span class="s2">        RETURNING job_id, job_type, scope, event_id, attempts, max_attempts, payload</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;w&quot;</span><span class="p">:</span> <span class="n">worker_id</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+    <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">row</span><span class="p">)</span> <span class="k">if</span> <span class="n">row</span> <span class="k">else</span> <span class="kc">None</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="scope">
+<h2>Scope 自动注册<a class="headerlink" href="#scope" title="链接到此标题。"></a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_auto_provision_scope</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">scope</span><span class="p">):</span>
+    <span class="n">parts</span> <span class="o">=</span> <span class="n">scope</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="s2">&quot;/&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">[:</span><span class="n">i</span><span class="p">])</span>
+        <span class="n">parent</span> <span class="o">=</span> <span class="s2">&quot;/&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">[:</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">            INSERT INTO scopes (scope_path, parent_path, auto_provisioned)</span>
+<span class="s2">            VALUES (:p, :parent, true) ON CONFLICT (scope_path) DO NOTHING</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;p&quot;</span><span class="p">:</span> <span class="n">p</span><span class="p">,</span> <span class="s2">&quot;parent&quot;</span><span class="p">:</span> <span class="n">parent</span><span class="p">})</span>
+    <span class="c1"># 每个可写 scope 自动获得 closed predicate vocabulary;</span>
+    <span class="c1"># 机器端对谓词的约束不再依赖 demo 手工 seed。</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.ontology</span><span class="w"> </span><span class="kn">import</span> <span class="n">DIAGNOSIS_PREDICATE_NAMES</span><span class="p">,</span> <span class="n">PREDICATE_CARDINALITY</span>
+    <span class="n">existing_vocab</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span>
+        <span class="s2">&quot;SELECT vocab_id FROM vocabularies WHERE scope=:scope AND name=&#39;predicate&#39;&quot;</span>
+    <span class="p">),</span> <span class="p">{</span><span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">})</span><span class="o">.</span><span class="n">scalar</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">existing_vocab</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="n">vocab_id</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        INSERT INTO vocabularies(scope,name,kind,description,cardinality)</span>
+<span class="s2">        VALUES(:scope,&#39;predicate&#39;,&#39;closed&#39;,&#39;Machine-enforced diagnostic predicates&#39;,&#39;multi&#39;)</span>
+<span class="s2">        ON CONFLICT(scope,name) DO UPDATE SET kind=&#39;closed&#39;</span>
+<span class="s2">        RETURNING vocab_id</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">})</span><span class="o">.</span><span class="n">scalar</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">DIAGNOSIS_PREDICATE_NAMES</span><span class="p">):</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">            INSERT INTO vocabulary_values(vocab_id,canonical_value,aliases,cardinality)</span>
+<span class="s2">            VALUES(CAST(:v AS uuid),:predicate,&#39;</span><span class="si">{}</span><span class="s2">&#39;,:cardinality)</span>
+<span class="s2">            ON CONFLICT(vocab_id,canonical_value) DO UPDATE SET cardinality=EXCLUDED.cardinality</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;v&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">vocab_id</span><span class="p">),</span> <span class="s2">&quot;predicate&quot;</span><span class="p">:</span> <span class="n">predicate</span><span class="p">,</span>
+               <span class="s2">&quot;cardinality&quot;</span><span class="p">:</span> <span class="n">PREDICATE_CARDINALITY</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">predicate</span><span class="p">,</span> <span class="s2">&quot;multi&quot;</span><span class="p">)})</span>
+</pre></div>
+</div>
+<blockquote>
+<div><p>Scope 自动注册现在不只建层级:它同时为该 scope 初始化一个 <strong>closed</strong> 的 <code class="docutils literal notranslate"><span class="pre">predicate</span></code> vocabulary,并用 <code class="docutils literal notranslate"><span class="pre">DIAGNOSIS_PREDICATE_NAMES</span></code> 预填全部诊断谓词、按 <code class="docutils literal notranslate"><span class="pre">PREDICATE_CARDINALITY</span></code> 标注单值/多值。这样谓词约束在第一个 event 写入时就已就位,下游 <code class="docutils literal notranslate"><span class="pre">coerce_value</span></code> 的强制收窄与批量 fact 写入的谓词白名单都以它为基准。</p>
+</div></blockquote>
+</section>
+<section id="lifecycle-events">
+<h2>Lifecycle Events<a class="headerlink" href="#lifecycle-events" title="链接到此标题。"></a></h2>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">lifecycle_events</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">lifecycle_id</span><span class="w">    </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">kind</span><span class="w">            </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">ts</span><span class="w">              </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">           </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">event_id</span><span class="w">        </span><span class="n">UUID</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">events</span><span class="p">(</span><span class="n">event_id</span><span class="p">),</span>
+<span class="w">    </span><span class="n">batch_id</span><span class="w">        </span><span class="n">UUID</span><span class="p">,</span>
+<span class="w">    </span><span class="n">job_id</span><span class="w">          </span><span class="n">UUID</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">jobs</span><span class="p">(</span><span class="n">job_id</span><span class="p">),</span>
+<span class="w">    </span><span class="n">payload</span><span class="w">         </span><span class="n">JSONB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+<p>支持的 lifecycle kinds:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Kind</p></th>
+<th class="head"><p>含义</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">captured</span></code></p></td>
+<td><p>Event 已写入 WAL（append 成功）</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">extracted</span></code></p></td>
+<td><p>抽取管线完成，已产出 facts/entities</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">import_progress</span></code></p></td>
+<td><p>bulk 导入进度上报</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">import_complete</span></code></p></td>
+<td><p>bulk 导入全部完成</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">feedback_received</span></code></p></td>
+<td><p>收到一条用户反馈（正/负投票、采纳信号），写入 <code class="docutils literal notranslate"><span class="pre">feedback_signals</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dreamed</span></code></p></td>
+<td><p>Dreaming 离线巩固完成一次 run，知识被合并/去重/抽象</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">higher_order_generated</span></code></p></td>
+<td><p>Higher-Order 模块合成出一条高阶事实（<code class="docutils literal notranslate"><span class="pre">is_higher_order=true</span></code>）</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">forgotten</span></code></p></td>
+<td><p>记忆被遗忘（salience 长期过低或 methylation 升级为真删前的标记）</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">failed</span></code></p></td>
+<td><p>某个 job（抽取/归纳/巩固等）最终失败，超 过重试上限</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">indexed</span></code></p></td>
+<td><p>向量/全文索引构建完成（embed_status=‘done’）</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">consolidated</span></code></p></td>
+<td><p>在线 Consolidation 对该 event 的派生层完成一次巩固（<code class="docutils literal notranslate"><span class="pre">wait_for_stage</span></code> 的最终阶段）</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">erasure_complete</span></code></p></td>
+<td><p>GDPR 擦除 4 阶段全部完成，相关引用已真删</p></td>
+</tr>
+</tbody>
+</table>
+<section id="id7">
+<h3>通知与同步等待<a class="headerlink" href="#id7" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">emit_lifecycle</span></code> 在写入 <code class="docutils literal notranslate"><span class="pre">lifecycle_events</span></code> 的同时发送 <code class="docutils literal notranslate"><span class="pre">pg_notify('cortex_lc',</span> <span class="pre">'kind|event_id')</span></code>，让 <code class="docutils literal notranslate"><span class="pre">?wait=</span></code> 的调用方无需轮询即可立刻感知阶段推进。<code class="docutils literal notranslate"><span class="pre">wait_for_stage(event_id,</span> <span class="pre">target_stage)</span></code> 用独立连接 <code class="docutils literal notranslate"><span class="pre">LISTEN</span> <span class="pre">cortex_lc</span></code>，配合阶段序号（<code class="docutils literal notranslate"><span class="pre">captured=0,</span> <span class="pre">extracted=1,</span> <span class="pre">indexed=2,</span> <span class="pre">consolidated=3</span></code>）做覆盖判断——已到更后阶段也算达成目标；超时则降级为异步返回 <code class="docutils literal notranslate"><span class="pre">reached=False</span></code>。</p>
+</section>
+</section>
+<section id="id8">
+<h2>完整写入流程<a class="headerlink" href="#id8" title="链接到此标题。"></a></h2>
+<pre  class="mermaid">
+        sequenceDiagram
+    participant C as Client
+    participant API as API
+    participant DB as PostgreSQL
+    participant W as Worker
+    
+    C-&gt;&gt;API: POST /experience
+    API-&gt;&gt;DB: INSERT event
+    API-&gt;&gt;DB: INSERT job (extract)
+    DB--&gt;&gt;API: event_id, job_id
+    API--&gt;&gt;C: 200 {event_id, status}
+    
+    loop Worker Loop
+        W-&gt;&gt;DB: SKIP LOCKED claim
+        DB--&gt;&gt;W: job
+        W-&gt;&gt;DB: UPDATE status=running
+        W-&gt;&gt;W: Extract triples
+        W-&gt;&gt;DB: INSERT facts
+        W-&gt;&gt;DB: UPDATE status=completed
+    end
+    </pre></section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="02-data-model.html" class="btn btn-neutral float-left" title="第2章 数据模型" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="04-extraction-pipeline.html" class="btn btn-neutral float-right" title="第4章 抽取管线" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

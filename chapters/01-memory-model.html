@@ -1,0 +1,1100 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第1章 五层记忆模型 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第2章 数据模型" href="02-data-model.html" />
+    <link rel="prev" title="第0章 项目概览" href="00-overview.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第1章 五层记忆模型</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id2">设计理念</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#events">第1层：Events（事件层）</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id3">定义</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#schema">Schema</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id4">关键字段说明</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5">幂等写入</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#episodes">第2层：Episodes（事件分段层）</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id6">定义</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id7">两种分段模式</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#case">Case 生命周期</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#facts">第3层：Facts（事实层）</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id8">断言语义</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ontology">谓词本体（Ontology）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id9">图准入规则</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#higher-order-facts">Higher-Order Facts（高阶事实）</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#beliefs">第4层：Beliefs（信念层）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#understanding">第5层：Understanding（理解层）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id10">数据派生关系</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id11">分层架构的优势</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第1章 五层记忆模型</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/01-memory-model.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="id1">
+<h1>第1章 五层记忆模型<a class="headerlink" href="#id1" title="链接到此标题。"></a></h1>
+<section id="id2">
+<h2>设计理念<a class="headerlink" href="#id2" title="链接到此标题。"></a></h2>
+<p>Cortex-PY 的核心是<strong>五层记忆模型</strong>，灵感来源于人类记忆系统：</p>
+<pre  class="mermaid">
+        graph TB
+    subgraph 感觉记忆
+        E[Events&lt;br/&gt;WAL, 不可变]
+    end
+    
+    subgraph 短期记忆
+        EP[Episodes&lt;br/&gt;有界事件序列&lt;br/&gt;Case 诊断案例]
+    end
+    
+    subgraph 长期记忆
+        F[Facts&lt;br/&gt;双时态三元组&lt;br/&gt;polarity + assertion_status]
+        B[Beliefs&lt;br/&gt;概率断言]
+        U[Understanding&lt;br/&gt;概念合成]
+    end
+    
+    E --&gt;|抽取| F
+    E --&gt;|分段| EP
+    EP --&gt;|聚合| F
+    F --&gt;|推理| B
+    B --&gt;|合成| U
+    </pre></section>
+<section id="events">
+<h2>第1层：Events（事件层）<a class="headerlink" href="#events" title="链接到此标题。"></a></h2>
+<section id="id3">
+<h3>定义<a class="headerlink" href="#id3" title="链接到此标题。"></a></h3>
+<p>Events 是系统的<strong>唯一真相源</strong>，采用 WAL (Write-Ahead Log) 模式，<strong>不可变 append-only</strong>。</p>
+</section>
+<section id="schema">
+<h3>Schema<a class="headerlink" href="#schema" title="链接到此标题。"></a></h3>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">events</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">event_id</span><span class="w">          </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">wal_offset</span><span class="w">        </span><span class="n">BIGSERIAL</span><span class="w"> </span><span class="k">UNIQUE</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 寻址</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">             </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">  </span><span class="c1">-- &#39;org:acme/dept:eng/user:alice&#39;</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 内容 (Experience Envelope)</span>
+<span class="w">    </span><span class="n">modality</span><span class="w">          </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">  </span><span class="c1">-- conversation/document/tool_result</span>
+<span class="w">    </span><span class="n">content</span><span class="w">           </span><span class="n">JSONB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w"> </span><span class="c1">-- {kind, role, text, ...}</span>
+<span class="w">    </span><span class="n">context</span><span class="w">           </span><span class="n">JSONB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w"> </span><span class="c1">-- {observed_at, labels, intent, ...}</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 身份槽</span>
+<span class="w">    </span><span class="n">caller</span><span class="w">            </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">observed_actor</span><span class="w">    </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">subject</span><span class="w">           </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 双时态 (Events 只有 2 字段)</span>
+<span class="w">    </span><span class="n">observed_at</span><span class="w">       </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">recorded_at</span><span class="w">       </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">directives</span><span class="w">        </span><span class="n">JSONB</span><span class="p">,</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 幂等</span>
+<span class="w">    </span><span class="n">idempotency_key</span><span class="w">   </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">excluded_from_recall</span><span class="w"> </span><span class="nb">BOOLEAN</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">false</span><span class="p">,</span><span class="w"> </span><span class="c1">-- 软剪枝/甲基化标记</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 抽取状态与诊断</span>
+<span class="w">    </span><span class="n">embed_status</span><span class="w">      </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">extraction_diagnostics</span><span class="w"> </span><span class="n">JSONB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;[]&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="n">case_id</span><span class="w">           </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 自演化信号</span>
+<span class="w">    </span><span class="n">access_count</span><span class="w">      </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">        </span><span class="c1">-- 召回计数(recall 命中时 +1;Feedback 显式反馈不再写此列)</span>
+<span class="w">    </span><span class="n">retrieval_count</span><span class="w">   </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">        </span><span class="c1">-- 检索命中计数</span>
+<span class="w">    </span><span class="n">feedback_processed</span><span class="w"> </span><span class="nb">BOOLEAN</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">false</span><span class="p">,</span><span class="w"> </span><span class="c1">-- 反馈是否已被处理入权重</span>
+<span class="w">    </span><span class="n">last_recalled_at</span><span class="w">  </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span><span class="w">                    </span><span class="c1">-- 最近一次召回时间</span>
+<span class="w">    </span><span class="n">methylated_at</span><span class="w">     </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span><span class="w">                    </span><span class="c1">-- 甲基化标记时间</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 修订约束</span>
+<span class="w">    </span><span class="k">UNIQUE</span><span class="w"> </span><span class="p">(</span><span class="k">scope</span><span class="p">,</span><span class="w"> </span><span class="n">idempotency_key</span><span class="p">)</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+</section>
+<section id="id4">
+<h3>关键字段说明<a class="headerlink" href="#id4" title="链接到此标题。"></a></h3>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">scope</span></code></strong>：命名空间路径，隔离不同设备/产线的知识图谱</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">idempotency_key</span></code></strong>：幂等键，同 key + 同 body → 返回已有；同 key + 异 body → 409</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">excluded_from_recall</span></code></strong>：软删除/甲基化标记（由 maintenance 自动管理）</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">extraction_diagnostics</span></code></strong>：抽取管线诊断信息 JSON</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">methylated_at</span></code></strong>：甲基化时间戳（长期不召回的事件被标记）</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">case_id</span></code></strong>：关联的诊断案例 ID（诊断场景）</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">access_count</span></code></strong>：该事件被召回的次数（recall 命中时 +1；注意 Feedback 显式 <code class="docutils literal notranslate"><span class="pre">relevant</span></code> 反馈不再写此列，改写 <code class="docutils literal notranslate"><span class="pre">facts.retrieval_usefulness</span></code>）</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">feedback_processed</span></code></strong>：标记反馈是否已被处理并入权重，避免重复计算</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">last_recalled_at</span></code></strong>：最近一次被召回的时间戳，用于时间衰减与冷热判定</p></li>
+</ul>
+</section>
+<section id="id5">
+<h3>幂等写入<a class="headerlink" href="#id5" title="链接到此标题。"></a></h3>
+<pre  class="mermaid">
+        flowchart TD
+    A[写入请求] --&gt; B{检查 idempotency_key}
+    B --&gt;|不存在| C[写入 Events]
+    B --&gt;|存在| D{Body 一致?}
+    D --&gt;|是| E[返回已有 event_id]
+    D --&gt;|否| F[抛出 409 Conflict]
+    
+    C --&gt; G[Enqueue Job]
+    C --&gt; H[emit lifecycle]
+    </pre><p><strong>实现代码</strong> (<code class="docutils literal notranslate"><span class="pre">core.py</span></code>)：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">append_event</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">modality</span><span class="p">,</span> <span class="n">content</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> 
+                 <span class="n">caller</span><span class="p">,</span> <span class="n">idempotency_key</span><span class="p">,</span> <span class="o">...</span><span class="p">):</span>
+    <span class="c1"># 1. 幂等检查</span>
+    <span class="n">existing</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+        <span class="s2">&quot;SELECT event_id, wal_offset FROM events &quot;</span>
+        <span class="s2">&quot;WHERE scope=:s AND idempotency_key=:k&quot;</span><span class="p">,</span>
+        <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;k&quot;</span><span class="p">:</span> <span class="n">idempotency_key</span><span class="p">}</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+    
+    <span class="k">if</span> <span class="n">existing</span><span class="p">:</span>
+        <span class="c1"># 计算 body hash 比对</span>
+        <span class="k">if</span> <span class="n">body_hash_match</span><span class="p">(</span><span class="n">existing</span><span class="o">.</span><span class="n">event_id</span><span class="p">,</span> <span class="n">content</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">existing</span><span class="o">.</span><span class="n">event_id</span><span class="p">,</span> <span class="n">existing</span><span class="o">.</span><span class="n">wal_offset</span>
+        <span class="k">raise</span> <span class="n">IdempotencyConflict</span><span class="p">(</span><span class="s2">&quot;同 key 不同 body&quot;</span><span class="p">)</span>
+    
+    <span class="c1"># 2. 写入 WAL</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;INSERT INTO events (...) </span>
+<span class="s2">        VALUES (...) RETURNING event_id, wal_offset&quot;&quot;&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+    
+    <span class="c1"># 3. 自动注册 scope</span>
+    <span class="n">_auto_provision_scope</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">scope</span><span class="p">)</span>
+    
+    <span class="c1"># 4. 发送生命周期事件</span>
+    <span class="n">emit_lifecycle</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;captured&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">scope</span><span class="p">,</span> <span class="n">event_id</span><span class="o">=</span><span class="n">row</span><span class="o">.</span><span class="n">event_id</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">event_id</span><span class="p">),</span> <span class="n">row</span><span class="o">.</span><span class="n">wal_offset</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="episodes">
+<h2>第2层：Episodes（事件分段层）<a class="headerlink" href="#episodes" title="链接到此标题。"></a></h2>
+<section id="id6">
+<h3>定义<a class="headerlink" href="#id6" title="链接到此标题。"></a></h3>
+<p>Episodes 是按时间窗口或诊断 Case 分组的&quot;有界事件序列&quot;。</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">episodes</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">episode_id</span><span class="w">      </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">           </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">title</span><span class="w">           </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">event_ids</span><span class="w">       </span><span class="n">UUID</span><span class="p">[]</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="n">actors</span><span class="w">          </span><span class="nb">TEXT</span><span class="p">[]</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="n">causal_chain</span><span class="w">    </span><span class="n">JSONB</span><span class="p">,</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 双时态</span>
+<span class="w">    </span><span class="n">started_at</span><span class="w">      </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">ended_at</span><span class="w">        </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">valid_from</span><span class="w">      </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">valid_to</span><span class="w">        </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">recorded_from</span><span class="w">   </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">recorded_to</span><span class="w">     </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">sealed</span><span class="w">          </span><span class="nb">BOOLEAN</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">false</span><span class="p">,</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 诊断 Case 扩展（新增）</span>
+<span class="w">    </span><span class="n">case_id</span><span class="w">         </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">          </span><span class="c1">-- 案例编号</span>
+<span class="w">    </span><span class="n">equipment</span><span class="w">       </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">          </span><span class="c1">-- 设备标识</span>
+<span class="w">    </span><span class="n">lot</span><span class="w">             </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">          </span><span class="c1">-- 批次号</span>
+<span class="w">    </span><span class="n">recipe</span><span class="w">          </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">          </span><span class="c1">-- 配方</span>
+<span class="w">    </span><span class="n">phase</span><span class="w">           </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">          </span><span class="c1">-- 诊断阶段</span>
+<span class="w">    </span><span class="n">root_cause</span><span class="w">      </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">          </span><span class="c1">-- 根因结论</span>
+<span class="w">    </span><span class="n">resolution</span><span class="w">      </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">          </span><span class="c1">-- 修复措施</span>
+<span class="w">    </span><span class="n">status</span><span class="w">          </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;open&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">-- open/investigating/resolved/closed</span>
+<span class="w">    </span><span class="n">metadata</span><span class="w">        </span><span class="n">JSONB</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+</section>
+<section id="id7">
+<h3>两种分段模式<a class="headerlink" href="#id7" title="链接到此标题。"></a></h3>
+<ol class="arabic simple">
+<li><p><strong>自动分段</strong>（<code class="docutils literal notranslate"><span class="pre">segment_scope</span></code>）：按 30 分钟时间窗口或 <code class="docutils literal notranslate"><span class="pre">case_id</span></code> 分组</p></li>
+<li><p><strong>显式 Case</strong>（<code class="docutils literal notranslate"><span class="pre">create_case</span></code>）：下游 agent 创建诊断 Case，手动关联 events</p></li>
+</ol>
+</section>
+<section id="case">
+<h3>Case 生命周期<a class="headerlink" href="#case" title="链接到此标题。"></a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>open → investigating → resolved → closed
+</pre></div>
+</div>
+<p>诊断阶段（phase）：</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>observation → scoping → investigation → correlation → root_cause → remediation → regression
+</pre></div>
+</div>
+</section>
+</section>
+<section id="facts">
+<h2>第3层：Facts（事实层）<a class="headerlink" href="#facts" title="链接到此标题。"></a></h2>
+<p>Facts 是系统的<strong>核心知识表示</strong>——subject-predicate-object 三元组，同时作为知识图谱的边。</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">facts</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">fact_id</span><span class="w">          </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">            </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">subject_id</span><span class="w">       </span><span class="n">UUID</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">entities</span><span class="p">(</span><span class="n">entity_id</span><span class="p">),</span>
+<span class="w">    </span><span class="n">predicate</span><span class="w">        </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">object_type</span><span class="w">      </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">        </span><span class="c1">-- &#39;entity&#39; | &#39;literal&#39;</span>
+<span class="w">    </span><span class="n">object_entity_id</span><span class="w"> </span><span class="n">UUID</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">entities</span><span class="p">(</span><span class="n">entity_id</span><span class="p">),</span>
+<span class="w">    </span><span class="n">object_value</span><span class="w">     </span><span class="n">JSONB</span><span class="p">,</span><span class="w">                </span><span class="c1">-- {value: &quot;...&quot;} for literals</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 双时态</span>
+<span class="w">    </span><span class="n">valid_from</span><span class="w">       </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">valid_to</span><span class="w">         </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">recorded_from</span><span class="w">    </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">recorded_to</span><span class="w">      </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 语义字段</span>
+<span class="w">    </span><span class="n">confidence</span><span class="w">       </span><span class="nb">FLOAT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">5</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">confidence</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">confidence</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span>
+<span class="w">    </span><span class="n">polarity</span><span class="w">         </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;positive&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">-- positive | negative</span>
+<span class="w">    </span><span class="n">assertion_status</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;observed&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">-- observed|hypothesized|confirmed|ruled_out|rejected</span>
+<span class="w">    </span><span class="n">evidence_span</span><span class="w">    </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">operating_regime</span><span class="w"> </span><span class="n">JSONB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="p">,</span><span class="w">       </span><span class="c1">-- 工况上下文(参与 belief 聚合分组)</span>
+<span class="w">    </span><span class="n">case_id</span><span class="w">          </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">                              </span><span class="c1">-- 关联诊断案例</span>
+<span class="w">    </span><span class="n">knowledge_tier</span><span class="w">   </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;workspace&#39;</span><span class="p">,</span><span class="w"> </span><span class="c1">-- workspace|verified|candidate</span>
+<span class="w">    </span><span class="n">supports</span><span class="w">         </span><span class="n">UUID</span><span class="p">[]</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="p">,</span><span class="w">      </span><span class="c1">-- → event_id</span>
+<span class="w">    </span><span class="n">supersedes_fact_id</span><span class="w"> </span><span class="n">UUID</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">facts</span><span class="p">(</span><span class="n">fact_id</span><span class="p">),</span><span class="w">  </span><span class="c1">-- 版本化超替指针</span>
+<span class="w">    </span><span class="n">extracted_at</span><span class="w">     </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">extraction_model</span><span class="w"> </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 自演化信号(独立信号不得混用)</span>
+<span class="w">    </span><span class="n">salience</span><span class="w">                 </span><span class="nb">FLOAT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">1</span><span class="p">.</span><span class="mi">0</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">salience</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">salience</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">2</span><span class="p">),</span><span class="w">  </span><span class="c1">-- 显著性权重</span>
+<span class="w">    </span><span class="n">positive_feedback_count</span><span class="w">  </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">   </span><span class="c1">-- 显式正向反馈数</span>
+<span class="w">    </span><span class="n">negative_feedback_count</span><span class="w">  </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">   </span><span class="c1">-- 显式负向反馈数</span>
+<span class="w">    </span><span class="n">retrieval_usefulness</span><span class="w">     </span><span class="nb">FLOAT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">retrieval_usefulness</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">retrieval_usefulness</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w">  </span><span class="c1">-- 显式检索价值</span>
+<span class="w">    </span><span class="n">evidence_quality</span><span class="w">         </span><span class="nb">FLOAT</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">evidence_quality</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">OR</span><span class="w"> </span><span class="p">(</span><span class="n">evidence_quality</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">evidence_quality</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">1</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">diagnostic_correctness</span><span class="w">   </span><span class="nb">FLOAT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">population_prevalence</span><span class="w">    </span><span class="nb">FLOAT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">retrieval_count</span><span class="w">          </span><span class="nb">BIGINT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="c1">-- 使用频率</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 高阶事实</span>
+<span class="w">    </span><span class="n">is_higher_order</span><span class="w">          </span><span class="nb">BOOLEAN</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">false</span><span class="p">,</span><span class="w">  </span><span class="c1">-- 是否为高阶事实(LLM 合成结论)</span>
+<span class="w">    </span><span class="n">higher_order_reasoning</span><span class="w">   </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">                      </span><span class="c1">-- 高阶事实的推理过程</span>
+<span class="w">    </span><span class="n">evidence_fact_ids</span><span class="w">        </span><span class="n">UUID</span><span class="p">[]</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">-- → 支撑此高阶事实的一阶 fact_id</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">object_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;entity&#39;</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">object_entity_id</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span>
+<span class="w">        </span><span class="k">OR</span><span class="w"> </span><span class="n">object_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;literal&#39;</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">object_value</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">)</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+<section id="id8">
+<h3>断言语义<a class="headerlink" href="#id8" title="链接到此标题。"></a></h3>
+<p><strong>Polarity</strong>（极性）：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>值</p></th>
+<th class="head"><p>含义</p></th>
+<th class="head"><p>示例</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">positive</span></code></p></td>
+<td><p>肯定断言</p></td>
+<td><p>“腔体压力异常”</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">negative</span></code></p></td>
+<td><p>否定/排除</p></td>
+<td><p>“腔体压力未异常”</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Assertion Status</strong>（断言状态）：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>值</p></th>
+<th class="head"><p>含义</p></th>
+<th class="head"><p>适用谓词</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">observed</span></code></p></td>
+<td><p>观察到的，确认无误</p></td>
+<td><p>结构/配置/传感器等非因果</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">hypothesized</span></code></p></td>
+<td><p>假设/推断（未确认）</p></td>
+<td><p>因果谓词默认</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">confirmed</span></code></p></td>
+<td><p>有证据确认</p></td>
+<td><p>因果谓词 + 证据支撑</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ruled_out</span></code></p></td>
+<td><p>被排除了</p></td>
+<td><p>对立谓词自动</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">rejected</span></code></p></td>
+<td><p>被驳回</p></td>
+<td><p>明确否定</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>自动规则</strong>（<code class="docutils literal notranslate"><span class="pre">semantics.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">assertion_semantics</span></code> 函数）：</p>
+<ul class="simple">
+<li><p>对立谓词（<code class="docutils literal notranslate"><span class="pre">OPPOSING_PREDICATES</span> <span class="pre">=</span> <span class="pre">{ruled_out}</span></code>）→ 自动 <code class="docutils literal notranslate"><span class="pre">negative</span></code> + <code class="docutils literal notranslate"><span class="pre">ruled_out</span></code></p></li>
+<li><p>关系排除谓词（<code class="docutils literal notranslate"><span class="pre">RELATIONAL_EXCLUSION_PREDICATES</span> <span class="pre">=</span> <span class="pre">{no_correlation,</span> <span class="pre">contradicts}</span></code>）→ <code class="docutils literal notranslate"><span class="pre">positive</span></code> + LLM 指定值（默认 <code class="docutils literal notranslate"><span class="pre">observed</span></code>）</p></li>
+<li><p>因果谓词 + 负极性或 LLM 请求 <code class="docutils literal notranslate"><span class="pre">ruled_out</span></code>/<code class="docutils literal notranslate"><span class="pre">rejected</span></code> → <code class="docutils literal notranslate"><span class="pre">ruled_out</span></code></p></li>
+<li><p>因果谓词 + LLM 请求 <code class="docutils literal notranslate"><span class="pre">confirmed</span></code> + 有 evidence_span 且（来源可信或证据可在原文中定位）→ <code class="docutils literal notranslate"><span class="pre">confirmed</span></code></p></li>
+<li><p>因果谓词 + 其他情况 → <code class="docutils literal notranslate"><span class="pre">hypothesized</span></code></p></li>
+<li><p>非因果谓词 → 保留 LLM 指定的值（默认 <code class="docutils literal notranslate"><span class="pre">observed</span></code>）</p></li>
+</ul>
+</section>
+<section id="ontology">
+<h3>谓词本体（Ontology）<a class="headerlink" href="#ontology" title="链接到此标题。"></a></h3>
+<p>所有谓词在 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">PREDICATE_DICTIONARY</span></code> 中集中定义，共 <strong>36 个</strong>，四大类（每类只保留单一方向谓词，互逆谓词对不共存）：</p>
+<p><strong>结构/配置关系</strong>（静态拓扑，8 个，统一父→子方向，反向可达由 RRF 图多跳扩展的双向遍历补偿）：</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">has_component</span><span class="p">,</span> <span class="n">installed_on</span><span class="p">,</span> <span class="n">located_in</span><span class="p">,</span>
+<span class="n">monitored_by</span><span class="p">,</span> <span class="n">controlled_by</span><span class="p">,</span> <span class="n">regulates</span><span class="p">,</span> <span class="n">configured_as</span><span class="p">,</span> <span class="n">depends_on</span>
+</pre></div>
+</div>
+<p><strong>因果/级联关系</strong>（故障传播，5 个）：</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">caused_by</span><span class="p">,</span> <span class="n">cascades_to</span><span class="p">,</span> <span class="n">has_symptom</span><span class="p">,</span> <span class="n">affects</span><span class="p">,</span> <span class="n">triggers</span>
+</pre></div>
+</div>
+<p><strong>诊断推理关系</strong>（排查过程，22 个）：</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">detected_by</span><span class="p">,</span> <span class="n">investigates</span><span class="p">,</span> <span class="n">checked</span><span class="p">,</span> <span class="n">found</span><span class="p">,</span> <span class="n">normal</span><span class="p">,</span> <span class="n">ruled_out</span><span class="p">,</span>
+<span class="n">correlates_with</span><span class="p">,</span> <span class="n">no_correlation</span><span class="p">,</span> <span class="n">supports</span><span class="p">,</span> <span class="n">contradicts</span><span class="p">,</span>
+<span class="n">refines_to</span><span class="p">,</span> <span class="n">alternative_to</span><span class="p">,</span> <span class="n">confirmed_by</span><span class="p">,</span> <span class="n">suggests</span><span class="p">,</span> <span class="n">repaired_by</span><span class="p">,</span>
+<span class="n">observed_by</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">preceded_by</span><span class="p">,</span> <span class="n">drifts_from</span><span class="p">,</span> <span class="n">measured_as</span><span class="p">,</span>
+<span class="n">deviates_from</span><span class="p">,</span> <span class="n">feedback_to</span>
+</pre></div>
+</div>
+<p><strong>状态谓词</strong>（单值超替）：</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">has_status</span>
+</pre></div>
+</div>
+</section>
+<section id="id9">
+<h3>图准入规则<a class="headerlink" href="#id9" title="链接到此标题。"></a></h3>
+<p>不是所有 facts 都进图遍历。<code class="docutils literal notranslate"><span class="pre">graph_eligible()</span></code> 函数定义准入条件：</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>1. polarity = &#39;positive&#39;
+2. predicate 不是排除谓词（no_correlation, contradicts, ruled_out）
+3. 因果谓词 → 必须 assertion_status = &#39;confirmed&#39;
+4. 非因果谓词 → assertion_status ∈ {&#39;observed&#39;, &#39;confirmed&#39;}
+</pre></div>
+</div>
+</section>
+<section id="higher-order-facts">
+<h3>Higher-Order Facts（高阶事实）<a class="headerlink" href="#higher-order-facts" title="链接到此标题。"></a></h3>
+<p>Facts 表内部其实分<strong>两层</strong>——这是 Facts 层内的一个抽象子层，而不是一个独立的新层：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>层级</p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">is_higher_order</span></code></p></th>
+<th class="head"><p>来源</p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">evidence_fact_ids</span></code></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>一阶事实（first-order）</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>抽取管线从原始 Event 直接抽出的三元组</p></td>
+<td><p>空或指向 event</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>高阶事实（higher-order）</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>LLM 对多条一阶事实做归纳/合成得到的抽象结论</p></td>
+<td><p>指向支撑它的一阶 fact_id 列表</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>一阶事实</strong>就是前面描述的标准三元组：从某个 Event 抽出的 <code class="docutils literal notranslate"><span class="pre">subject-predicate-object</span></code>，<code class="docutils literal notranslate"><span class="pre">supports</span></code> 指向产生它的 Event。它们是知识图谱的基础边。</p>
+<p><strong>高阶事实</strong>是在抽取完成后由 Higher-Order 模块（详见<a class="reference internal" href="13-higher-order.html"><span class="doc std std-doc">第13章</span></a>）异步合成的：系统收集同一 <code class="docutils literal notranslate"><span class="pre">subject_id</span></code> 下的多条相关一阶事实，调用 LLM 归纳出更抽象/概括性的结论，再以一条新的 fact 行写入，<code class="docutils literal notranslate"><span class="pre">is_higher_order=true</span></code> 并通过 <code class="docutils literal notranslate"><span class="pre">evidence_fact_ids</span></code> 反向指向支撑它的一阶事实。<code class="docutils literal notranslate"><span class="pre">higher_order_reasoning</span></code> 字段记录 LLM 的推理过程，便于溯源与审计。</p>
+<p>这样设计的好处是：高阶结论与一阶事实共用同一张表、同一套检索与图遍历路径，但通过 <code class="docutils literal notranslate"><span class="pre">is_higher_order</span></code> 与 <code class="docutils literal notranslate"><span class="pre">evidence_fact_ids</span></code> 维持了清晰的溯源链——可以随时回到它所依据的一阶证据。检索/图遍历可按需包含或排除高阶事实。</p>
+</section>
+</section>
+<section id="beliefs">
+<h2>第4层：Beliefs（信念层）<a class="headerlink" href="#beliefs" title="链接到此标题。"></a></h2>
+<p>Beliefs 是 Facts 聚合而成的<strong>概率断言</strong>，回答&quot;我们目前怎么看 X&quot;。</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">beliefs</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">belief_id</span><span class="w">      </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">          </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">about_entity_id</span><span class="w"> </span><span class="n">UUID</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">entities</span><span class="p">(</span><span class="n">entity_id</span><span class="p">),</span>
+<span class="w">    </span><span class="n">stance</span><span class="w">         </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">  </span><span class="c1">-- supports|likely_true|uncertain|likely_false|contradicts</span>
+<span class="w">    </span><span class="n">claim</span><span class="w">          </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">confidence</span><span class="w">     </span><span class="nb">FLOAT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">confidence</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">confidence</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span>
+<span class="w">    </span><span class="n">confidence_interval</span><span class="w"> </span><span class="n">JSONB</span><span class="p">,</span><span class="w">       </span><span class="c1">-- [lower, upper]</span>
+<span class="w">    </span><span class="n">supports</span><span class="w">       </span><span class="n">UUID</span><span class="p">[]</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">-- → fact_id / event_id</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">-- 双时态</span>
+<span class="w">    </span><span class="n">valid_from</span><span class="w">     </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">valid_to</span><span class="w">       </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">recorded_from</span><span class="w">  </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">recorded_to</span><span class="w">    </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">last_revised_at</span><span class="w"> </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">operating_regime</span><span class="w"> </span><span class="n">JSONB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="w">   </span><span class="c1">-- 工况上下文(与 facts 同字段对齐)</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+<p>Belief 的 5 种立场：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>立场</p></th>
+<th class="head"><p>含义</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">supports</span></code></p></td>
+<td><p>证据支持</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">likely_true</span></code></p></td>
+<td><p>很可能为真</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">uncertain</span></code></p></td>
+<td><p>不确定</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">likely_false</span></code></p></td>
+<td><p>很可能为假</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">contradicts</span></code></p></td>
+<td><p>反驳/矛盾</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="understanding">
+<h2>第5层：Understanding（理解层）<a class="headerlink" href="#understanding" title="链接到此标题。"></a></h2>
+<p>Understanding 层对 Beliefs 做<strong>高阶概念合成</strong>，产生主题级概括。</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">concepts</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">concept_id</span><span class="w">   </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">        </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">name</span><span class="w">         </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">topic</span><span class="w">        </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">              </span><span class="c1">-- 主题分类</span>
+<span class="w">    </span><span class="k">version</span><span class="w">      </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="n">summary</span><span class="w">      </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">              </span><span class="c1">-- LLM 合成的概括</span>
+<span class="w">    </span><span class="n">supports</span><span class="w">     </span><span class="n">UUID</span><span class="p">[]</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">-- → fact_id / belief_id / episode_id</span>
+<span class="w">    </span><span class="n">related</span><span class="w">      </span><span class="n">JSONB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;[]&#39;</span><span class="p">,</span><span class="w">    </span><span class="c1">-- [{name, relation}]</span>
+<span class="w">    </span><span class="n">confidence</span><span class="w">   </span><span class="nb">FLOAT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">5</span><span class="p">,</span>
+<span class="w">    </span><span class="n">valid_from</span><span class="w">   </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">created_at</span><span class="w">   </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">()</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+<p>related 图支持 5 种关系：</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">specializes</span><span class="p">,</span> <span class="n">generalizes</span><span class="p">,</span> <span class="n">contrasts</span><span class="p">,</span> <span class="n">co_occurs</span><span class="p">,</span> <span class="n">causes</span>
+</pre></div>
+</div>
+</section>
+<section id="id10">
+<h2>数据派生关系<a class="headerlink" href="#id10" title="链接到此标题。"></a></h2>
+<pre  class="mermaid">
+        graph TB
+    subgraph 写入
+        E[Events] --&gt;|extract| F[Facts]
+        E --&gt;|segment| EP[Episodes]
+    end
+    
+    subgraph 推理
+        F --&gt;|aggregate| B[Beliefs]
+        B --&gt;|synthesize| U[Understanding]
+    end
+    
+    subgraph 读取
+        F --&gt;|6通道检索| R[Recall]
+        EP --&gt;|Case 检索| R
+        B --&gt;|信念检索| R
+        U --&gt;|概念检索| R
+    end
+    
+    R --&gt;|StratifiedPack| A[Answer / Agent]
+    </pre></section>
+<section id="id11">
+<h2>分层架构的优势<a class="headerlink" href="#id11" title="链接到此标题。"></a></h2>
+<ol class="arabic simple">
+<li><p><strong>可溯源</strong>：每个 Fact 的 <code class="docutils literal notranslate"><span class="pre">supports</span></code> 指向产生它的 Event（“这个结论来自哪条记录”）</p></li>
+<li><p><strong>双视角</strong>：同时回答&quot;现在什么是真的&quot;和&quot;当时我们怎么以为的&quot;</p></li>
+<li><p><strong>渐进合成</strong>：原始事件 → 结构化事实 → 概率断言 → 概念概括，每层都是下层的高阶抽象</p></li>
+<li><p><strong>按需存储</strong>：不需要的层可以不生成（如关闭 Understanding 合成不影响检索）</p></li>
+</ol>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="00-overview.html" class="btn btn-neutral float-left" title="第0章 项目概览" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="02-data-model.html" class="btn btn-neutral float-right" title="第2章 数据模型" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

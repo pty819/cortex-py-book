@@ -1,0 +1,1293 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第11章 Feedback 回灌 — 用修正信号优化召回 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重" href="12-dreaming.html" />
+    <link rel="prev" title="第10章 信号总线 — 记忆自演化的基础设施" href="10-signal-bus.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第11章 Feedback 回灌 — 用修正信号优化召回</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">1. 概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">2. 信号分类</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#signal-type">2.1 四种 signal_type</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#signal-durable">2.2 三种 signal_durable</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#signal-type-signal-durable">2.3 signal_type × signal_durable 动作矩阵</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">3. 双轨设计</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#salience">3.1 软轨：salience 浮动</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#recorded-to">3.2 硬轨：recorded_to 软关</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#apply-to-fact">4. <code class="docutils literal notranslate"><span class="pre">_apply_to_fact</span></code> 详解</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#relevant">4.1 relevant 分支</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#irrelevant">4.2 irrelevant 分支</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#wrong-in-place">4.3 wrong 分支(版本化修订,非 in-place 改)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#partial">4.4 partial 分支</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#check-methylation">5. <code class="docutils literal notranslate"><span class="pre">_check_methylation</span></code> — 累积负反馈触发软剪枝</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id4">5.1 阈值检查</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#critical">5.2 共享证据守卫（CRITICAL）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5">5.3 甲基化级联</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id6">6. 并发安全</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#select-for-update">6.1 行锁：<code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">...</span> <span class="pre">FOR</span> <span class="pre">UPDATE</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#insert-on-conflict-do-nothing">6.2 原子幂等：<code class="docutils literal notranslate"><span class="pre">INSERT</span> <span class="pre">...</span> <span class="pre">ON</span> <span class="pre">CONFLICT</span> <span class="pre">DO</span> <span class="pre">NOTHING</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#live-fact">6.3 <code class="docutils literal notranslate"><span class="pre">_LIVE_FACT</span></code> 守卫</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#feedback-signals">7. <code class="docutils literal notranslate"><span class="pre">feedback_signals</span></code> 表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#api-mcp">8. API 与 MCP</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#rest-api">8.1 REST API</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#mcp">8.2 MCP 工具</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id7">9. 配置</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id8">9.1 权重不对称的设计</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#cache-invalidate">9.2 cache_invalidate 的取舍</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id9">9.3 配置示例</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第11章 Feedback 回灌 — 用修正信号优化召回</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/11-feedback.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="feedback">
+<h1>第11章 Feedback 回灌 — 用修正信号优化召回<a class="headerlink" href="#feedback" title="链接到此标题。"></a></h1>
+<section id="id1">
+<h2>1. 概述<a class="headerlink" href="#id1" title="链接到此标题。"></a></h2>
+<p>召回不是一次性的单向管道。当用户在召回结果上做出 “这条相关 / 这条无关 / 这条错了” 的判断时，这些修正信号必须回灌到记忆层，调整下次召回的排序权重。这一闭环就是 <strong>Feedback 回灌</strong>。</p>
+<p>cortex-py 的 Feedback 模块位于 <code class="docutils literal notranslate"><span class="pre">src/cortex/memory/feedback.py</span></code>，核心是 <code class="docutils literal notranslate"><span class="pre">submit_feedback</span></code> / <code class="docutils literal notranslate"><span class="pre">_apply_to_fact</span></code> / <code class="docutils literal notranslate"><span class="pre">_check_methylation</span></code> 三个函数。它采用<strong>双轨设计</strong>：</p>
+<ul class="simple">
+<li><p><strong>软轨（salience）</strong>：上调或下调 <code class="docutils literal notranslate"><span class="pre">facts.salience</span></code>，影响召回排序但不删数据。</p></li>
+<li><p><strong>硬轨（recorded_to）</strong>：<code class="docutils literal notranslate"><span class="pre">wrong</span></code> 信号对旧 fact 设 <code class="docutils literal notranslate"><span class="pre">recorded_to=now()</span></code> 软关闭并插入新版本；<code class="docutils literal notranslate"><span class="pre">task_temporary</span></code> 还会额外软关新版本。软关保留可溯源历史。</p></li>
+</ul>
+<pre  class="mermaid">
+        graph LR
+    U[用户/Agent 判断] --&gt;|relevant/irrelevant/wrong/partial| S[submit_feedback]
+    S --&gt; R1[feedback_signals 记录]
+    S --&gt; F{_apply_to_fact}
+    F --&gt;|软轨| SL[salience ±]
+    F --&gt;|硬轨| RT[recorded_to=now]
+    F --&gt;|累积负反馈| ME[_check_methylation]
+    ME --&gt; EV[events.excluded_from_recall=true]
+    SL --&gt; NX[下次召回权重改变]
+    RT --&gt; NX
+    EV --&gt; NX
+    </pre><p>设计借鉴 MindMemOS 的三级 durable 分类法（<code class="docutils literal notranslate"><span class="pre">task_temporary</span></code> / <code class="docutils literal notranslate"><span class="pre">scenario_specific</span></code> / <code class="docutils literal notranslate"><span class="pre">long_term</span></code>），以及 “归档而非删除” 的软关原则。<strong>关键差异</strong>：cortex-py 补上了 MindMemOS 漏掉的正反馈通道——<code class="docutils literal notranslate"><span class="pre">relevant</span></code> 信号会写 <code class="docutils literal notranslate"><span class="pre">facts.retrieval_usefulness</span></code> 并上调 <code class="docutils literal notranslate"><span class="pre">salience</span></code>（不再递增 <code class="docutils literal notranslate"><span class="pre">access_count</span></code>，避免显式反馈伪装成被动召回次数的双重加权），让被反复确认的事实持续上浮，而非只做单向惩罚。</p>
+</section>
+<section id="id2">
+<h2>2. 信号分类<a class="headerlink" href="#id2" title="链接到此标题。"></a></h2>
+<section id="signal-type">
+<h3>2.1 四种 signal_type<a class="headerlink" href="#signal-type" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>signal_type</p></th>
+<th class="head"><p>极性</p></th>
+<th class="head"><p>即时动作</p></th>
+<th class="head"><p>用途</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">relevant</span></code></p></td>
+<td><p>正</p></td>
+<td><p>retrieval_usefulness+positive_weight, salience+positive_weight, positive_feedback_count+1</p></td>
+<td><p>表扬：这条召回有用，提升下次排序</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">irrelevant</span></code></p></td>
+<td><p>负</p></td>
+<td><p>retrieval_usefulness−negative_weight, salience−negative_weight, negative_feedback_count+1</p></td>
+<td><p>轻惩：跑题，降权；累积触发 methylation</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">wrong</span></code></p></td>
+<td><p>强负</p></td>
+<td><p>软关旧 fact + INSERT ruled_out 负版本(workspace tier, diagnostic_correctness=0.0) + 派生反驳 evidence（task_temporary 再软关新版本）</p></td>
+<td><p>纠错：结论错了，版本化推翻并可能归档</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">partial</span></code></p></td>
+<td><p>中性</p></td>
+<td><p>仅记录</p></td>
+<td><p>不调整，作为 Dreaming/Higher-Order 的离线输入信号</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="signal-durable">
+<h3>2.2 三种 signal_durable<a class="headerlink" href="#signal-durable" title="链接到此标题。"></a></h3>
+<p>来自 MindMemOS 的持久化分级，决定信号在系统中存活的方式：</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">task_temporary</span></code></strong>：当前任务的一次性问题，不该持久化。<code class="docutils literal notranslate"><span class="pre">wrong</span> <span class="pre">+</span> <span class="pre">task_temporary</span></code> 除常规版本化软关旧 fact 外，还会额外把新插入的 ruled_out 版本也 <code class="docutils literal notranslate"><span class="pre">recorded_to=now()</span></code> 软关——新版本本身也不该留在活跃集合里。</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">scenario_specific</span></code></strong>：仅在特定场景下不适用（如某用户上下文），带条件地保留。</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">long_term</span></code></strong>（默认）：长期持久，正常调整 salience。</p></li>
+</ul>
+</section>
+<section id="signal-type-signal-durable">
+<h3>2.3 signal_type × signal_durable 动作矩阵<a class="headerlink" href="#signal-type-signal-durable" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">task_temporary</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">scenario_specific</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">long_term</span></code>（默认）</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>relevant</strong></p></td>
+<td><p>retrieval_usefulness↑, salience↑</p></td>
+<td><p>retrieval_usefulness↑, salience↑</p></td>
+<td><p>retrieval_usefulness↑, salience↑</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>irrelevant</strong></p></td>
+<td><p>salience↓, retrieval_usefulness↓, 累积触发 methylation</p></td>
+<td><p>salience↓, retrieval_usefulness↓, 累积触发 methylation</p></td>
+<td><p>salience↓, retrieval_usefulness↓, 累积触发 methylation</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>wrong</strong></p></td>
+<td><p>版本化 ruled_out + 软关新版本 + methylation 检查</p></td>
+<td><p>版本化 ruled_out + methylation 检查</p></td>
+<td><p>版本化 ruled_out + methylation 检查</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>partial</strong></p></td>
+<td><p>仅记录</p></td>
+<td><p>仅记录</p></td>
+<td><p>仅记录</p></td>
+</tr>
+</tbody>
+</table>
+<p>注意 <code class="docutils literal notranslate"><span class="pre">wrong</span></code> 信号在所有 durable 等级下都会软关旧 fact 并插入 ruled_out 新版本（硬轨的版本化部分，见 §4.3）；<code class="docutils literal notranslate"><span class="pre">signal_durable</span></code> 只在 <code class="docutils literal notranslate"><span class="pre">task_temporary</span></code> 时产生额外差异——把新版本也归档。其他 durable 等级对同类型信号的处理一致——它们的价值在于为后续的 Dreaming 离线巩固提供分级输入，而非改变即时路径。</p>
+</section>
+</section>
+<section id="id3">
+<h2>3. 双轨设计<a class="headerlink" href="#id3" title="链接到此标题。"></a></h2>
+<section id="salience">
+<h3>3.1 软轨：salience 浮动<a class="headerlink" href="#salience" title="链接到此标题。"></a></h3>
+<p>salience 是 <code class="docutils literal notranslate"><span class="pre">facts</span></code> 表上的召回权重浮点字段，反馈在 <code class="docutils literal notranslate"><span class="pre">[salience_floor,</span> <span class="pre">salience_ceiling]</span></code> 区间内做<strong>钳位增减</strong>：</p>
+<ul class="simple">
+<li><p><strong>正反馈上调</strong>（<code class="docutils literal notranslate"><span class="pre">feedback.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">_apply_to_fact</span></code> relevant 分支）：</p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">UPDATE</span> <span class="n">facts</span> <span class="n">SET</span> <span class="n">positive_feedback_count</span> <span class="o">=</span> <span class="n">positive_feedback_count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+                 <span class="n">salience</span> <span class="o">=</span> <span class="n">least</span><span class="p">(</span><span class="n">salience</span> <span class="o">+</span> <span class="p">:</span><span class="n">w</span><span class="p">,</span> <span class="p">:</span><span class="n">ceil</span><span class="p">)</span>
+<span class="n">WHERE</span> <span class="n">fact_id</span><span class="o">=</span><span class="n">CAST</span><span class="p">(:</span><span class="n">f</span> <span class="n">AS</span> <span class="n">uuid</span><span class="p">)</span> <span class="n">AND</span> <span class="n">scope</span><span class="o">=</span><span class="p">:</span><span class="n">s</span> <span class="n">AND</span> <span class="n">recorded_to</span> <span class="n">IS</span> <span class="n">NULL</span> <span class="n">AND</span> <span class="n">valid_to</span> <span class="n">IS</span> <span class="n">NULL</span>
+</pre></div>
+</div>
+<p>用 <code class="docutils literal notranslate"><span class="pre">least(...)</span></code> 钳顶，默认 <code class="docutils literal notranslate"><span class="pre">:w=0.5</span></code>、<code class="docutils literal notranslate"><span class="pre">:ceil=2.0</span></code>，保证 salience 不会无限膨胀。</p>
+<ul class="simple">
+<li><p><strong>负反馈下调</strong>（<code class="docutils literal notranslate"><span class="pre">_apply_to_fact</span></code> 的 irrelevant 分支）：</p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">UPDATE</span> <span class="n">facts</span> <span class="n">SET</span> <span class="n">negative_feedback_count</span> <span class="o">=</span> <span class="n">negative_feedback_count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+                 <span class="n">salience</span> <span class="o">=</span> <span class="n">greatest</span><span class="p">(</span><span class="n">salience</span> <span class="o">-</span> <span class="p">:</span><span class="n">w</span><span class="p">,</span> <span class="p">:</span><span class="n">floor</span><span class="p">)</span>
+<span class="n">WHERE</span> <span class="n">fact_id</span><span class="o">=</span><span class="n">CAST</span><span class="p">(:</span><span class="n">f</span> <span class="n">AS</span> <span class="n">uuid</span><span class="p">)</span> <span class="n">AND</span> <span class="n">scope</span><span class="o">=</span><span class="p">:</span><span class="n">s</span> <span class="n">AND</span> <span class="n">recorded_to</span> <span class="n">IS</span> <span class="n">NULL</span> <span class="n">AND</span> <span class="n">valid_to</span> <span class="n">IS</span> <span class="n">NULL</span>
+</pre></div>
+</div>
+<p>用 <code class="docutils literal notranslate"><span class="pre">greatest(...)</span></code> 钳底，默认 <code class="docutils literal notranslate"><span class="pre">:w=0.3</span></code>、<code class="docutils literal notranslate"><span class="pre">:floor=0.1</span></code>。注意 <code class="docutils literal notranslate"><span class="pre">floor</span></code> 不为 0——保留可恢复性，一旦后续有正反馈仍能爬升。</p>
+</section>
+<section id="recorded-to">
+<h3>3.2 硬轨：recorded_to 软关<a class="headerlink" href="#recorded-to" title="链接到此标题。"></a></h3>
+<p>所有 <code class="docutils literal notranslate"><span class="pre">wrong</span></code> 信号都会触发硬轨的版本化部分（<code class="docutils literal notranslate"><span class="pre">feedback.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">_apply_to_fact</span></code> wrong 分支）——先软关旧 fact：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">UPDATE</span> <span class="n">facts</span> <span class="n">SET</span> <span class="n">recorded_to</span><span class="o">=</span><span class="n">now</span><span class="p">()</span>
+<span class="n">WHERE</span> <span class="n">fact_id</span><span class="o">=</span><span class="n">CAST</span><span class="p">(:</span><span class="n">f</span> <span class="n">AS</span> <span class="n">uuid</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>随后 INSERT 一条 ruled_out 负版本（见 §4.3）；若 <code class="docutils literal notranslate"><span class="pre">signal_durable</span> <span class="pre">==</span> <span class="pre">&quot;task_temporary&quot;</span></code>，新版本也会被同样软关。</p>
+<p>这是<strong>软关闭</strong>：事实行仍在表中，历史可溯源，但被 <code class="docutils literal notranslate"><span class="pre">_LIVE_FACT</span></code> 守卫排除出活跃集合，不再参与召回。相比物理删除，软关支持审计与回滚（手动清空 <code class="docutils literal notranslate"><span class="pre">recorded_to</span></code> 即恢复）。</p>
+</section>
+</section>
+<section id="apply-to-fact">
+<h2>4. <code class="docutils literal notranslate"><span class="pre">_apply_to_fact</span></code> 详解<a class="headerlink" href="#apply-to-fact" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">_apply_to_fact</span></code> 是即时反馈的核心调度器，按 <code class="docutils literal notranslate"><span class="pre">signal_type</span></code> 分四个分支。所有写操作前先做 <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">...</span> <span class="pre">FOR</span> <span class="pre">UPDATE</span></code> 锁住该活跃 fact（见第 6 节），然后进入分支：</p>
+<section id="relevant">
+<h3>4.1 relevant 分支<a class="headerlink" href="#relevant" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">signal_type</span> <span class="o">==</span> <span class="s2">&quot;relevant&quot;</span><span class="p">:</span>
+    <span class="c1"># 显式 usefulness 不再写入被动 retrieval/access 计数，避免同一信号双重加权。</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        UPDATE facts SET positive_feedback_count = positive_feedback_count + 1,</span>
+<span class="s2">                         salience = least(salience + :w, :ceil),</span>
+<span class="s2">                         retrieval_usefulness = least(retrieval_usefulness + :uw, 1.0)</span>
+<span class="s2">        WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND </span><span class="si">{</span><span class="n">_LIVE_FACT</span><span class="si">}</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;f&quot;</span><span class="p">:</span> <span class="n">fact_id</span><span class="p">,</span> <span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">:</span> <span class="n">fb</span><span class="o">.</span><span class="n">positive_weight</span><span class="p">,</span>
+           <span class="s2">&quot;uw&quot;</span><span class="p">:</span> <span class="nb">min</span><span class="p">(</span><span class="n">fb</span><span class="o">.</span><span class="n">positive_weight</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">),</span> <span class="s2">&quot;ceil&quot;</span><span class="p">:</span> <span class="n">fb</span><span class="o">.</span><span class="n">salience_ceiling</span><span class="p">})</span>
+    <span class="n">actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;retrieval_usefulness_boosted&quot;</span><span class="p">)</span>
+    <span class="n">actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;salience_boosted&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>一条 UPDATE(全在 <code class="docutils literal notranslate"><span class="pre">facts</span></code> 表):</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">positive_feedback_count</span></code> +1。</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">salience</span></code> 钳顶上调(<code class="docutils literal notranslate"><span class="pre">least(...,</span> <span class="pre">salience_ceiling)</span></code>)。</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">retrieval_usefulness</span></code> 钳顶上调(<code class="docutils literal notranslate"><span class="pre">least(...,</span> <span class="pre">1.0)</span></code>,每次最多 +<code class="docutils literal notranslate"><span class="pre">positive_weight</span></code> 上限 0.25)。</p></li>
+</ol>
+<div class="admonition note">
+<p class="admonition-title">备注</p>
+<p>关键设计:<strong>正反馈不再递增 <code class="docutils literal notranslate"><span class="pre">events.access_count</span></code></strong>。旧版把&quot;用户说有用&quot;伪装成&quot;被动召回次数&quot;,导致同一信号在 access_count 和 salience 上双重加权。新版把显式反馈值独立写入 <code class="docutils literal notranslate"><span class="pre">facts.retrieval_usefulness</span></code>(检索加权单独读它),与被动召回次数 <code class="docutils literal notranslate"><span class="pre">retrieval_count</span></code> 分轨。被动召回只由 recall 自己递增(见第10章 §3)。</p>
+</div>
+</section>
+<section id="irrelevant">
+<h3>4.2 irrelevant 分支<a class="headerlink" href="#irrelevant" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">elif</span> <span class="n">signal_type</span> <span class="o">==</span> <span class="s2">&quot;irrelevant&quot;</span><span class="p">:</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        UPDATE facts SET negative_feedback_count = negative_feedback_count + 1,</span>
+<span class="s2">                         salience = greatest(salience - :w, :floor),</span>
+<span class="s2">                         retrieval_usefulness = greatest(retrieval_usefulness - :uw, -1.0)</span>
+<span class="s2">        WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND </span><span class="si">{</span><span class="n">_LIVE_FACT</span><span class="si">}</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;f&quot;</span><span class="p">:</span> <span class="n">fact_id</span><span class="p">,</span> <span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">:</span> <span class="n">fb</span><span class="o">.</span><span class="n">negative_weight</span><span class="p">,</span>
+           <span class="s2">&quot;uw&quot;</span><span class="p">:</span> <span class="nb">min</span><span class="p">(</span><span class="n">fb</span><span class="o">.</span><span class="n">negative_weight</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">),</span> <span class="s2">&quot;floor&quot;</span><span class="p">:</span> <span class="n">fb</span><span class="o">.</span><span class="n">salience_floor</span><span class="p">})</span>
+    <span class="n">actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;salience_demoted&quot;</span><span class="p">)</span>
+    <span class="n">_check_methylation</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">fact_id</span><span class="p">,</span> <span class="n">cfg</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>只动 facts 表，不碰 events。salience 钳底下调后立即调用 <code class="docutils literal notranslate"><span class="pre">_check_methylation</span></code> 检查是否已累积到阈值。</p>
+</section>
+<section id="wrong-in-place">
+<h3>4.3 wrong 分支(版本化修订,非 in-place 改)<a class="headerlink" href="#wrong-in-place" title="链接到此标题。"></a></h3>
+<div class="important admonition">
+<p class="admonition-title">关键设计变更</p>
+<p>wrong 反馈<strong>不再 in-place 改 <code class="docutils literal notranslate"><span class="pre">assertion_status='ruled_out'</span></code></strong>。遵循双时态原则(“Epistemic changes are recorded-time revisions, never in-place history edits”),它走<strong>版本化 INSERT</strong>:软关旧 fact → 插入一条 <code class="docutils literal notranslate"><span class="pre">polarity='negative'</span> <span class="pre">/</span> <span class="pre">assertion_status='ruled_out'</span> <span class="pre">/</span> <span class="pre">knowledge_tier='workspace'</span></code> 的新版本,保留历史可溯源。</p>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">elif</span> <span class="n">signal_type</span> <span class="o">==</span> <span class="s2">&quot;wrong&quot;</span><span class="p">:</span>
+    <span class="c1"># 1) 软关旧 fact(recorded_to=now())</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;UPDATE facts SET recorded_to=now() WHERE fact_id=CAST(:f AS uuid)&quot;</span><span class="p">),</span>
+                 <span class="p">{</span><span class="s2">&quot;f&quot;</span><span class="p">:</span> <span class="n">fact_id</span><span class="p">})</span>
+    <span class="c1"># 2) INSERT 一条 ruled_out 负版本(从旧 fact 复制大部分列,改 polarity/assertion/tier/salience)</span>
+    <span class="n">revised_id</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        INSERT INTO facts(...,polarity,assertion_status,...,knowledge_tier,...,</span>
+<span class="s2">                           salience,negative_feedback_count,diagnostic_correctness,...)</span>
+<span class="s2">        SELECT ...,&#39;negative&#39;,&#39;ruled_out&#39;,...,&#39;workspace&#39;,...,</span>
+<span class="s2">               greatest(salience-:weight,:floor),negative_feedback_count+1,0.0,...</span>
+<span class="s2">        FROM facts WHERE fact_id=CAST(:f AS uuid) RETURNING fact_id::text</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;f&quot;</span><span class="p">:</span> <span class="n">fact_id</span><span class="p">,</span> <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="n">fb</span><span class="o">.</span><span class="n">negative_weight</span><span class="p">,</span> <span class="s2">&quot;floor&quot;</span><span class="p">:</span> <span class="n">fb</span><span class="o">.</span><span class="n">salience_floor</span><span class="p">})</span><span class="o">.</span><span class="n">scalar</span><span class="p">()</span>
+    <span class="c1"># 3) 复制 claim_evidence 到新版本(role=&#39;context&#39;)</span>
+    <span class="c1"># 4) 若有 feedback_id:派生一条 evidence_artifacts(&#39;derived&#39;,&#39;feedback&#39;)+</span>
+    <span class="c1">#    两条 claim_evidence(旧 fact role=&#39;refutes&#39;, 新 fact role=&#39;supports&#39;)</span>
+    <span class="n">actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;assertion_ruled_out&quot;</span><span class="p">)</span>
+    <span class="n">actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;assertion_versioned:</span><span class="si">{</span><span class="n">revised_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;salience_demoted&quot;</span><span class="p">)</span>
+    <span class="c1"># task_temporary:软关的是新版本 revised_id(不是原 fact_id)</span>
+    <span class="k">if</span> <span class="n">signal_durable</span> <span class="o">==</span> <span class="s2">&quot;task_temporary&quot;</span><span class="p">:</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;UPDATE facts SET recorded_to=now() WHERE fact_id=CAST(:f AS uuid)&quot;</span><span class="p">),</span>
+                     <span class="p">{</span><span class="s2">&quot;f&quot;</span><span class="p">:</span> <span class="n">revised_id</span><span class="p">})</span>
+        <span class="n">actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;fact_archived(task_temporary)&quot;</span><span class="p">)</span>
+    <span class="n">_check_methylation</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">revised_id</span><span class="p">,</span> <span class="n">cfg</span><span class="p">,</span> <span class="n">actions</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>与 irrelevant 的关键差异:</p>
+<ul class="simple">
+<li><p><strong>版本化而非 in-place</strong>:软关旧 fact + INSERT 负版本,而非直接 <code class="docutils literal notranslate"><span class="pre">UPDATE</span> <span class="pre">assertion_status</span></code>。旧 fact 留在历史里,可溯源&quot;曾经被认为真&quot;。</p></li>
+<li><p><strong>新版本字段</strong>:<code class="docutils literal notranslate"><span class="pre">polarity='negative'</span></code>、<code class="docutils literal notranslate"><span class="pre">assertion_status='ruled_out'</span></code>、<code class="docutils literal notranslate"><span class="pre">knowledge_tier='workspace'</span></code>、<code class="docutils literal notranslate"><span class="pre">diagnostic_correctness=0.0</span></code>(标记为诊断上不正确)、<code class="docutils literal notranslate"><span class="pre">salience</span></code> 下调、<code class="docutils literal notranslate"><span class="pre">negative_feedback_count+1</span></code>。</p></li>
+<li><p><strong>证据链迁移</strong>:旧 fact 的 <code class="docutils literal notranslate"><span class="pre">claim_evidence</span></code> 复制到新版本(role=‘context’);若有 feedback_id,额外派生一条 <code class="docutils literal notranslate"><span class="pre">evidence_artifacts(evidence_kind='derived',</span> <span class="pre">source_system='feedback')</span></code>,并用两条 claim_evidence 把它分别以 <code class="docutils literal notranslate"><span class="pre">refutes</span></code>(指向旧)、<code class="docutils literal notranslate"><span class="pre">supports</span></code>(指向新)关联——形成可溯源的反驳证据。</p></li>
+<li><p><strong>task_temporary 软关的是 <code class="docutils literal notranslate"><span class="pre">revised_id</span></code></strong>(新版本),不是原 fact_id——因为原 fact 已经在第 1 步被软关了。</p></li>
+</ul>
+<p>无论是否归档,最后都对 <code class="docutils literal notranslate"><span class="pre">revised_id</span></code> 走 <code class="docutils literal notranslate"><span class="pre">_check_methylation</span></code>。</p>
+</section>
+<section id="partial">
+<h3>4.4 partial 分支<a class="headerlink" href="#partial" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">elif</span> <span class="n">signal_type</span> <span class="o">==</span> <span class="s2">&quot;partial&quot;</span><span class="p">:</span>
+    <span class="n">actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;recorded_only&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>零写操作</strong>（除 <code class="docutils literal notranslate"><span class="pre">feedback_signals</span></code> 表本身的记录外）。<code class="docutils literal notranslate"><span class="pre">partial</span></code> 信号仅作为 Dreaming / Higher-Order 离线巩固的输入，不触碰任何记忆字段，保证离线层有完整信号可分析而不污染即时排序。</p>
+</section>
+</section>
+<section id="check-methylation">
+<h2>5. <code class="docutils literal notranslate"><span class="pre">_check_methylation</span></code> — 累积负反馈触发软剪枝<a class="headerlink" href="#check-methylation" title="链接到此标题。"></a></h2>
+<p>当一个 fact 的 <code class="docutils literal notranslate"><span class="pre">negative_feedback_count</span></code> 累积达到 <code class="docutils literal notranslate"><span class="pre">demote_threshold</span></code>（默认 3），对其支撑 events 触发甲基化——设 <code class="docutils literal notranslate"><span class="pre">excluded_from_recall=true</span></code>，使其不再被召回。</p>
+<section id="id4">
+<h3>5.1 阈值检查<a class="headerlink" href="#id4" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_check_methylation</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">fact_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">cfg</span><span class="p">,</span> <span class="n">actions</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">fb</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">feedback</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        SELECT negative_feedback_count FROM facts</span>
+<span class="s2">        WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND </span><span class="si">{</span><span class="n">_LIVE_FACT</span><span class="si">}</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;f&quot;</span><span class="p">:</span> <span class="n">fact_id</span><span class="p">,</span> <span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">row</span> <span class="ow">and</span> <span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">fb</span><span class="o">.</span><span class="n">demote_threshold</span><span class="p">:</span>
+        <span class="o">...</span>
+</pre></div>
+</div>
+<p>只对活跃 fact 检查；已归档的 fact（<code class="docutils literal notranslate"><span class="pre">recorded_to</span></code> 非空）即使负反馈计数超阈值也不再处理——它已经被硬轨关掉了。</p>
+</section>
+<section id="critical">
+<h3>5.2 共享证据守卫（CRITICAL）<a class="headerlink" href="#critical" title="链接到此标题。"></a></h3>
+<p>甲基化 UPDATE 的核心是 <code class="docutils literal notranslate"><span class="pre">NOT</span> <span class="pre">EXISTS</span></code> 子查询，确保<strong>只剪 “仅被本活跃 fact 支撑、不被任何其他活跃 fact 支撑” 的 event</strong>：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    UPDATE events e SET excluded_from_recall=true, methylated_at=now()</span>
+<span class="s2">    WHERE e.event_id = ANY(SELECT unnest(supports) FROM facts</span>
+<span class="s2">                           WHERE fact_id=CAST(:f AS uuid) AND scope=:s</span>
+<span class="s2">                             AND recorded_to IS NULL AND valid_to IS NULL)</span>
+<span class="s2">      AND e.excluded_from_recall=false</span>
+<span class="s2">      AND NOT EXISTS (</span>
+<span class="s2">          SELECT 1 FROM facts f2</span>
+<span class="s2">          WHERE e.event_id = ANY(f2.supports)</span>
+<span class="s2">            AND f2.fact_id &lt;&gt; CAST(:f AS uuid)</span>
+<span class="s2">            AND f2.scope=:s AND f2.recorded_to IS NULL AND f2.valid_to IS NULL)</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;f&quot;</span><span class="p">:</span> <span class="n">fact_id</span><span class="p">,</span> <span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">})</span>
+<span class="n">actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;methylation_triggered(count=</span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>三层过滤条件：</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">e.event_id</span> <span class="pre">=</span> <span class="pre">ANY(SELECT</span> <span class="pre">unnest(supports)</span> <span class="pre">...)</span></code> —— 只动本 fact 的支撑 events。</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">e.excluded_from_recall=false</span></code> —— 跳过已甲基化的，避免重复写。</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">NOT</span> <span class="pre">EXISTS</span> <span class="pre">(...</span> <span class="pre">f2.fact_id</span> <span class="pre">&lt;&gt;</span> <span class="pre">:f</span> <span class="pre">...)</span></code> —— <strong>关键守卫</strong>：该 event 不能同时被任何其他活跃 fact 引用为支撑。</p></li>
+</ol>
+<p>为什么必须这层守卫？一个 event 可能同时支撑多个 fact。若 fact A 被判错而甲基化了它共享给 fact B 的 evidence event，fact B 就会变成无支撑孤儿，导致正确事实被连带降级。这是 cortex-py 在 C3 一致性约束下的硬性安全要求。</p>
+</section>
+<section id="id5">
+<h3>5.3 甲基化级联<a class="headerlink" href="#id5" title="链接到此标题。"></a></h3>
+<pre  class="mermaid">
+        graph TB
+    F[fact: neg_count≥3] --&gt; Q1{哪些 event 支撑本 fact?}
+    Q1 --&gt;|supports| E1[候选 events]
+    E1 --&gt; Q2{已被甲基化?}
+    Q2 --&gt;|是| SKIP[跳过]
+    Q2 --&gt;|否| Q3{被其他活跃 fact 共享?}
+    Q3 --&gt;|是| KEEP[保留, 防孤儿]
+    Q3 --&gt;|否| METH[excluded_from_recall=true]
+    METH --&gt; NX[下次召回不再出现]
+    </pre><p>注意：甲基化是<strong>软剪枝</strong>，只设标志不删行。手工把 <code class="docutils literal notranslate"><span class="pre">excluded_from_recall</span></code> 设回 <code class="docutils literal notranslate"><span class="pre">false</span></code> 即可恢复召回——与第 17 章 Maintenance 的甲基化保持同样的可逆语义。</p>
+</section>
+</section>
+<section id="id6">
+<h2>6. 并发安全<a class="headerlink" href="#id6" title="链接到此标题。"></a></h2>
+<p>反馈可能在同一 fact 上并发到达（例如 agent 同时收到多个用户的纠正）。<code class="docutils literal notranslate"><span class="pre">_apply_to_fact</span></code> 用三道机制防竞态：</p>
+<section id="select-for-update">
+<h3>6.1 行锁：<code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">...</span> <span class="pre">FOR</span> <span class="pre">UPDATE</span></code><a class="headerlink" href="#select-for-update" title="链接到此标题。"></a></h3>
+<p>函数开头锁住目标活跃 fact：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">locked</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    SELECT fact_id::text FROM facts</span>
+<span class="s2">    WHERE fact_id=CAST(:f AS uuid) AND scope=:s AND </span><span class="si">{</span><span class="n">_LIVE_FACT</span><span class="si">}</span>
+<span class="s2">    FOR UPDATE</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;f&quot;</span><span class="p">:</span> <span class="n">fact_id</span><span class="p">,</span> <span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="n">locked</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">[</span><span class="s2">&quot;skipped_fact_not_live&quot;</span><span class="p">]</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">FOR</span> <span class="pre">UPDATE</span></code> 取得行锁，Postgres 会把其他尝试锁同一行的并发事务阻塞到本事务提交。这把同一 fact 上的 <code class="docutils literal notranslate"><span class="pre">salience</span> <span class="pre">/</span> <span class="pre">negative_feedback_count</span></code> 读改写序列化，避免经典的 lost update（A、B 都读到 count=2，各自写 3，丢一次）。</p>
+<p>若 fact 不活跃（已归档），<code class="docutils literal notranslate"><span class="pre">locked</span></code> 为空，直接返回 <code class="docutils literal notranslate"><span class="pre">skipped_fact_not_live</span></code> 不做任何写操作。</p>
+</section>
+<section id="insert-on-conflict-do-nothing">
+<h3>6.2 原子幂等：<code class="docutils literal notranslate"><span class="pre">INSERT</span> <span class="pre">...</span> <span class="pre">ON</span> <span class="pre">CONFLICT</span> <span class="pre">DO</span> <span class="pre">NOTHING</span></code><a class="headerlink" href="#insert-on-conflict-do-nothing" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">submit_feedback</span></code> 在写 <code class="docutils literal notranslate"><span class="pre">feedback_signals</span></code> 时用幂等键原子去重：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">row</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    INSERT INTO feedback_signals (scope, pack_id, target_layer, target_id, signal_type,</span>
+<span class="s2">                                  signal_durable, strength, reason, actor, idempotency_key,</span>
+<span class="s2">                                  applied, applied_at)</span>
+<span class="s2">    VALUES (:s,:p,:tl,CAST(:tid AS uuid),:st,:sd,1.0,:r,:a,:k,true,now())</span>
+<span class="s2">    ON CONFLICT (idempotency_key) DO NOTHING</span>
+<span class="s2">    RETURNING feedback_id::text, applied</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="o">...</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+<span class="k">if</span> <span class="n">row</span><span class="p">:</span>
+    <span class="n">fid</span><span class="p">,</span> <span class="n">applied_already</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="c1"># 冲突:并发请求已插入,回查既有记录</span>
+    <span class="n">ex</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span>
+        <span class="s2">&quot;SELECT feedback_id::text, applied FROM feedback_signals WHERE idempotency_key=:k&quot;</span>
+    <span class="p">),</span> <span class="p">{</span><span class="s2">&quot;k&quot;</span><span class="p">:</span> <span class="n">idempotency_key</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">ex</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;feedback_id&quot;</span><span class="p">:</span> <span class="n">ex</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s2">&quot;signal_type&quot;</span><span class="p">:</span> <span class="n">signal_type</span><span class="p">,</span>
+                <span class="s2">&quot;applied&quot;</span><span class="p">:</span> <span class="n">ex</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="s2">&quot;note&quot;</span><span class="p">:</span> <span class="s2">&quot;idempotent (already applied)&quot;</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>关键点：<code class="docutils literal notranslate"><span class="pre">INSERT</span> <span class="pre">...</span> <span class="pre">ON</span> <span class="pre">CONFLICT</span> <span class="pre">(idempotency_key)</span> <span class="pre">DO</span> <span class="pre">NOTHING</span> <span class="pre">RETURNING</span> <span class="pre">...</span></code> 是 Postgres 的<strong>单条原子语句</strong>。冲突时 <code class="docutils literal notranslate"><span class="pre">RETURNING</span></code> 返回空集，于是回查既有记录。这避免了 “先 SELECT 再 INSERT” 的 TOCTOU（time-of-check-to-time-of-use）竞态——那种写法在两个并发请求都查不到记录后各自 INSERT，其中一个会因 UNIQUE 约束抛错退化为 500。</p>
+<p>随后的 <code class="docutils literal notranslate"><span class="pre">applied_already</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">False</span></code> 守卫确保：命中既有记录时<strong>不再重复应用即时动作</strong>，防止 salience 被同一信号多次叠加。</p>
+</section>
+<section id="live-fact">
+<h3>6.3 <code class="docutils literal notranslate"><span class="pre">_LIVE_FACT</span></code> 守卫<a class="headerlink" href="#live-fact" title="链接到此标题。"></a></h3>
+<p>模块顶部定义：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">_LIVE_FACT</span> <span class="o">=</span> <span class="s2">&quot;recorded_to IS NULL AND valid_to IS NULL&quot;</span>
+</pre></div>
+</div>
+<p>所有针对 facts 的写操作（salience 调整、归档、计数递增、methylation 阈值检查）都带这个守卫。它保证：</p>
+<ul class="simple">
+<li><p>不会篡改已归档（<code class="docutils literal notranslate"><span class="pre">recorded_to</span></code> 非空）的历史事实。</p></li>
+<li><p>不会动已版本失效（<code class="docutils literal notranslate"><span class="pre">valid_to</span></code> 非空）的旧版本。</p></li>
+</ul>
+<p>这是与第 18 章 Erasures / 第 21 章 Versioning 协同的硬性约束：反馈只作用于&quot;当前活跃版本&quot;，历史链保留原样供审计。</p>
+</section>
+</section>
+<section id="feedback-signals">
+<h2>7. <code class="docutils literal notranslate"><span class="pre">feedback_signals</span></code> 表<a class="headerlink" href="#feedback-signals" title="链接到此标题。"></a></h2>
+<p>DDL 来自 <code class="docutils literal notranslate"><span class="pre">src/cortex/schema.sql</span></code>（Feedback 回灌段落）：</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">cortex</span><span class="p">.</span><span class="n">feedback_signals</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">feedback_id</span><span class="w">      </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">            </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">pack_id</span><span class="w">          </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">                          </span><span class="c1">-- 引用 recall_packs.pack_id(可选,溯源哪次召回)</span>
+<span class="w">    </span><span class="n">target_layer</span><span class="w">     </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">target_layer</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;fact&#39;</span><span class="p">,</span><span class="s1">&#39;belief&#39;</span><span class="p">,</span><span class="s1">&#39;event&#39;</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">target_id</span><span class="w">        </span><span class="n">UUID</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">signal_type</span><span class="w">      </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">signal_type</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;relevant&#39;</span><span class="p">,</span><span class="s1">&#39;irrelevant&#39;</span><span class="p">,</span><span class="s1">&#39;wrong&#39;</span><span class="p">,</span><span class="s1">&#39;partial&#39;</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">signal_durable</span><span class="w">   </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;long_term&#39;</span>
+<span class="w">                     </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">signal_durable</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;task_temporary&#39;</span><span class="p">,</span><span class="s1">&#39;scenario_specific&#39;</span><span class="p">,</span><span class="s1">&#39;long_term&#39;</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">strength</span><span class="w">         </span><span class="nb">FLOAT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">1</span><span class="p">.</span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="n">reason</span><span class="w">           </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">actor</span><span class="w">            </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">idempotency_key</span><span class="w">  </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">created_at</span><span class="w">       </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">applied</span><span class="w">          </span><span class="nb">BOOLEAN</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">false</span><span class="p">,</span>
+<span class="w">    </span><span class="n">applied_at</span><span class="w">       </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="k">UNIQUE</span><span class="p">(</span><span class="n">idempotency_key</span><span class="p">)</span>
+<span class="p">);</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">idx_feedback_target</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">cortex</span><span class="p">.</span><span class="n">feedback_signals</span><span class="w"> </span><span class="p">(</span><span class="k">scope</span><span class="p">,</span><span class="w"> </span><span class="n">target_id</span><span class="p">);</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">idx_feedback_pack</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">cortex</span><span class="p">.</span><span class="n">feedback_signals</span><span class="w"> </span><span class="p">(</span><span class="n">pack_id</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>字段说明：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>字段</p></th>
+<th class="head"><p>类型</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">feedback_id</span></code></p></td>
+<td><p>UUID</p></td>
+<td><p>主键，<code class="docutils literal notranslate"><span class="pre">gen_random_uuid()</span></code> 自动生成</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">scope</span></code></p></td>
+<td><p>TEXT</p></td>
+<td><p>命名空间隔离，必填</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pack_id</span></code></p></td>
+<td><p>TEXT</p></td>
+<td><p>可选，引用 <code class="docutils literal notranslate"><span class="pre">recall_packs.pack_id</span></code>，溯源是哪次召回引发的反馈</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">target_layer</span></code></p></td>
+<td><p>TEXT</p></td>
+<td><p>目标层级：<code class="docutils literal notranslate"><span class="pre">fact</span></code> / <code class="docutils literal notranslate"><span class="pre">belief</span></code> / <code class="docutils literal notranslate"><span class="pre">event</span></code>（CHECK 约束）</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">target_id</span></code></p></td>
+<td><p>UUID</p></td>
+<td><p>目标实体 ID</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">signal_type</span></code></p></td>
+<td><p>TEXT</p></td>
+<td><p>信号类型：四值之一（CHECK 约束）</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">signal_durable</span></code></p></td>
+<td><p>TEXT</p></td>
+<td><p>持久化分级：三值之一，默认 <code class="docutils literal notranslate"><span class="pre">long_term</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">strength</span></code></p></td>
+<td><p>FLOAT</p></td>
+<td><p>信号强度，默认 1.0（当前未参与加权，预留扩展）</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reason</span></code></p></td>
+<td><p>TEXT</p></td>
+<td><p>可选的修正理由</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">actor</span></code></p></td>
+<td><p>TEXT</p></td>
+<td><p>提交者标识（API 层注入 <code class="docutils literal notranslate"><span class="pre">actor=&quot;api&quot;</span></code>）</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">idempotency_key</span></code></p></td>
+<td><p>TEXT</p></td>
+<td><p>幂等键，UNIQUE 约束，用于原子去重</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">created_at</span></code></p></td>
+<td><p>TIMESTAMPTZ</p></td>
+<td><p>创建时间</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">applied</span></code></p></td>
+<td><p>BOOLEAN</p></td>
+<td><p>是否已应用即时动作，默认 false（submit_feedback 写入时设 true）</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">applied_at</span></code></p></td>
+<td><p>TIMESTAMPTZ</p></td>
+<td><p>应用时间</p></td>
+</tr>
+</tbody>
+</table>
+<p>索引：<code class="docutils literal notranslate"><span class="pre">idx_feedback_target</span></code> 支持按 scope+target 查询反馈历史；<code class="docutils literal notranslate"><span class="pre">idx_feedback_pack</span></code> 支持按召回包溯源。</p>
+<p>注意：当前实现中 <code class="docutils literal notranslate"><span class="pre">target_layer</span></code> 仅在 <code class="docutils literal notranslate"><span class="pre">fact</span></code> 时触发即时动作（<code class="docutils literal notranslate"><span class="pre">submit_feedback</span></code> 内部分发）。<code class="docutils literal notranslate"><span class="pre">belief</span></code> / <code class="docutils literal notranslate"><span class="pre">event</span></code> 层的信号只入表记录，留给离线巩固处理。</p>
+</section>
+<section id="api-mcp">
+<h2>8. API 与 MCP<a class="headerlink" href="#api-mcp" title="链接到此标题。"></a></h2>
+<section id="rest-api">
+<h3>8.1 REST API<a class="headerlink" href="#rest-api" title="链接到此标题。"></a></h3>
+<p><strong>POST /v1/feedback</strong> — 提交反馈（<code class="docutils literal notranslate"><span class="pre">src/cortex/interfaces/api/routes/operations.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">submit_feedback</span></code> 路由）：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@router</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">&quot;/v1/feedback&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">submit_feedback</span><span class="p">(</span><span class="n">body</span><span class="p">:</span> <span class="n">schemas</span><span class="o">.</span><span class="n">FeedbackRequest</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">submit_feedback_signal</span><span class="p">(</span>
+        <span class="n">scope</span><span class="o">=</span><span class="n">body</span><span class="o">.</span><span class="n">scope</span><span class="p">,</span>
+        <span class="n">target_layer</span><span class="o">=</span><span class="n">body</span><span class="o">.</span><span class="n">target_layer</span><span class="p">,</span>
+        <span class="n">target_id</span><span class="o">=</span><span class="n">body</span><span class="o">.</span><span class="n">target_id</span><span class="p">,</span>
+        <span class="n">signal_type</span><span class="o">=</span><span class="n">body</span><span class="o">.</span><span class="n">signal_type</span><span class="p">,</span>
+        <span class="n">signal_durable</span><span class="o">=</span><span class="n">body</span><span class="o">.</span><span class="n">signal_durable</span><span class="p">,</span>
+        <span class="n">reason</span><span class="o">=</span><span class="n">body</span><span class="o">.</span><span class="n">reason</span><span class="p">,</span>
+        <span class="n">actor</span><span class="o">=</span><span class="s2">&quot;api&quot;</span><span class="p">,</span>
+        <span class="n">pack_id</span><span class="o">=</span><span class="n">body</span><span class="o">.</span><span class="n">pack_id</span><span class="p">,</span>
+        <span class="n">idempotency_key</span><span class="o">=</span><span class="n">body</span><span class="o">.</span><span class="n">idempotency_key</span><span class="p">,</span>
+    <span class="p">)</span>
+</pre></div>
+</div>
+<p>请求体 <code class="docutils literal notranslate"><span class="pre">FeedbackRequest</span></code>（<code class="docutils literal notranslate"><span class="pre">src/cortex/interfaces/api/schemas.py</span></code>）：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">FeedbackRequest</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">target_layer</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;fact&quot;</span><span class="p">,</span> <span class="s2">&quot;belief&quot;</span><span class="p">,</span> <span class="s2">&quot;event&quot;</span><span class="p">]</span>
+    <span class="n">target_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">signal_type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;relevant&quot;</span><span class="p">,</span> <span class="s2">&quot;irrelevant&quot;</span><span class="p">,</span> <span class="s2">&quot;wrong&quot;</span><span class="p">,</span> <span class="s2">&quot;partial&quot;</span><span class="p">]</span>
+    <span class="n">signal_durable</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;task_temporary&quot;</span><span class="p">,</span> <span class="s2">&quot;scenario_specific&quot;</span><span class="p">,</span> <span class="s2">&quot;long_term&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;long_term&quot;</span>
+    <span class="n">reason</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">pack_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">idempotency_key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">actor</span></code> 由路由层硬编码为 <code class="docutils literal notranslate"><span class="pre">&quot;api&quot;</span></code>（不再有 <code class="docutils literal notranslate"><span class="pre">Depends(auth)</span></code> 注入——operations 路由挂在 <code class="docutils literal notranslate"><span class="pre">app.include_router(operations_router)</span></code> 上，未套任何鉴权依赖）。<code class="docutils literal notranslate"><span class="pre">Literal</span></code> 类型校验保证 <code class="docutils literal notranslate"><span class="pre">signal_type</span></code> / <code class="docutils literal notranslate"><span class="pre">signal_durable</span></code> 取值合法，非法值在 Pydantic 层即被拒。</p>
+<p>请求示例：</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8002/v1/feedback<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">    &quot;scope&quot;: &quot;proj_a&quot;,</span>
+<span class="s1">    &quot;target_layer&quot;: &quot;fact&quot;,</span>
+<span class="s1">    &quot;target_id&quot;: &quot;3f9c1e2a-...&quot;,</span>
+<span class="s1">    &quot;signal_type&quot;: &quot;wrong&quot;,</span>
+<span class="s1">    &quot;signal_durable&quot;: &quot;task_temporary&quot;,</span>
+<span class="s1">    &quot;reason&quot;: &quot;事实已过期&quot;,</span>
+<span class="s1">    &quot;idempotency_key&quot;: &quot;fb-2026-07-09-3f9c1e2a-wrong&quot;</span>
+<span class="s1">  }&#39;</span>
+</pre></div>
+</div>
+<p>返回：</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;feedback_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;8a7b...&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;signal_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wrong&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;applied_actions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="s2">&quot;assertion_ruled_out&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s2">&quot;salience_demoted&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s2">&quot;fact_archived(task_temporary)&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s2">&quot;methylation_triggered(count=4)&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s2">&quot;cache_invalidated&quot;</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>GET /v1/feedback</strong> — 查询反馈（<code class="docutils literal notranslate"><span class="pre">operations.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">list_feedback</span></code> 路由）：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/v1/feedback&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">list_feedback</span><span class="p">(</span>
+    <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">target_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">),</span>
+    <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">200</span><span class="p">),</span>
+<span class="p">):</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="n">list_feedback_signals</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="n">scope</span><span class="p">,</span> <span class="n">target_id</span><span class="o">=</span><span class="n">target_id</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">)}</span>
+</pre></div>
+</div>
+<p>支持 <code class="docutils literal notranslate"><span class="pre">scope</span></code>（必填）、<code class="docutils literal notranslate"><span class="pre">target_id</span></code>（可选）、<code class="docutils literal notranslate"><span class="pre">limit</span></code>（≤200）三个查询参数。</p>
+</section>
+<section id="mcp">
+<h3>8.2 MCP 工具<a class="headerlink" href="#mcp" title="链接到此标题。"></a></h3>
+<p>两个工具位于 <code class="docutils literal notranslate"><span class="pre">src/cortex/interfaces/mcp_server.py</span></code>：</p>
+<p><strong>feedback_submit</strong>：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">()</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">feedback_submit</span><span class="p">(</span><span class="n">target_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">signal_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                    <span class="n">target_layer</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;fact&quot;</span><span class="p">,</span>
+                    <span class="n">signal_durable</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;long_term&quot;</span><span class="p">,</span>
+                    <span class="n">reason</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="n">scope</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">Context</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Submit feedback on a recalled memory to optimize future recall.</span>
+
+<span class="sd">    Call this after memory_search/answer when you find a recalled fact is</span>
+<span class="sd">    relevant, irrelevant, wrong, or only partially correct. The system adjusts</span>
+<span class="sd">    ranking salience and may archive clearly-wrong memories.</span>
+
+<span class="sd">    signal_type: relevant | irrelevant | wrong | partial</span>
+<span class="sd">    signal_durable: task_temporary (one-off, may delete) | scenario_specific | long_term</span>
+<span class="sd">    target_id: the fact_id (or belief_id/event_id) from the recall result.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">...memory.feedback</span><span class="w"> </span><span class="kn">import</span> <span class="n">submit_feedback</span>
+    <span class="k">return</span> <span class="n">submit_feedback</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="n">_eff_scope</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">scope</span><span class="p">),</span> <span class="n">target_layer</span><span class="o">=</span><span class="n">target_layer</span><span class="p">,</span>
+                           <span class="n">target_id</span><span class="o">=</span><span class="n">target_id</span><span class="p">,</span> <span class="n">signal_type</span><span class="o">=</span><span class="n">signal_type</span><span class="p">,</span>
+                           <span class="n">signal_durable</span><span class="o">=</span><span class="n">signal_durable</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="n">reason</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>feedback_list</strong>：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">()</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">feedback_list</span><span class="p">(</span><span class="n">target_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+                  <span class="n">scope</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">Context</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;List feedback signals for a scope (optionally filtered by target_id).&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">...memory.feedback</span><span class="w"> </span><span class="kn">import</span> <span class="n">list_feedback</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="n">list_feedback</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="n">_eff_scope</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">scope</span><span class="p">),</span> <span class="n">target_id</span><span class="o">=</span><span class="n">target_id</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">)}</span>
+</pre></div>
+</div>
+<p>MCP 工具与 REST API 的差异：MCP 的 <code class="docutils literal notranslate"><span class="pre">scope</span></code> 可选，缺省时由 <code class="docutils literal notranslate"><span class="pre">_eff_scope(ctx,</span> <span class="pre">scope)</span></code> 从上下文推断；MCP 入口不暴露 <code class="docutils literal notranslate"><span class="pre">pack_id</span></code> / <code class="docutils literal notranslate"><span class="pre">idempotency_key</span></code>，适合 agent 在一次对话内即时回灌，无需关心幂等去重的场景。</p>
+<p>典型 agent 调用模式：先 <code class="docutils literal notranslate"><span class="pre">memory_search</span></code> 拿到 <code class="docutils literal notranslate"><span class="pre">fact_id</span></code>，检查结果是否合用，随即调 <code class="docutils literal notranslate"><span class="pre">feedback_submit</span></code> 回灌。这一闭环让 agent 的判断直接转化为下次召回的优化信号。</p>
+</section>
+</section>
+<section id="id7">
+<h2>9. 配置<a class="headerlink" href="#id7" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">FeedbackCfg</span></code> 位于 <code class="docutils literal notranslate"><span class="pre">src/cortex/infra/config.py</span></code>：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">FeedbackCfg</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Feedback 回灌:修正信号优化召回(双轨--软降权 salience + 硬归档 recorded_to)。&quot;&quot;&quot;</span>
+    <span class="n">enabled</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">positive_weight</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span>       <span class="c1"># 正反馈 salience 提升量</span>
+    <span class="n">negative_weight</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.3</span>       <span class="c1"># 负反馈 salience 降低量</span>
+    <span class="n">demote_threshold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span>          <span class="c1"># 累积负反馈达此值触发 methylation</span>
+    <span class="n">salience_floor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.1</span>        <span class="c1"># salience 最低值(不归零,保留可恢复)</span>
+    <span class="n">salience_ceiling</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">2.0</span>      <span class="c1"># salience 最高值</span>
+    <span class="n">cache_invalidate</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>      <span class="c1"># 提交反馈后失效 recall_packs</span>
+</pre></div>
+</div>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>字段</p></th>
+<th class="head"><p>类型</p></th>
+<th class="head"><p>默认</p></th>
+<th class="head"><p>作用</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">enabled</span></code></p></td>
+<td><p>bool</p></td>
+<td><p>True</p></td>
+<td><p>总开关。False 时 <code class="docutils literal notranslate"><span class="pre">submit_feedback</span></code> 直接返回 <code class="docutils literal notranslate"><span class="pre">feedback</span> <span class="pre">disabled</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">positive_weight</span></code></p></td>
+<td><p>float</p></td>
+<td><p>0.5</p></td>
+<td><p>每次 <code class="docutils literal notranslate"><span class="pre">relevant</span></code> 信号 salience 上调量</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">negative_weight</span></code></p></td>
+<td><p>float</p></td>
+<td><p>0.3</p></td>
+<td><p>每次 <code class="docutils literal notranslate"><span class="pre">irrelevant</span></code> / <code class="docutils literal notranslate"><span class="pre">wrong</span></code> 信号 salience 下调量</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">demote_threshold</span></code></p></td>
+<td><p>int</p></td>
+<td><p>3</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">negative_feedback_count</span></code> 达此值触发 <code class="docutils literal notranslate"><span class="pre">_check_methylation</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">salience_floor</span></code></p></td>
+<td><p>float</p></td>
+<td><p>0.1</p></td>
+<td><p>salience 钳底。不为 0，保留可恢复性</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">salience_ceiling</span></code></p></td>
+<td><p>float</p></td>
+<td><p>2.0</p></td>
+<td><p>salience 钳顶，防正反馈无限膨胀</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">cache_invalidate</span></code></p></td>
+<td><p>bool</p></td>
+<td><p>True</p></td>
+<td><p>提交反馈后 <code class="docutils literal notranslate"><span class="pre">DELETE</span> <span class="pre">FROM</span> <span class="pre">recall_packs</span> <span class="pre">WHERE</span> <span class="pre">scope=:s</span></code>，强制下次重算</p></td>
+</tr>
+</tbody>
+</table>
+<section id="id8">
+<h3>9.1 权重不对称的设计<a class="headerlink" href="#id8" title="链接到此标题。"></a></h3>
+<p>注意 <code class="docutils literal notranslate"><span class="pre">positive_weight</span> <span class="pre">(0.5)</span> <span class="pre">&gt;</span> <span class="pre">negative_weight</span> <span class="pre">(0.3)</span></code>。这是有意的非对称：正反馈比负反馈更&quot;重&quot;。一次正反馈需要 ~1.7 次负反馈才能抵消。理由是<strong>正反馈的成本更低、信号更可信</strong>——用户主动确认某条有用，比抱怨某条无用更接近真实判断。而负反馈可能是上下文误判、查询歧义等噪声，应累积多次（<code class="docutils literal notranslate"><span class="pre">demote_threshold=3</span></code>）才触发硬剪枝。</p>
+</section>
+<section id="cache-invalidate">
+<h3>9.2 cache_invalidate 的取舍<a class="headerlink" href="#cache-invalidate" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">cache_invalidate=True</span></code> 意味着每次反馈都会清空该 scope 的所有 <code class="docutils literal notranslate"><span class="pre">recall_packs</span></code> 缓存。这保证反馈立即生效——下次召回一定看到新的 salience。代价是高频反馈场景下缓存命中率下降。若你的工作负载是&quot;召回多、反馈少&quot;，默认值合适；若是&quot;反馈密集型&quot;（如批量标注），可考虑关闭并依赖 TTL 过期。</p>
+</section>
+<section id="id9">
+<h3>9.3 配置示例<a class="headerlink" href="#id9" title="链接到此标题。"></a></h3>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">feedback</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">positive_weight</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5</span>
+<span class="w">  </span><span class="nt">negative_weight</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.3</span>
+<span class="w">  </span><span class="nt">demote_threshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">  </span><span class="nt">salience_floor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.1</span>
+<span class="w">  </span><span class="nt">salience_ceiling</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2.0</span>
+<span class="w">  </span><span class="nt">cache_invalidate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</pre></div>
+</div>
+<p>调参建议：</p>
+<ul class="simple">
+<li><p><strong>保守场景</strong>（数据珍贵、误判代价高）：调高 <code class="docutils literal notranslate"><span class="pre">demote_threshold</span></code> 到 5，降低 <code class="docutils literal notranslate"><span class="pre">negative_weight</span></code> 到 0.2，让负反馈累积更慢。</p></li>
+<li><p><strong>激进场景</strong>（噪声数据多、要快速清洗）：调低 <code class="docutils literal notranslate"><span class="pre">demote_threshold</span></code> 到 2，调高 <code class="docutils literal notranslate"><span class="pre">negative_weight</span></code> 到 0.5，但注意 <code class="docutils literal notranslate"><span class="pre">salience_floor</span></code> 不要降到 0，否则失去可恢复性。</p></li>
+<li><p><strong>离线巩固为主</strong>：把 <code class="docutils literal notranslate"><span class="pre">partial</span></code> 信号作为 Dreaming 的主输入，即时反馈权重可整体调低，让离线 LLM 综合判断后再批量调整。</p></li>
+</ul>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="10-signal-bus.html" class="btn btn-neutral float-left" title="第10章 信号总线 — 记忆自演化的基础设施" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="12-dreaming.html" class="btn btn-neutral float-right" title="第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

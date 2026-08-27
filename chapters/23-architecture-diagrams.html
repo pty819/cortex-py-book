@@ -1,0 +1,1768 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第23章 架构视图（4+1 视图模型） &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第24章 运行配置与前端运维" href="24-config-and-frontend.html" />
+    <link rel="prev" title="第22章 Erasures 系统" href="22-erasures.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第23章 架构视图（4+1 视图模型）</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id2">23.1 视图模型与隔离规则</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">23.2 逻辑视图：功能的对象分解</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id4">23.2.1 关键抽象</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5">23.2.2 领域对象图</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id6">23.2.3 架构显著状态机</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id7">23.2.4 领域不变量</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id8">23.3 进程视图：并发与同步</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id9">23.3.1 进程清单</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id10">23.3.2 进程内任务</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id11">23.3.3 通信与同步机制</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#worker">23.3.4 Worker 任务类型</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id12">23.4 开发视图：源码静态组织</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id13">23.4.1 子系统分层与依赖矩阵</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id14">23.4.2 模块地图（一句话级）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#schema">23.4.3 schema 真相源</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id15">23.4.4 构建入口与工具链</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id16">23.5 物理视图：部署拓扑</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id17">23.5.1 节点模型</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id18">23.5.2 进程 → 节点映射与部署变体</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id19">23.5.3 端口与外部依赖</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id20">23.6 场景视图（用例视图，+1）</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id21">23.6.1 参与者与用例总览（功能需求）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#uc1">23.6.2 场景一：写入记忆（UC1 的实例 · 最核心）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#uc3">23.6.3 场景二：召回 + 流式回答（UC3 的实例 · 最高频）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#gdpr-uc8">23.6.4 场景三：GDPR 遗忘（UC8 的实例 · 风险最大）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id22">23.6.5 次级场景（对照表）</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id23">23.7 视图对应关系</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id24">23.7.1 逻辑 → 进程（每个抽象在哪条控制线上执行）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id25">23.7.2 逻辑 → 开发（每个抽象落在哪些子系统；刻意非 1:1）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id26">23.7.3 进程 → 物理（每种进程部署到哪类节点）</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id27">23.8 关键约束与架构决策（按视图归类）</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第23章 架构视图（4+1 视图模型）</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/23-architecture-diagrams.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="id1">
+<h1>第23章 架构视图（4+1 视图模型）<a class="headerlink" href="#id1" title="链接到此标题。"></a></h1>
+<blockquote>
+<div><p>本章依据 Philippe Kruchten 1995 年提出的 4+1 视图模型（<em>Architectural Blueprints — The “4+1” View Model of Software Architecture</em>, IEEE Software 12(6), pp. 42–50）描述 cortex-py 的软件架构：<strong>逻辑视图</strong>（功能的对象分解）、<strong>进程视图</strong>（并发与同步）、<strong>开发视图</strong>（源码的静态组织）、<strong>物理视图</strong>（软件到硬件节点的映射），再加上把四个视图缝合在一起的<strong>场景视图</strong>（+1）。</p>
+<p>4+1 的要义不是&quot;画五张图&quot;，而是让不同的干系人各自拿到回答自己问题的那一刀；五个视图描述的是<strong>同一套架构的五个投影</strong>。因此本章对每个视图都明确规定两件事——<strong>本视图回答什么问题、禁止出现什么内容</strong>——并在 23.7 节用显式的&quot;视图对应关系&quot;把各投影重新对齐。领域细节见第 0–2 章，各子系统实现细节见第 3–22 章，本章只保留<strong>架构显著</strong>的内容。</p>
+</div></blockquote>
+<section id="id2">
+<h2>23.1 视图模型与隔离规则<a class="headerlink" href="#id2" title="链接到此标题。"></a></h2>
+<p>Kruchten 用 Perry &amp; Wolf 的公式逐视图展开：<strong>架构 = {元素, 形式, 理由/约束}</strong>——每个视图有自己的元素（构件与连接件）、自己的风格，以及自己的干系人：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>视图</p></th>
+<th class="head"><p>干系人</p></th>
+<th class="head"><p>关注点</p></th>
+<th class="head"><p>构件</p></th>
+<th class="head"><p>连接件</p></th>
+<th class="head"><p>常用 UML 图</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>逻辑</strong></p></td>
+<td><p>最终用户、领域与数据专家</p></td>
+<td><p>功能：系统向用户提供什么服务</p></td>
+<td><p>类（关键抽象）</p></td>
+<td><p>关联、组合、继承</p></td>
+<td><p>类图、状态图</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>进程</strong></p></td>
+<td><p>系统集成者、性能工程师</p></td>
+<td><p>非功能：并发、同步、容错、完整性、可伸缩性</p></td>
+<td><p>进程、任务</p></td>
+<td><p>消息、RPC、事件广播、锁</p></td>
+<td><p>时序图、活动图、通信图</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>开发</strong></p></td>
+<td><p>程序员、软件配置管理</p></td>
+<td><p>组织：模块划分、复用、发布策略</p></td>
+<td><p>模块、子系统</p></td>
+<td><p>编译 / import 依赖</p></td>
+<td><p>包图、组件图</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>物理</strong></p></td>
+<td><p>系统工程师</p></td>
+<td><p>拓扑：软件映射到哪些节点</p></td>
+<td><p>节点（硬件）</p></td>
+<td><p>通信介质（LAN、HTTP、stdio）</p></td>
+<td><p>部署图</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>场景（+1）</strong></p></td>
+<td><p>全体干系人</p></td>
+<td><p>验证：少数关键用例把四个视图缝合起来</p></td>
+<td><p>参与者 · 用例 · 脚本步骤</p></td>
+<td><p>对象间与进程间交互</p></td>
+<td><p>用例图、时序图</p></td>
+</tr>
+</tbody>
+</table>
+<pre  class="mermaid">
+        graph TB
+    LOG[&quot;逻辑视图&lt;br/&gt;功能 · 对象模型&quot;]
+    PROC[&quot;进程视图&lt;br/&gt;并发 · 同步&quot;]
+    DEV[&quot;开发视图&lt;br/&gt;模块 · 分层&quot;]
+    PHYS[&quot;物理视图&lt;br/&gt;节点 · 部署&quot;]
+    SCEN((&quot;场景&lt;br/&gt;+1&quot;))
+    SCEN --- LOG
+    SCEN --- PROC
+    SCEN --- DEV
+    SCEN --- PHYS
+    </pre><div class="tip admonition">
+<p class="admonition-title">为什么每个视图要写&quot;本视图不包含&quot;</p>
+<p>4+1 最常见的退化，是把同一张&quot;子系统方框图&quot;在五个视图里各贴一遍：用包结构冒充逻辑视图、用部署图冒充进程视图。结果是五个视图互相重叠、谁也回答不了自己的问题。本章各节末尾都有一条<strong>本视图不包含</strong>清单，用来守住视图边界——例如&quot;五子包分层&quot;只出现在开发视图（23.4），&quot;端口与机器&quot;只出现在物理视图（23.5）。</p>
+</div>
+<p><strong>读法建议</strong>：想理解系统&quot;记住什么、能回答什么&quot;从 23.2 进入；想理解&quot;怎么跑起来、怎么容错&quot;从 23.3 进入；想改代码从 23.4 进入；想部署从 23.5 进入；想验证自己理解是否自洽，读 23.6 的场景。</p>
+</section>
+<hr class="docutils" />
+<section id="id3">
+<h2>23.2 逻辑视图：功能的对象分解<a class="headerlink" href="#id3" title="链接到此标题。"></a></h2>
+<p>逻辑视图回答最终用户（Agent、诊断工程师）的问题：<strong>cortex-py 记住了什么、能回答什么</strong>。系统被分解为一组取自问题域的关键抽象，以及它们之间的关系与不变量。这里不出现任何包名、进程名或机器名。</p>
+<section id="id4">
+<h3>23.2.1 关键抽象<a class="headerlink" href="#id4" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>抽象</p></th>
+<th class="head"><p>职责（一句话）</p></th>
+<th class="head"><p>为什么架构显著</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Scope</strong></p></td>
+<td><p>层级命名空间（如 <code class="docutils literal notranslate"><span class="pre">org:acme/dept:eng/user:alice</span></code>），一切对象的隔离键</p></td>
+<td><p>所有读写以 scope 为前提；它是命名空间而非权限边界（AuthZ 归上游）</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Event</strong></p></td>
+<td><p>不可变的事实记录单元，WAL 式只追加，系统<strong>唯一真相源</strong></p></td>
+<td><p>一切派生层（Facts/Beliefs/Understanding）均可由 Events 重放重建</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Episode / Case</strong></p></td>
+<td><p>有界事件序列；Case 是带生命周期的诊断工作单元（设备/批次/根因）</p></td>
+<td><p>给散乱事件定界，是&quot;诊断 Case 检索&quot;的组织单位</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Entity</strong></p></td>
+<td><p>现实对象（设备/子系统/部件/人/批次），图谱节点，多别名同一身份</p></td>
+<td><p>实体链接的载体，图谱质量的命门</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Predicate</strong></p></td>
+<td><p>受控关系词表（36 个，结构 8 / 因果 5 / 诊断 22 / 状态 1）</p></td>
+<td><p>图谱的&quot;语言&quot;；预定义谓词保证图可遍历、语义一致</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Fact</strong></p></td>
+<td><p>双时态三元组断言 <code class="docutils literal notranslate"><span class="pre">(subject,</span> <span class="pre">predicate,</span> <span class="pre">object)</span></code>，既是知识单元又是<strong>图的边</strong></p></td>
+<td><p>整个系统的中心抽象：检索、推理、演化都发生在 Fact 图上</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Belief</strong></p></td>
+<td><p>概率断言（claim + confidence + stance），带 supports 证据链</p></td>
+<td><p>从 Facts 聚合出&quot;我们目前怎么看 X&quot;</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Understanding</strong></p></td>
+<td><p>概念合成层（per topic），related 概念图</p></td>
+<td><p>从 Beliefs 提炼跨案例的理解</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Playbook</strong></p></td>
+<td><p>人审定的诊断规程 DAG，版本化不可变追加</p></td>
+<td><p>程序性知识：在 Fact 图上做确定性前向推理，<strong>不修改</strong> Fact 图</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Evidence</strong></p></td>
+<td><p>外部证据目录（URI / source_record_id / hash / quality），payload 留在权威系统</p></td>
+<td><p>把&quot;引用&quot;与&quot;拷贝&quot;分开，支撑可信度与追溯</p></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<div><p><strong>信号总线不是对象，而是 Fact 上的共享信号属性</strong>：<code class="docutils literal notranslate"><span class="pre">salience</span></code>（Feedback 软降权）、<code class="docutils literal notranslate"><span class="pre">retrieval_count</span></code>（被动召回次数）、<code class="docutils literal notranslate"><span class="pre">retrieval_usefulness</span></code>(显式反馈累积)。反馈 / 巩固（Dreaming）/ 高阶归纳（Higher-Order）三个自演化机制都读写同一组信号列，因而耦合为一个子系统，而不是三个互不知情的孤岛（对比 MindMemOS 的解耦设计，见第 25 章）。</p>
+</div></blockquote>
+</section>
+<section id="id5">
+<h3>23.2.2 领域对象图<a class="headerlink" href="#id5" title="链接到此标题。"></a></h3>
+<pre  class="mermaid">
+        classDiagram
+    direction LR
+    class Scope {
+        +scope_path
+        +parent_path
+    }
+    class Event {
+        +wal_offset
+        +observed_at
+        +recorded_at
+        +idempotency_key
+    }
+    class Episode {
+        +event_ids
+        +started_at
+    }
+    class Case {
+        +case_id
+        +status
+        +phase
+    }
+    class Entity {
+        +canonical_name
+        +entity_type
+        +aliases
+    }
+    class Predicate {
+        +category
+        +cardinality
+    }
+    class Fact {
+        +subject_id
+        +predicate
+        +polarity
+        +assertion_status
+    }
+    class Belief {
+        +claim
+        +confidence
+        +supports
+    }
+    class Understanding {
+        +topic
+        +summary
+        +related
+    }
+    class Playbook {
+        +name
+        +version
+        +nodes
+        +edges
+    }
+    class Evidence {
+        +uri
+        +content_hash
+        +quality
+    }
+
+    Scope &quot;1&quot; o-- &quot;0..*&quot; Event : 隔离
+    Scope &quot;1&quot; o-- &quot;0..*&quot; Fact : 隔离
+    Event ..&gt; Fact : 抽取
+    Event ..&gt; Episode : 分段
+    Episode &lt;|-- Case
+    Case &quot;1&quot; o-- &quot;0..*&quot; Event : 显式关联
+    Fact &quot;1&quot; --&gt; &quot;1..2&quot; Entity : subject / object
+    Fact --&gt; Predicate
+    Fact ..&gt; Fact : 图遍历 2-3 跳
+    Fact ..&gt; Belief : 聚合
+    Belief ..&gt; Understanding : 合成
+    Understanding ..&gt; Understanding : related
+    Playbook ..&gt; Fact : 前向推理·只读
+    Evidence &quot;0..*&quot; ..&gt; Fact : claim-evidence
+    </pre><div class="note admonition">
+<p class="admonition-title">Fact 的完整语义</p>
+<p>Fact 除图中字段外还携带：<strong>双时态四字段</strong> <code class="docutils literal notranslate"><span class="pre">valid_from/valid_to</span></code>（业务时间）+ <code class="docutils literal notranslate"><span class="pre">recorded_at/recorded_to</span></code>（系统时间）；<strong>断言双轴</strong> <code class="docutils literal notranslate"><span class="pre">polarity</span></code>（positive/negative）× <code class="docutils literal notranslate"><span class="pre">assertion_status</span></code>（observed/hypothesized/confirmed/ruled_out/rejected）；以及信号总线三列（见上文）。object 端可以是 Entity，也可以是受控词表的字面值（value 型谓词）。详见第 2、6 章。</p>
+</div>
+</section>
+<section id="id6">
+<h3>23.2.3 架构显著状态机<a class="headerlink" href="#id6" title="链接到此标题。"></a></h3>
+<p>只有跨多个模块、影响行为一致性的生命周期才进逻辑视图：</p>
+<p><strong>Case 状态</strong>（正交的 <code class="docutils literal notranslate"><span class="pre">phase</span></code> 轴：observation → scoping → investigation → correlation → root_cause → remediation → regression）：</p>
+<pre  class="mermaid">
+        stateDiagram-v2
+    direction LR
+    [*] --&gt; open : 创建
+    open --&gt; investigating
+    investigating --&gt; resolved : 定位根因
+    resolved --&gt; closed : 归档
+    closed --&gt; [*]
+    </pre><p><strong>Playbook 版本状态</strong>（版本化不可变追加，LLM 不自动改写）：</p>
+<pre  class="mermaid">
+        stateDiagram-v2
+    direction LR
+    [*] --&gt; draft
+    draft --&gt; active : 评审通过
+    active --&gt; retired : 停用
+    draft --&gt; retired
+    </pre></section>
+<section id="id7">
+<h3>23.2.4 领域不变量<a class="headerlink" href="#id7" title="链接到此标题。"></a></h3>
+<p>不变量是逻辑视图的&quot;形式与约束&quot;，任何实现都必须维持：</p>
+<ol class="arabic simple">
+<li><p><strong>WAL 不可变</strong>：Event 只追加、不修改不删除（擦除走 redact 保 id）。</p></li>
+<li><p><strong>双时态四字段</strong>：同时回答&quot;现在什么是真的&quot;（valid + recorded 当前值）与&quot;当时我们怎么以为&quot;（历史区间）。</p></li>
+<li><p><strong>结构谓词收敛</strong>：同 <code class="docutils literal notranslate"><span class="pre">(scope,</span> <span class="pre">subject,</span> <span class="pre">predicate,</span> <span class="pre">object,</span> <span class="pre">polarity)</span></code> 的结构性 Fact 只保留一条活跃边，重复断言累积为证据而非多值并存。</p></li>
+<li><p><strong>派生可重建</strong>：Facts / Beliefs / Understanding 均可从 Events 重放得出。</p></li>
+<li><p><strong>Scope 隔离</strong>：所有对象与查询以 scope 为前提；跨 scope 只经显式的祖先视图（local / holistic / descend）。</p></li>
+<li><p><strong>归档守卫</strong>：活跃写操作带 <code class="docutils literal notranslate"><span class="pre">recorded_to</span> <span class="pre">IS</span> <span class="pre">NULL</span> <span class="pre">AND</span> <span class="pre">valid_to</span> <span class="pre">IS</span> <span class="pre">NULL</span></code> 守卫，不篡改已归档历史。</p></li>
+</ol>
+<p><strong>本视图不包含</strong>：包结构与目录树（→ 23.4 开发视图）；进程、队列与锁（→ 23.3 进程视图）；机器、端口与部署配置（→ 23.5 物理视图）。</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="id8">
+<h2>23.3 进程视图：并发与同步<a class="headerlink" href="#id8" title="链接到此标题。"></a></h2>
+<p>进程视图回答集成者与性能工程师的问题：<strong>运行时有哪些可独立启动/恢复/停止的执行单元，它们如何通信、同步、容错</strong>。</p>
+<section id="id9">
+<h3>23.3.1 进程清单<a class="headerlink" href="#id9" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>进程</p></th>
+<th class="head"><p>实例数</p></th>
+<th class="head"><p>承载的工作</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>API 进程</strong>（FastAPI / uvicorn）</p></td>
+<td><p>1</p></td>
+<td><p>同步 REST 端点、SSE 流（lifecycle / answer stream）、召回与回答</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>MCP HTTP 进程</strong></p></td>
+<td><p>1</p></td>
+<td><p>面向远程 Agent 的 MCP 工具调用（streamable-http）</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>MCP stdio 进程</strong></p></td>
+<td><p>每 Agent 1 个</p></td>
+<td><p>面向本地 Agent（如 Claude Code）的子进程模式</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Worker 进程</strong></p></td>
+<td><p>1~N</p></td>
+<td><p>异步任务循环：抽取、分段、维护、巩固、归纳</p></td>
+</tr>
+<tr class="row-even"><td><p>PostgreSQL</p></td>
+<td><p>（外部设施）</p></td>
+<td><p><strong>唯一共享状态</strong>：数据 + 队列 + 通知</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心声明：所有进程无共享内存</strong>，进程间的一切协调——任务分发、生命周期通知、互斥、幂等——都经 PostgreSQL 完成。不引入 Redis 或独立消息中间件。</p>
+<pre  class="mermaid">
+        graph TB
+    subgraph procs[&quot;cortex-py 进程&quot;]
+        API[&quot;API 进程&quot;]
+        MCPH[&quot;MCP HTTP 进程&quot;]
+        MCPS[&quot;MCP stdio 进程&lt;br/&gt;（每 Agent 一个）&quot;]
+        WK[&quot;Worker 进程 ×1~N&quot;]
+    end
+    PG[(&quot;PostgreSQL&lt;br/&gt;数据 · 队列 · NOTIFY&quot;)]
+    AGT[&quot;Agent / 浏览器（外部刺激）&quot;]
+
+    AGT --&gt;|HTTP / SSE| API
+    AGT --&gt;|stdio| MCPS
+    AGT --&gt;|HTTP| MCPH
+    API --&gt;|SQL · LISTEN| PG
+    MCPH --&gt;|SQL| PG
+    MCPS --&gt;|SQL| PG
+    WK --&gt;|SQL · SKIP LOCKED| PG
+    </pre></section>
+<section id="id10">
+<h3>23.3.2 进程内任务<a class="headerlink" href="#id10" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>进程</p></th>
+<th class="head"><p>任务（线程级）</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>API</p></td>
+<td><p>同步端点跑在内建线程池；SSE 生成器经 <code class="docutils literal notranslate"><span class="pre">asyncio.to_thread</span></code> 逐项拉取（单项拉取形成<strong>自然背压</strong>）；外部 I/O（LLM/embed/rerank）经共享 <code class="docutils literal notranslate"><span class="pre">ThreadPoolExecutor</span></code> 并行</p></td>
+</tr>
+<tr class="row-odd"><td><p>Worker</p></td>
+<td><p>主循环 poll 1s；heartbeat 后台线程每 60s 续命；reaper 每 60s 扫僵尸 job；dreaming 调度器挂在 reaper 周期</p></td>
+</tr>
+<tr class="row-even"><td><p>MCP</p></td>
+<td><p>每个工具调用同步处理（全同步模型，无 async DB）</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="id11">
+<h3>23.3.3 通信与同步机制<a class="headerlink" href="#id11" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>机制</p></th>
+<th class="head"><p>位置</p></th>
+<th class="head"><p>作用</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Postgres-as-queue</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">claim_next_job</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">FOR</span> <span class="pre">UPDATE</span> <span class="pre">SKIP</span> <span class="pre">LOCKED</span></code> 原子抢 job，多 Worker 无冲突</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>visibility timeout</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">reap_zombies</span></code></p></td>
+<td><p>running 且 <code class="docutils literal notranslate"><span class="pre">locked_at</span></code> 超 300s → 按 attempts 分流：未超限重置 queued，超限判死信；两分支均用事务级 advisory lock 与在飞 Worker 互斥</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>指数退避重试</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">fail_job</span></code></p></td>
+<td><p>瞬态失败按 <code class="docutils literal notranslate"><span class="pre">backoff_base^attempts</span></code> 退避；超 <code class="docutils literal notranslate"><span class="pre">max_attempts</span></code> 进 failed 死信</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>heartbeat</strong></p></td>
+<td><p>Worker 后台线程</p></td>
+<td><p>每 60s 刷新 job 的 <code class="docutils literal notranslate"><span class="pre">locked_at</span></code>（owner-fencing 带 <code class="docutils literal notranslate"><span class="pre">worker_id</span></code>），防长任务被误重排</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>advisory lock</strong></p></td>
+<td><p>dreaming</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pg_try_advisory_lock(dream:{scope})</span></code> 序列化同 scope 的巩固运行</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>pg_notify → LISTEN</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">emit_lifecycle</span></code></p></td>
+<td><p>lifecycle 事件推送；<code class="docutils literal notranslate"><span class="pre">?wait=</span></code> 语义用专用连接 LISTEN 阻塞等待</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>SSE 长连接</strong></p></td>
+<td><p>API stream 端点</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">EventSourceResponse</span></code> + 断连探活；同步生成器逐项输出</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>幂等 WAL</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">append_event</span></code></p></td>
+<td><p>同 <code class="docutils literal notranslate"><span class="pre">idempotency_key</span></code> + 同 body hash → 返回既有；异 body → 409</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>反馈幂等与串行</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">submit_feedback</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ON</span> <span class="pre">CONFLICT</span> <span class="pre">(idempotency_key)</span> <span class="pre">DO</span> <span class="pre">NOTHING</span></code> 原子去重；<code class="docutils literal notranslate"><span class="pre">FOR</span> <span class="pre">UPDATE</span></code> 行锁串行化同 Fact 并发反馈</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>容错分级</strong>（失败纪律）：检索各通道与 rerank <strong>单独 fail-open</strong>（坏一路不影响整包）；瞬态 LLM 失败 raise 给 Worker 退避重试；抽取<strong>配置</strong>错误是终端的（job 直接 failed，不重试）。</p>
+</section>
+<section id="worker">
+<h3>23.3.4 Worker 任务类型<a class="headerlink" href="#worker" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>job_type</p></th>
+<th class="head"><p>触发</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">extract</span></code></p></td>
+<td><p>每次 experience 入库</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">segment</span></code></p></td>
+<td><p>显式 <code class="docutils literal notranslate"><span class="pre">/v1/episodes/build</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">methylation</span></code> / <code class="docutils literal notranslate"><span class="pre">consolidate</span></code> / <code class="docutils literal notranslate"><span class="pre">enrich</span></code></p></td>
+<td><p>定时 / admin</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">synthesize</span></code></p></td>
+<td><p>显式 <code class="docutils literal notranslate"><span class="pre">/v1/understanding/synthesize</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dream</span></code></p></td>
+<td><p>scheduler 定时（同 scope 无 queued/running dream 时入队）</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">higher_order</span></code></p></td>
+<td><p>extract 后异步触发</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>本视图不包含</strong>：机器、端口与部署变体（→ 23.5）；包与模块结构（→ 23.4）；领域语义与不变量（→ 23.2）。</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="id12">
+<h2>23.4 开发视图：源码静态组织<a class="headerlink" href="#id12" title="链接到此标题。"></a></h2>
+<p>开发视图回答程序员与配置管理者的问题：<strong>代码怎么拆成可独立开发的子系统，依赖朝哪个方向，怎么构建</strong>。五子包分层<strong>只属于本视图</strong>。</p>
+<section id="id13">
+<h3>23.4.1 子系统分层与依赖矩阵<a class="headerlink" href="#id13" title="链接到此标题。"></a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>             infra   memory   graph   diagnostics   interfaces
+infra          -       ✗        ✗          ✗             ✗
+memory         ✓       -        ✗*         ✗             ✗
+graph          ✓       ✗        -          ✗             ✗
+diagnostics    ✓       ✓        ✗          -             ✗
+interfaces     ✓       ✓        ✓          ✓             -
+</pre></div>
+</div>
+<p>规则：上层可依赖下层，下层<strong>不得</strong>反向依赖；<code class="docutils literal notranslate"><span class="pre">graph</span></code> 不依赖 <code class="docutils literal notranslate"><span class="pre">memory</span></code>；<code class="docutils literal notranslate"><span class="pre">diagnostics</span></code> 只依赖 <code class="docutils literal notranslate"><span class="pre">infra</span></code>/<code class="docutils literal notranslate"><span class="pre">memory</span></code>。唯一记录在案的例外（✗*）：<code class="docutils literal notranslate"><span class="pre">memory.ingest</span></code> 通过<strong>函数内 lazy import</strong> 调 <code class="docutils literal notranslate"><span class="pre">graph.extraction</span></code>，避免循环导入——严格意义上 memory 顶层不依赖 graph。</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>src/cortex/
+├── infra/          # 基础设施（10 模块）：config · db · core(WAL+队列) · services
+│                   #   · concurrency · prompts · ontology · chunking
+│                   #   · token_budget · think_stream
+├── memory/         # 记忆写入与生命周期（14 模块）：ingest · episodes · erasures
+│                   #   · temporal · export_data · maintenance · understanding
+│                   #   · evidence · evolution · feedback · dreaming
+│                   #   · higher_order · graph_mutations · terminology
+├── graph/          # 知识图谱：extraction/（抽取+实体链接） · retrieval/（6通道+融合+重排）
+├── diagnostics/    # 诊断推理：engine（纯函数 DAG 引擎） · forward_reasoning（持久化+版本）
+└── interfaces/     # 对外入口：api/ · mcp_server · cli · smoke · worker/
+</pre></div>
+</div>
+<div class="note admonition">
+<p class="admonition-title">与重构前的差异</p>
+<p>重构（commit <code class="docutils literal notranslate"><span class="pre">347afb1</span></code>）前约 30 个 py 文件平铺在 <code class="docutils literal notranslate"><span class="pre">src/cortex/</span></code> 根下；重构后按职责归入子包（<code class="docutils literal notranslate"><span class="pre">diagnostics</span></code> 随后追加），依赖从隐式变为显式分层。旧平铺路径已不可用。</p>
+</div>
+</section>
+<section id="id14">
+<h3>23.4.2 模块地图（一句话级）<a class="headerlink" href="#id14" title="链接到此标题。"></a></h3>
+<p>各模块的完整职责见对应章节，此处只给导航：</p>
+<ul class="simple">
+<li><p><strong>infra</strong> —— 无业务语义的基础设施：配置（含热更新白名单）、DB 会话、WAL+队列、外部服务客户端、并行 I/O 线程池、prompt 常量、谓词本体单一真相源、分块、token 预算、think 流状态机。</p></li>
+<li><p><strong>memory</strong> —— 记忆的写入与生命周期治理：批量导入、Episode/Case、GDPR 擦除、时间短语、导出、维护（甲基化/巩固）、概念合成、证据目录、演化审批、反馈、巩固、高阶归纳、受控图写、词表。</p></li>
+<li><p><strong>graph</strong> —— 抽取管线（LLM 三元组 + 实体链接 B over C）与检索管线（6 通道 + RRF + 信号加权 + rerank + StratifiedPack）。详见第 4–5、14–16 章。</p></li>
+<li><p><strong>diagnostics</strong> —— 纯函数 DAG 引擎 + 持久化版本管理。详见第 7b 章。</p></li>
+<li><p><strong>interfaces</strong> —— FastAPI（实测 97 端点：app 29 + routes/ 68，10 个领域路由模块）、MCP server（53 工具，双传输）、CLI、冒烟、Worker 循环。详见第 18–20 章。</p></li>
+</ul>
+</section>
+<section id="schema">
+<h3>23.4.3 schema 真相源<a class="headerlink" href="#schema" title="链接到此标题。"></a></h3>
+<p>schema 变更以 <strong>Alembic 迁移</strong>为真相源（<code class="docutils literal notranslate"><span class="pre">0001_current_schema</span></code> → <code class="docutils literal notranslate"><span class="pre">0008_predicate_cleanup</span></code>，共 8 个 revision，34 张表）；<code class="docutils literal notranslate"><span class="pre">schema.sql</span></code> 已降级为审阅用基线参考。<code class="docutils literal notranslate"><span class="pre">init_schema()</span></code> 即 <code class="docutils literal notranslate"><span class="pre">upgrade_database(&quot;head&quot;)</span></code>；生产降级默认拒绝。</p>
+</section>
+<section id="id15">
+<h3>23.4.4 构建入口与工具链<a class="headerlink" href="#id15" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>入口</p></th>
+<th class="head"><p>命令</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>console script</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">cortex</span> <span class="pre">&lt;cmd&gt;</span></code>（serve / worker / mcp / mcp-http / db / probe-llm / smoke）</p></td>
+</tr>
+<tr class="row-odd"><td><p>模块运行</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">cortex.interfaces.cli</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>API</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">uvicorn</span> <span class="pre">cortex.interfaces.api.app:app</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Worker</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">cortex</span> <span class="pre">worker</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>工具链：Python 3.12 + <code class="docutils literal notranslate"><span class="pre">uv</span></code> 管理（hatchling 打包），ruff（line-length 110）。测试按被测层组织，与五包对应；全量回归 <code class="docutils literal notranslate"><span class="pre">scripts/run_regression.sh</span></code>（pytest + stage0 SQL + stage6/7 + Case + MCP 双传输验收），用例数以 <code class="docutils literal notranslate"><span class="pre">pytest</span> <span class="pre">--co</span> <span class="pre">-q</span></code> 实时为准。</p>
+<p><strong>本视图不包含</strong>：运行时锁、队列与通知行为（→ 23.3）；机器与端口（→ 23.5）；领域不变量（→ 23.2）。</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="id16">
+<h2>23.5 物理视图：部署拓扑<a class="headerlink" href="#id16" title="链接到此标题。"></a></h2>
+<p>物理视图回答系统工程师的问题：<strong>软件（进程）映射到哪些硬件/网络节点上，有哪几种部署配置</strong>。</p>
+<section id="id17">
+<h3>23.5.1 节点模型<a class="headerlink" href="#id17" title="链接到此标题。"></a></h3>
+<pre  class="mermaid">
+        graph TB
+    subgraph clients[&quot;客户端节点&quot;]
+        VUE[&quot;浏览器&lt;br/&gt;Vue 3 控制平面&quot;]
+        CC[&quot;本地 Agent&lt;br/&gt;（Claude Code 等）&quot;]
+        RA[&quot;远程 Agent&quot;]
+    end
+    subgraph apphost[&quot;应用主机（1~N 台）&quot;]
+        API[&quot;API 进程 :8002&quot;]
+        MCPH[&quot;MCP HTTP 进程 :8001&quot;]
+        MCPS[&quot;MCP stdio 进程&quot;]
+        WK[&quot;Worker 进程 ×1~N&quot;]
+    end
+    subgraph dbnode[&quot;数据库节点&quot;]
+        PG[(&quot;PostgreSQL 18&lt;br/&gt;pgvector · pg_textsearch · pg_trgm&quot;)]
+    end
+    subgraph saas[&quot;外部模型服务（SaaS）&quot;]
+        LLM[&quot;Minimax-M3&quot;]
+        EMB[&quot;jina-embeddings-v5 1024d&quot;]
+        RR[&quot;Prism Rerank&quot;]
+    end
+
+    VUE --&gt;|HTTP / SSE| API
+    CC --&gt;|stdio| MCPS
+    RA --&gt;|HTTP| MCPH
+    API --&gt; PG
+    MCPH --&gt; PG
+    MCPS --&gt; PG
+    WK --&gt; PG
+    API --&gt; LLM
+    API --&gt; EMB
+    API --&gt; RR
+    WK --&gt; LLM
+    WK --&gt; EMB
+    </pre></section>
+<section id="id18">
+<h3>23.5.2 进程 → 节点映射与部署变体<a class="headerlink" href="#id18" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>进程</p></th>
+<th class="head"><p>A. 本地单进程</p></th>
+<th class="head"><p>B. 单机多进程（典型）</p></th>
+<th class="head"><p>C. 局域网分布</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>API</p></td>
+<td><p>—（不需要）</p></td>
+<td><p>应用主机</p></td>
+<td><p>应用主机 ×1~N（无状态，可前置负载均衡）</p></td>
+</tr>
+<tr class="row-odd"><td><p>MCP stdio</p></td>
+<td><p>与 Agent 同机子进程</p></td>
+<td><p>应用主机</p></td>
+<td><p>各 Agent 本机</p></td>
+</tr>
+<tr class="row-even"><td><p>MCP HTTP</p></td>
+<td><p>—</p></td>
+<td><p>应用主机 :8001</p></td>
+<td><p>应用主机 :8001</p></td>
+</tr>
+<tr class="row-odd"><td><p>Worker</p></td>
+<td><p>—</p></td>
+<td><p>应用主机 ×1~N</p></td>
+<td><p>独立主机 ×1~N（<code class="docutils literal notranslate"><span class="pre">SKIP</span> <span class="pre">LOCKED</span></code> 天然无冲突）</p></td>
+</tr>
+<tr class="row-even"><td><p>PostgreSQL</p></td>
+<td><p>本机 Docker</p></td>
+<td><p>应用主机或旁路</p></td>
+<td><p>独立 DB 主机（标准端口 5432）</p></td>
+</tr>
+<tr class="row-odd"><td><p>适用场景</p></td>
+<td><p>个人 Agent / 开发</p></td>
+<td><p>小团队生产</p></td>
+<td><p>团队增长后拆分</p></td>
+</tr>
+</tbody>
+</table>
+<p>变体 B、C 是<strong>同一套进程模型的两种节点摆放</strong>，不改代码。开发态 PG 用 Docker（<code class="docutils literal notranslate"><span class="pre">postgres:18-bookworm</span></code> + pgvector v0.8.2 + pg_textsearch v0.2.0，容器 <code class="docutils literal notranslate"><span class="pre">cortex-db</span></code>）。</p>
+</section>
+<section id="id19">
+<h3>23.5.3 端口与外部依赖<a class="headerlink" href="#id19" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>项</p></th>
+<th class="head"><p>值</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>API / MCP HTTP / 前端 / PG</p></td>
+<td><p>8002 / 8001 / 5173 / 5432</p></td>
+<td><p>前端 Vite 代理 <code class="docutils literal notranslate"><span class="pre">/v1</span></code> → API</p></td>
+</tr>
+<tr class="row-odd"><td><p>PostgreSQL 18</p></td>
+<td><p><strong>不可替换</strong></p></td>
+<td><p>深度依赖 pgvector（HNSW，1024d）、pg_textsearch（BM25，需 <code class="docutils literal notranslate"><span class="pre">shared_preload_libraries</span></code>）、pg_trgm</p></td>
+</tr>
+<tr class="row-even"><td><p>Minimax-M3 / jina-embeddings / Prism Rerank</p></td>
+<td><p>可替换</p></td>
+<td><p>OpenAI 兼容接口；embedding 换型号需重算全量（维度锁 1024）</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>扩展边界</strong>：垂直——单 PG + 读副本即可支撑小团队；水平——Worker 与 API/MCP 多实例；<strong>不做</strong>——集群、分片、多租户强隔离、企业安全（产品定位个人/小团队，见第 0 章）。</p>
+<p><strong>本视图不包含</strong>：类与领域关系（→ 23.2）；锁与队列机制（→ 23.3）；包结构（→ 23.4）。</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="id20">
+<h2>23.6 场景视图（用例视图，+1）<a class="headerlink" href="#id20" title="链接到此标题。"></a></h2>
+<p>场景视图又称<strong>用例视图</strong>：从<strong>参与者</strong>（actor）的视角收拢系统的功能需求（用例），再挑出少数关键用例做成<strong>场景</strong>（用例的一次具体执行实例）去缝合其余四个视图。它在 Kruchten 的模型里是<strong>冗余</strong>的（故称 +1），作用有二：架构设计期<strong>驱动发现</strong>架构元素；架构完成后<strong>验证与说明</strong>四个视图描述的是同一套系统。</p>
+<p>三个术语要分清：<strong>用例</strong>是功能需求——“某类参与者要系统能做什么”；<strong>场景</strong>是用例的一次执行实例；<strong>时序图</strong>只是场景脚本的记法，不是视图本身。本节先给参与者与用例总览（23.6.1），再把架构关键场景作为用例实例展开（23.6.2–23.6.5），每个场景配一张<strong>四视图对照表</strong>——这是缝合的关键；实现级细节回链对应章节。</p>
+<section id="id21">
+<h3>23.6.1 参与者与用例总览（功能需求）<a class="headerlink" href="#id21" title="链接到此标题。"></a></h3>
+<p>cortex-py 的功能划分为<strong>四个功能子系统</strong>，每个子系统是一组内聚的用例（功能需求），全部包含在用例边界框内：</p>
+<ul class="simple">
+<li><p><strong>知识入库</strong> —— 把经验写进记忆，运行时写入路径（详见中篇第 3–9 章）；</p></li>
+<li><p><strong>知识出库</strong> —— 从记忆中取出知识，服务提问与诊断（读取路径，详见下篇第 14–17 章）；</p></li>
+<li><p><strong>知识管理</strong> —— 使用知识时的伴随治理：全景浏览、反馈、遗忘（第 10–13、21–22 章）；</p></li>
+<li><p><strong>软件运维控制</strong> —— 知识库运营与系统运维：知识预灌入、手工增删改查、诊断 Case 管理、功能开关与调参、后台管理（第 7、20、24 章）。</p></li>
+</ul>
+<div class="note admonition">
+<p class="admonition-title">用例子系统 ≠ 开发视图的子包</p>
+<p>用例子系统是<strong>功能分组</strong>（面向需求），与开发视图（23.4）的五个代码子包（面向实现组织）不是同一维度——例如&quot;知识出库&quot;子系统在代码上横跨 <code class="docutils literal notranslate"><span class="pre">graph.retrieval</span></code> 与 <code class="docutils literal notranslate"><span class="pre">diagnostics</span></code> 两个包。</p>
+</div>
+<p>系统有<strong>三个直接用户</strong>（按接入方式区分）与<strong>一个后台角色</strong>：</p>
+<ol class="arabic simple">
+<li><p><strong>① Agent · MCP 通道</strong> —— Claude Code / 远程 Agent 的程序化调用，走 MCP 协议；</p></li>
+<li><p><strong>② Agent · REST 通道</strong> —— RESTful API 直连的程序化调用，走 HTTP 协议；</p></li>
+<li><p><strong>③ 诊断工程师 · 网页控制面板</strong> —— 直接人机交互，使用知识库：检索提问、诊断推理、知识浏览与反馈；</p></li>
+<li><p><strong>④ 运维人员 · 后台管理</strong> —— 知识库的内容运维与系统运维：知识预灌入、单条 / 批量知识手工增删改查、诊断 Case 管理、功能开关、超参数调优、演化候选审批、任务队列监控。</p></li>
+</ol>
+<p>三个直接用户<strong>功能面等价但途径各异</strong>——能用的是同一批子系统，具体交互方式与协议不同（MCP 工具调用 / REST 请求 / 面板操作）。因此不设抽象的中间参与者，三个直接用户<strong>各自直连</strong>到所需的三个知识子系统（知识入库 / 知识出库 / 知识管理）。<strong>软件运维控制只属于运维人员</strong>：知识预灌入、手工增删改查与诊断 Case 管理属于知识库的运营工作，连同开关、调参与后台管理一起，均不面向直接用户。</p>
+<pre  class="mermaid">
+        graph LR
+    AGM[&quot;① Agent · MCP 通道&quot;]
+    AGR[&quot;② Agent · REST 通道&quot;]
+    ENG[&quot;③ 诊断工程师 · 网页控制面板&quot;]
+    OPS[&quot;④ 运维人员 · 后台管理&quot;]
+
+    subgraph SYS[&quot;cortex-py（用例边界框）&quot;]
+        subgraph SUB_IN[&quot;知识入库&quot;]
+            UC1((&quot;写入经验&quot;))
+        end
+        subgraph SUB_OUT[&quot;知识出库&quot;]
+            UC2((&quot;召回记忆&quot;))
+            UC3((&quot;提问 · 流式回答&quot;))
+            UC4((&quot;Similar Case 检索&quot;))
+            UC5((&quot;Playbook 正向推理&quot;))
+        end
+        subgraph SUB_MGMT[&quot;知识管理&quot;]
+            UC6((&quot;知识全景浏览&quot;))
+            UC7((&quot;反馈信号&quot;))
+            UC8((&quot;GDPR 遗忘&quot;))
+        end
+        subgraph SUB_OPS[&quot;软件运维控制&quot;]
+            UC9((&quot;知识预灌入&quot;))
+            UC10((&quot;手工知识增删改查&quot;))
+            UC11((&quot;管理诊断 Case&quot;))
+            UC12((&quot;功能开关与超参调优&quot;))
+            UC13((&quot;后台管理&lt;br/&gt;演化审批 · 队列监控&quot;))
+        end
+    end
+
+    AGM --&gt; SUB_IN
+    AGM --&gt; SUB_OUT
+    AGM --&gt; SUB_MGMT
+    AGR --&gt; SUB_IN
+    AGR --&gt; SUB_OUT
+    AGR --&gt; SUB_MGMT
+    ENG --&gt; SUB_IN
+    ENG --&gt; SUB_OUT
+    ENG --&gt; SUB_MGMT
+    OPS --&gt; SUB_OPS
+    UC3 -.-&gt;|include| UC2
+    UC5 -.-&gt;|include| UC2
+    </pre><table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>子系统</p></th>
+<th class="head"><p>用例</p></th>
+<th class="head"><p>参与者</p></th>
+<th class="head"><p>需求要点</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>知识入库</p></td>
+<td><p>UC1 写入经验</p></td>
+<td><p>直接用户（①②③）</p></td>
+<td><p>幂等 WAL 入库；<code class="docutils literal notranslate"><span class="pre">?wait=</span></code> 同步语义</p></td>
+</tr>
+<tr class="row-odd"><td><p>知识出库</p></td>
+<td><p>UC2 召回记忆</p></td>
+<td><p>直接用户（①②③）</p></td>
+<td><p>6 通道混合检索 + 融合重排，返回分层证据包（StratifiedPack）</p></td>
+</tr>
+<tr class="row-even"><td><p>知识出库</p></td>
+<td><p>UC3 提问 · 流式回答</p></td>
+<td><p>直接用户（①②③）</p></td>
+<td><p>强制 think；SSE 分流 reasoning / answer；引用与 pack 可追溯</p></td>
+</tr>
+<tr class="row-odd"><td><p>知识出库</p></td>
+<td><p>UC4 Similar Case 检索</p></td>
+<td><p>直接用户（①②③）</p></td>
+<td><p>按设备 / 症状 / 根因特征检索同构历史案例</p></td>
+</tr>
+<tr class="row-even"><td><p>知识出库</p></td>
+<td><p>UC5 Playbook 正向推理</p></td>
+<td><p>直接用户（①②③）</p></td>
+<td><p>确定性 DAG 遍历，给出下一步检查与结论建议</p></td>
+</tr>
+<tr class="row-odd"><td><p>知识管理</p></td>
+<td><p>UC6 知识全景浏览</p></td>
+<td><p>直接用户（①②③）</p></td>
+<td><p>分层预览 entities / facts / beliefs / understanding 与图谱可视化</p></td>
+</tr>
+<tr class="row-even"><td><p>知识管理</p></td>
+<td><p>UC7 反馈信号</p></td>
+<td><p>直接用户（①②③）</p></td>
+<td><p>relevant / irrelevant / wrong / partial；即时影响召回排序</p></td>
+</tr>
+<tr class="row-odd"><td><p>知识管理</p></td>
+<td><p>UC8 GDPR 遗忘</p></td>
+<td><p>直接用户（①②③）</p></td>
+<td><p>两阶段 preview / execute；引用计数真删</p></td>
+</tr>
+<tr class="row-even"><td><p>软件运维控制</p></td>
+<td><p>UC9 知识预灌入</p></td>
+<td><p>运维人员④</p></td>
+<td><p>5 种导入器（jsonl / mem0 / zep / letta / openai）；长文档按标题分块</p></td>
+</tr>
+<tr class="row-odd"><td><p>软件运维控制</p></td>
+<td><p>UC10 手工知识增删改查</p></td>
+<td><p>运维人员④</p></td>
+<td><p>单条 / 批量实体与事实的受控写；守卫一致、留审计</p></td>
+</tr>
+<tr class="row-even"><td><p>软件运维控制</p></td>
+<td><p>UC11 管理诊断 Case</p></td>
+<td><p>运维人员④</p></td>
+<td><p>open → investigating → resolved → closed 全生命周期；事件挂接</p></td>
+</tr>
+<tr class="row-odd"><td><p>软件运维控制</p></td>
+<td><p>UC12 功能开关与超参数调优</p></td>
+<td><p>运维人员④</p></td>
+<td><p>白名单热更新即时生效，无需重启</p></td>
+</tr>
+<tr class="row-even"><td><p>软件运维控制</p></td>
+<td><p>UC13 后台管理</p></td>
+<td><p>运维人员④</p></td>
+<td><p>演化候选审批（Dreaming / Higher-Order）；任务队列监控</p></td>
+</tr>
+</tbody>
+</table>
+<div class="note admonition">
+<p class="admonition-title">用例视图与逻辑视图的分工</p>
+<p>两者都涉及&quot;功能&quot;，但视角不同：<strong>逻辑视图</strong>（23.2）站在设计者一侧，回答&quot;系统内部用什么对象与机制实现功能&quot;；<strong>用例视图</strong>站在参与者一侧，回答&quot;从外部要系统做什么&quot;，是功能需求的总目录。场景是其中关键用例的执行实例，用来缝合其余四个视图。</p>
+</div>
+<p>选出的架构关键场景：UC1（最核心——系统存在的理由）、UC3（最高频）、UC8（风险最大——不可逆操作），外加 UC7 / UC12 两个次级场景。</p>
+</section>
+<section id="uc1">
+<h3>23.6.2 场景一：写入记忆（UC1 的实例 · 最核心）<a class="headerlink" href="#uc1" title="链接到此标题。"></a></h3>
+<p>诊断工程师（本场景经其 Agent 通道）提交一段经验，系统把它变成可召回的知识。</p>
+<pre  class="mermaid">
+        sequenceDiagram
+    participant A as Agent
+    participant API as API 进程
+    participant DB as PostgreSQL
+    participant WK as Worker 进程
+    A-&gt;&gt;API: POST /v1/experience
+    API-&gt;&gt;DB: Event 追加（幂等键去重）
+    API-&gt;&gt;DB: Job(extract) 入队
+    API--&gt;&gt;A: event_id（?wait= 时 LISTEN 阻塞至 NOTIFY）
+    WK-&gt;&gt;DB: SKIP LOCKED 抢 job
+    Note over WK: LLM 抽取候选三元组 →&lt;br/&gt;实体链接（向量→阈值→LLM 灰区）→&lt;br/&gt;双时态写入 + 结构收敛
+    WK-&gt;&gt;DB: Fact / Belief 落库
+    WK-&gt;&gt;DB: lifecycle NOTIFY
+    </pre><table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>视图</p></th>
+<th class="head"><p>本场景动用的元素</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>逻辑</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Event.append</span></code>（幂等）；<code class="docutils literal notranslate"><span class="pre">Entity</span></code> 身份合并；<code class="docutils literal notranslate"><span class="pre">Fact</span></code> 写入（双时态 + 结构谓词收敛）；<code class="docutils literal notranslate"><span class="pre">Belief</span></code> upsert；<code class="docutils literal notranslate"><span class="pre">Predicate</span></code> 图准入</p></td>
+</tr>
+<tr class="row-odd"><td><p>进程</p></td>
+<td><p>API 进程请求线程 → PG 队列 → Worker job 线程；<code class="docutils literal notranslate"><span class="pre">pg_notify</span></code> 回连 <code class="docutils literal notranslate"><span class="pre">?wait=</span></code>；瞬态失败退避重试</p></td>
+</tr>
+<tr class="row-even"><td><p>开发</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">interfaces.api</span></code> → <code class="docutils literal notranslate"><span class="pre">infra.core</span></code> → <code class="docutils literal notranslate"><span class="pre">graph.extraction</span></code> → <code class="docutils literal notranslate"><span class="pre">infra.services</span></code> / <code class="docutils literal notranslate"><span class="pre">infra.ontology</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>物理</p></td>
+<td><p>客户端节点 → 应用主机 → DB 节点；LLM SaaS（抽取调用）</p></td>
+</tr>
+</tbody>
+</table>
+<p>细节见第 3–5 章。</p>
+</section>
+<section id="uc3">
+<h3>23.6.3 场景二：召回 + 流式回答（UC3 的实例 · 最高频）<a class="headerlink" href="#uc3" title="链接到此标题。"></a></h3>
+<p>诊断工程师提问，系统召回分层证据并流式生成带推理过程的回答。</p>
+<pre  class="mermaid">
+        sequenceDiagram
+    participant A as Agent
+    participant API as API 进程
+    participant RET as 检索管线
+    participant DB as PostgreSQL
+    participant LLM as LLM SaaS
+    A-&gt;&gt;API: GET answer/stream（SSE）
+    API-&gt;&gt;RET: recall(scope, query)
+    RET-&gt;&gt;LLM: 并行 embed / HyDE / 多跳分解
+    RET-&gt;&gt;DB: 6 通道并行检索（各通道 fail-open）
+    RET-&gt;&gt;RET: RRF 融合 → 信号总线加权 → rerank
+    RET-&gt;&gt;DB: 命中写回 retrieval_count（隐式反馈环）
+    RET--&gt;&gt;API: StratifiedPack（events/facts/beliefs/higher_order）
+    API--&gt;&gt;A: SSE phase recall_done
+    API-&gt;&gt;LLM: 流式生成（强制 think）
+    API--&gt;&gt;A: SSE reasoning / answer 分流输出
+    </pre><table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>视图</p></th>
+<th class="head"><p>本场景动用的元素</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>逻辑</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Fact</span></code> 图遍历与多通道命中；信号总线读取（salience / count / usefulness）；<code class="docutils literal notranslate"><span class="pre">Belief</span></code> / <code class="docutils literal notranslate"><span class="pre">Understanding</span></code> 分层装包</p></td>
+</tr>
+<tr class="row-odd"><td><p>进程</p></td>
+<td><p>API 进程内：线程池并行外部 I/O；SSE 逐项拉取背压；think 状态机跨 chunk 分流</p></td>
+</tr>
+<tr class="row-even"><td><p>开发</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">interfaces.api</span></code> → <code class="docutils literal notranslate"><span class="pre">graph.retrieval</span></code>（channels / pipeline）→ <code class="docutils literal notranslate"><span class="pre">infra.services</span></code> / <code class="docutils literal notranslate"><span class="pre">infra.think_stream</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>物理</p></td>
+<td><p>客户端节点 → 应用主机 → DB 节点 + embed/rerank/LLM 三个 SaaS</p></td>
+</tr>
+</tbody>
+</table>
+<p>细节见第 14–16 章。</p>
+</section>
+<section id="gdpr-uc8">
+<h3>23.6.4 场景三：GDPR 遗忘（UC8 的实例 · 风险最大）<a class="headerlink" href="#gdpr-uc8" title="链接到此标题。"></a></h3>
+<p>按 scope 擦除个人数据，同时不破坏 WAL 完整性与共享证据。</p>
+<pre  class="mermaid">
+        sequenceDiagram
+    participant A as Agent
+    participant API as API 进程
+    participant ER as 擦除子系统
+    participant DB as PostgreSQL
+    A-&gt;&gt;API: POST /v1/erasures/preview
+    API-&gt;&gt;ER: enumerate + refcount
+    ER--&gt;&gt;A: manifest（逐 event：删 or redact）
+    A-&gt;&gt;API: POST /v1/erasures
+    API-&gt;&gt;ER: 执行 manifest
+    ER-&gt;&gt;DB: 引用&gt;0 → redact（清 content 保 id）；引用=0 → 物理删
+    ER-&gt;&gt;DB: 清 facts/beliefs.supports；blob 引用计数回收
+    ER--&gt;&gt;A: erasure_id
+    </pre><table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>视图</p></th>
+<th class="head"><p>本场景动用的元素</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>逻辑</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Event</span></code> 不可变性的例外路径（redact）；<code class="docutils literal notranslate"><span class="pre">Fact.supports</span></code> 证据链拆链；blob 引用计数不变量</p></td>
+</tr>
+<tr class="row-odd"><td><p>进程</p></td>
+<td><p>纯 API 进程内同步完成（无 Worker 参与）；两阶段 preview/execute</p></td>
+</tr>
+<tr class="row-even"><td><p>开发</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">interfaces.api</span></code> → <code class="docutils literal notranslate"><span class="pre">memory.erasures</span></code> → <code class="docutils literal notranslate"><span class="pre">infra.db</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>物理</p></td>
+<td><p>客户端节点 → 应用主机 → DB 节点</p></td>
+</tr>
+</tbody>
+</table>
+<p>细节见第 22 章。</p>
+</section>
+<section id="id22">
+<h3>23.6.5 次级场景（对照表）<a class="headerlink" href="#id22" title="链接到此标题。"></a></h3>
+<p><strong>反馈回灌闭环</strong>（UC7 的实例，自演化主入口）：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>视图</p></th>
+<th class="head"><p>本场景动用的元素</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>逻辑</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Fact</span></code> 信号列调整（软降权 salience / 硬归档 recorded_to）；负反馈累积触发甲基化级联（跳过仍被活跃 Fact 支撑的 Event）</p></td>
+</tr>
+<tr class="row-odd"><td><p>进程</p></td>
+<td><p>API 进程内：幂等去重 + <code class="docutils literal notranslate"><span class="pre">FOR</span> <span class="pre">UPDATE</span></code> 串行；级联在 Worker 的 methylation job</p></td>
+</tr>
+<tr class="row-even"><td><p>开发</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">interfaces.api</span></code> → <code class="docutils literal notranslate"><span class="pre">memory.feedback</span></code> →（阈值处）<code class="docutils literal notranslate"><span class="pre">memory.maintenance</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>物理</p></td>
+<td><p>客户端节点 → 应用主机 → DB 节点</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>配置热更新</strong>（UC12 的实例）：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>视图</p></th>
+<th class="head"><p>本场景动用的元素</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>逻辑</p></td>
+<td><p>无领域对象变更——纯运行时开关（dreaming.enabled 等）</p></td>
+</tr>
+<tr class="row-odd"><td><p>进程</p></td>
+<td><p>API 进程内白名单深合并、原地改单例，即时生效无重启</p></td>
+</tr>
+<tr class="row-even"><td><p>开发</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">interfaces.api</span></code>（admin 路由）→ <code class="docutils literal notranslate"><span class="pre">infra.config</span></code>（白名单禁改 database / embedding.dimension）</p></td>
+</tr>
+<tr class="row-odd"><td><p>物理</p></td>
+<td><p>浏览器（Settings 页）→ 应用主机</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<hr class="docutils" />
+<section id="id23">
+<h2>23.7 视图对应关系<a class="headerlink" href="#id23" title="链接到此标题。"></a></h2>
+<p>Kruchten 明确指出：<strong>各视图不正交、不独立</strong>，元素按设计规则跨视图连接；且项目越大，逻辑与开发、进程与物理两两距离越大——<strong>禁止期待 1:1 映射</strong>。下面三张表是 cortex-py 的显式缝合。</p>
+<section id="id24">
+<h3>23.7.1 逻辑 → 进程（每个抽象在哪条控制线上执行）<a class="headerlink" href="#id24" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>逻辑抽象</p></th>
+<th class="head"><p>主要操作</p></th>
+<th class="head"><p>执行位置</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Event</p></td>
+<td><p>append（幂等）</p></td>
+<td><p>API / MCP 进程，请求线程</p></td>
+</tr>
+<tr class="row-odd"><td><p>Event → Fact</p></td>
+<td><p>抽取 + 实体链接</p></td>
+<td><p>Worker 进程，extract job</p></td>
+</tr>
+<tr class="row-even"><td><p>Fact / Belief / Understanding</p></td>
+<td><p>检索、融合、装包</p></td>
+<td><p>API 进程，recall 调用链</p></td>
+</tr>
+<tr class="row-odd"><td><p>Fact</p></td>
+<td><p>信号调整（反馈）</p></td>
+<td><p>API 进程（即时）+ Worker（级联）</p></td>
+</tr>
+<tr class="row-even"><td><p>Fact</p></td>
+<td><p>巩固 / 高阶归纳</p></td>
+<td><p>Worker 进程，dream / higher_order job</p></td>
+</tr>
+<tr class="row-odd"><td><p>Playbook</p></td>
+<td><p>前向推理</p></td>
+<td><p>API / MCP 进程（engine 为纯函数，无 DB）</p></td>
+</tr>
+<tr class="row-even"><td><p>Event</p></td>
+<td><p>擦除 redact</p></td>
+<td><p>API 进程，同步两阶段</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">?wait=</span></code> 语义把 API 线程与 Worker 线程用 <code class="docutils literal notranslate"><span class="pre">LISTEN/NOTIFY</span></code> 接起来——这是逻辑视图&quot;一条 Event 变成可召回 Fact&quot;在进程视图里的<strong>跨进程缝合点</strong>。</p>
+</section>
+<section id="id25">
+<h3>23.7.2 逻辑 → 开发（每个抽象落在哪些子系统；刻意非 1:1）<a class="headerlink" href="#id25" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>逻辑抽象</p></th>
+<th class="head"><p>实现子系统</p></th>
+<th class="head"><p>备注</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Event（WAL 语义）</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">infra.core</span></code></p></td>
+<td><p>WAL 是基础设施职责，不是领域包职责</p></td>
+</tr>
+<tr class="row-odd"><td><p>Fact 语义（谓词/断言/准入）</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">infra.ontology</span></code> + <code class="docutils literal notranslate"><span class="pre">graph.extraction</span></code></p></td>
+<td><p>本体的单一真相源在 infra</p></td>
+</tr>
+<tr class="row-even"><td><p>Fact 的读</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">graph.retrieval</span></code></p></td>
+<td><p>读写分离在包级别</p></td>
+</tr>
+<tr class="row-odd"><td><p>Fact 的治理写</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">memory.graph_mutations</span></code> / <code class="docutils literal notranslate"><span class="pre">memory.maintenance</span></code></p></td>
+<td><p>同一抽象的写路径横跨两包</p></td>
+</tr>
+<tr class="row-even"><td><p>Episode / Case</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">memory.episodes</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p>Playbook</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">diagnostics.engine</span></code>（纯函数）+ <code class="docutils literal notranslate"><span class="pre">diagnostics.forward_reasoning</span></code>（持久化）</p></td>
+<td><p>逻辑上一个抽象，开发上按&quot;纯/不纯&quot;切两半</p></td>
+</tr>
+<tr class="row-even"><td><p>Scope</p></td>
+<td><p>无独立模块——由约定 + DB 行 + 全函数显式参数实现</p></td>
+<td><p>&quot;无处不在所以无处安放&quot;的横切抽象</p></td>
+</tr>
+</tbody>
+</table>
+<p>最后一行正是&quot;逻辑 ≠ 开发&quot;的最好例证：Scope 在逻辑视图是一等抽象，在开发视图里却是贯穿所有包的横切约定。</p>
+</section>
+<section id="id26">
+<h3>23.7.3 进程 → 物理（每种进程部署到哪类节点）<a class="headerlink" href="#id26" title="链接到此标题。"></a></h3>
+<p>见 23.5.2 的映射表与三种部署变体。要点：变体之间<strong>只改节点摆放，不改进程模型</strong>——这正是进程视图与物理视图分离的回报。</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="id27">
+<h2>23.8 关键约束与架构决策（按视图归类）<a class="headerlink" href="#id27" title="链接到此标题。"></a></h2>
+<p>每条 ADR 约束的是特定视图，按视图归档后更容易查：</p>
+<p><strong>逻辑视图约束</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>决策</p></th>
+<th class="head"><p>理由</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>双时态 4 字段（valid/recorded × from/to）</p></td>
+<td><p>同时支持&quot;现在什么是真的&quot;与&quot;当时我们怎么以为&quot;</p></td>
+</tr>
+<tr class="row-odd"><td><p>实体链接 B over C（向量召回→阈值→LLM 灰区）</p></td>
+<td><p>图谱质量命门；纯向量误并、纯 LLM 太贵</p></td>
+</tr>
+<tr class="row-even"><td><p>结构谓词收敛为单一活跃边、证据累积</p></td>
+<td><p>防止多值并存污染图遍历</p></td>
+</tr>
+<tr class="row-odd"><td><p>信号总线作为三机制共享耦合层</p></td>
+<td><p>避免反馈/巩固/归纳退化为互不知情的孤岛</p></td>
+</tr>
+<tr class="row-even"><td><p>Scope 不做 AuthZ</p></td>
+<td><p>纯数据服务边界，授权归上游应用</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>进程视图约束</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>决策</p></th>
+<th class="head"><p>理由</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Postgres-as-queue（不引入 Redis）</p></td>
+<td><p>PG 已是必选依赖；小团队运维简单</p></td>
+</tr>
+<tr class="row-odd"><td><p>全同步 + 线程池（无 async DB）</p></td>
+<td><p>模型简单；外部 I/O 并行已足够</p></td>
+</tr>
+<tr class="row-even"><td><p>LLM 强制 think + 后端状态机解析</p></td>
+<td><p>推理准确度依赖 think；跨 chunk 缓冲保证标签完整</p></td>
+</tr>
+<tr class="row-odd"><td><p>流式 answer 用 GET + SSE</p></td>
+<td><p>query 短；浏览器原生 EventSource；Agent 走 MCP 同步接口</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>开发视图约束</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>决策</p></th>
+<th class="head"><p>理由</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>5 子包分层 + 无环依赖矩阵</p></td>
+<td><p>职责清晰；显式分层便于演进</p></td>
+</tr>
+<tr class="row-odd"><td><p>Alembic 作为 schema 真相源</p></td>
+<td><p>迁移可重放、可降级保护</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>物理视图约束</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>决策</p></th>
+<th class="head"><p>理由</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>深度绑定 PostgreSQL 扩展（pgvector/pg_textsearch/pg_trgm）</p></td>
+<td><p>一库承担向量/全文/模糊/图四种负载；不追求可替换</p></td>
+</tr>
+<tr class="row-odd"><td><p>不做集群/分片/多租户强隔离</p></td>
+<td><p>产品定位个人/小团队</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>跨视图</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>决策</p></th>
+<th class="head"><p>理由</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>反馈幂等（ON CONFLICT）+ 行锁串行</p></td>
+<td><p>防并发 TOCTOU 与读改写竞态</p></td>
+</tr>
+<tr class="row-odd"><td><p>配置热更新白名单深合并</p></td>
+<td><p>开关即时生效；白名单锁死 database / embedding.dimension</p></td>
+</tr>
+</tbody>
+</table>
+<hr class="docutils" />
+<div class="tip admonition">
+<p class="admonition-title">一页总结</p>
+<p><strong>逻辑</strong>：Event 是唯一真相源，Fact 是中心抽象（双时态 + 图边 + 信号），Playbook 在图上只读推理，六条不变量兜底。
+<strong>进程</strong>：四类进程无共享内存，一切协调经 PostgreSQL（队列 / NOTIFY / 锁），全同步 + 线程池。
+<strong>开发</strong>：五子包单向依赖（唯一 lazy import 例外），Alembic 是 schema 真相源。
+<strong>物理</strong>：同一进程模型支持本地单进程 → 单机多进程 → 局域网分布三种摆放。
+<strong>场景</strong>：用例总览（3 个直接用户 + 1 个后台角色 × 4 个功能子系统 × 13 个用例；直接用户各自直连三个知识子系统，运维控制仅运维人员）承载功能需求；写入 / 召回 / 遗忘三条关键路径各配四视图对照表，验证五个投影说的是同一套系统。</p>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="22-erasures.html" class="btn btn-neutral float-left" title="第22章 Erasures 系统" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="24-config-and-frontend.html" class="btn btn-neutral float-right" title="第24章 运行配置与前端运维" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

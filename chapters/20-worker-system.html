@@ -1,0 +1,1087 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第20章 Worker 系统 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第21章 Maintenance 系统" href="21-maintenance.html" />
+    <link rel="prev" title="第19章 MCP Server" href="19-mcp-server.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第20章 Worker 系统</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#jobs">Jobs 表结构</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">原子抢任务</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">完成与失败处理</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id4">成功完成</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5">失败 + 退避重试</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id6">僵尸回收</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id7">Worker 主循环</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#dispatch-8-job"><code class="docutils literal notranslate"><span class="pre">_dispatch</span></code>：8 种 job 类型</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id8">生命周期事件通知</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#wait">?wait= 同步等待</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#dreaming">Dreaming 调度器与心跳</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#maybe-schedule-dreaming-in-worker"><code class="docutils literal notranslate"><span class="pre">_maybe_schedule_dreaming</span></code>：in-worker 轻量调度器</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#jobheartbeat"><code class="docutils literal notranslate"><span class="pre">_JobHeartbeat</span></code>：心跳续约线程</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id9">启动 Worker</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id10">关键设计决策</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第20章 Worker 系统</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/20-worker-system.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="worker">
+<h1>第20章 Worker 系统<a class="headerlink" href="#worker" title="链接到此标题。"></a></h1>
+<section id="id1">
+<h2>概述<a class="headerlink" href="#id1" title="链接到此标题。"></a></h2>
+<p>cortex 的 Worker 系统基于 <strong>Postgres-as-queue</strong> 模式，无需 Redis 等外部队列组件。所有任务通过 <code class="docutils literal notranslate"><span class="pre">jobs</span></code> 表管理，worker 通过 <code class="docutils literal notranslate"><span class="pre">SKIP</span> <span class="pre">LOCKED</span></code> 原子抢任务。</p>
+<pre  class="mermaid">
+        graph TB
+    subgraph 写入
+        A[append_event] --&gt; B[enqueue_job]
+    end
+    
+    subgraph Worker 循环
+        C[claim_next_job] --&gt; D{执行任务}
+        D --&gt;|成功| E[complete_job]
+        D --&gt;|失败| F[exponential backoff]
+        F --&gt;|未超限| C
+        F --&gt;|超限| G[dead letter]
+    end
+    
+    subgraph 守护
+        H[reap_zombies] --&gt; C
+    end
+    
+    B --&gt; C
+    </pre></section>
+<section id="jobs">
+<h2>Jobs 表结构<a class="headerlink" href="#jobs" title="链接到此标题。"></a></h2>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">jobs</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">job_id</span><span class="w">          </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">job_type</span><span class="w">        </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">       </span><span class="c1">-- &#39;extract&#39; | &#39;consolidate&#39; | ...</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">           </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">event_id</span><span class="w">        </span><span class="n">UUID</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">events</span><span class="p">(</span><span class="n">event_id</span><span class="p">),</span>
+<span class="w">    </span><span class="n">batch_id</span><span class="w">        </span><span class="n">UUID</span><span class="p">,</span>
+<span class="w">    </span><span class="n">status</span><span class="w">          </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;queued&#39;</span>
+<span class="w">                    </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;queued&#39;</span><span class="p">,</span><span class="s1">&#39;running&#39;</span><span class="p">,</span><span class="s1">&#39;completed&#39;</span><span class="p">,</span><span class="s1">&#39;failed&#39;</span><span class="p">,</span><span class="s1">&#39;cancelled&#39;</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">attempts</span><span class="w">        </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="n">max_attempts</span><span class="w">    </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="n">priority</span><span class="w">        </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="n">run_after</span><span class="w">       </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span><span class="w">   </span><span class="c1">-- 退避时间</span>
+<span class="w">    </span><span class="n">locked_by</span><span class="w">       </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">                </span><span class="c1">-- worker ID</span>
+<span class="w">    </span><span class="n">locked_at</span><span class="w">       </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">payload</span><span class="w">         </span><span class="n">JSONB</span><span class="p">,</span>
+<span class="w">    </span><span class="k">result</span><span class="w">          </span><span class="n">JSONB</span><span class="p">,</span>
+<span class="w">    </span><span class="n">error</span><span class="w">           </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">created_at</span><span class="w">      </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">started_at</span><span class="w">      </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">completed_at</span><span class="w">    </span><span class="n">TIMESTAMPTZ</span>
+<span class="p">);</span>
+
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_jobs_queue</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">jobs</span><span class="w"> </span>
+<span class="w">    </span><span class="p">(</span><span class="n">priority</span><span class="w"> </span><span class="k">DESC</span><span class="p">,</span><span class="w"> </span><span class="n">run_after</span><span class="p">,</span><span class="w"> </span><span class="n">created_at</span><span class="p">)</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;queued&#39;</span><span class="p">;</span>
+</pre></div>
+</div>
+</section>
+<section id="id2">
+<h2>原子抢任务<a class="headerlink" href="#id2" title="链接到此标题。"></a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">claim_next_job</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">worker_id</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;SKIP LOCKED 原子抢一个到期 job&quot;&quot;&quot;</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        UPDATE jobs SET status=&#39;running&#39;, locked_by=:w, locked_at=now(), </span>
+<span class="s2">                        started_at=now(), attempts=attempts+1</span>
+<span class="s2">        WHERE job_id = (SELECT job_id FROM jobs</span>
+<span class="s2">                        WHERE status=&#39;queued&#39; AND run_after &lt;= now()</span>
+<span class="s2">                          AND attempts &lt; max_attempts</span>
+<span class="s2">                        ORDER BY priority DESC, run_after, created_at</span>
+<span class="s2">                        FOR UPDATE SKIP LOCKED LIMIT 1)</span>
+<span class="s2">        RETURNING job_id, job_type, scope, event_id, attempts, max_attempts, payload</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;w&quot;</span><span class="p">:</span> <span class="n">worker_id</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">row</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;job_id&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">job_id</span><span class="p">),</span> <span class="s2">&quot;job_type&quot;</span><span class="p">:</span> <span class="n">row</span><span class="o">.</span><span class="n">job_type</span><span class="p">,</span> <span class="o">...</span><span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>SKIP LOCKED</strong> 是 PostgreSQL 9.5+ 的特性，允许多个 worker 并发抢任务而不互相阻塞。</p>
+<blockquote>
+<div><p>抢任务的 <code class="docutils literal notranslate"><span class="pre">WHERE</span></code> 子句额外带 <code class="docutils literal notranslate"><span class="pre">attempts</span> <span class="pre">&lt;</span> <span class="pre">max_attempts</span></code>——已耗尽重试次数、被 reaper 判死的 job 不会被再次领取（见&quot;僵尸回收&quot;）；它与 <code class="docutils literal notranslate"><span class="pre">run_after</span></code> 一起构成&quot;可领取&quot;的完整条件。</p>
+</div></blockquote>
+</section>
+<section id="id3">
+<h2>完成与失败处理<a class="headerlink" href="#id3" title="链接到此标题。"></a></h2>
+<section id="id4">
+<h3>成功完成<a class="headerlink" href="#id4" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">complete_job</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">job_id</span><span class="p">,</span> <span class="n">worker_id</span><span class="p">,</span> <span class="n">result</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;owner-fenced 完成:只有持有该 job lease 的 worker 才能标记完成。&quot;&quot;&quot;</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        UPDATE jobs SET status=&#39;completed&#39;, completed_at=now(), </span>
+<span class="s2">                        result=CAST(:r AS jsonb),</span>
+<span class="s2">                        locked_by=NULL, locked_at=NULL</span>
+<span class="s2">        WHERE job_id=CAST(:j AS uuid) AND status=&#39;running&#39; AND locked_by=:worker</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;r&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="k">if</span> <span class="n">result</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;j&quot;</span><span class="p">:</span> <span class="n">job_id</span><span class="p">,</span> <span class="s2">&quot;worker&quot;</span><span class="p">:</span> <span class="n">worker_id</span><span class="p">})</span>
+    <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">rowcount</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">complete_job</span></code> 带 <strong>worker_id owner-fencing</strong>：<code class="docutils literal notranslate"><span class="pre">WHERE</span> <span class="pre">...</span> <span class="pre">AND</span> <span class="pre">locked_by=:worker</span></code> 保证只有当前持有 lease 的 worker 能完成该 job。若返回 <code class="docutils literal notranslate"><span class="pre">False</span></code>，说明 lease 已被抢占（如 reaper 重置后另一 worker 接手），调用方应停止并丢弃本地结果。</p>
+</section>
+<section id="id5">
+<h3>失败 + 退避重试<a class="headerlink" href="#id5" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">fail_job</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">job_id</span><span class="p">,</span> <span class="n">error</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">backoff_base</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">terminal</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+             <span class="n">error_kind</span><span class="o">=</span><span class="s2">&quot;processing_error&quot;</span><span class="p">,</span> <span class="n">worker_id</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;失败:未超 max_attempts → queued+退避;超限 → failed(死信)。&quot;&quot;&quot;</span>
+    <span class="n">info</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        SELECT attempts,max_attempts FROM jobs WHERE job_id=CAST(:j AS uuid) AND status=&#39;running&#39;</span>
+<span class="s2">          AND ((CAST(:worker AS text) IS NULL AND locked_by IS NULL) OR locked_by=:worker)</span>
+<span class="s2">        FOR UPDATE</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;j&quot;</span><span class="p">:</span> <span class="n">job_id</span><span class="p">,</span> <span class="s2">&quot;worker&quot;</span><span class="p">:</span> <span class="n">worker_id</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">info</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">terminal</span> <span class="ow">or</span> <span class="p">(</span><span class="n">info</span> <span class="ow">and</span> <span class="n">info</span><span class="o">.</span><span class="n">attempts</span> <span class="o">&gt;=</span> <span class="n">info</span><span class="o">.</span><span class="n">max_attempts</span><span class="p">):</span>
+        <span class="c1"># 死信:标记为 failed,并记录 error_kind</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">            UPDATE jobs SET status=&#39;failed&#39;, error=:e, completed_at=now(),</span>
+<span class="s2">                            result=CAST(:r AS jsonb), locked_by=NULL, locked_at=NULL</span>
+<span class="s2">            WHERE job_id=CAST(:j AS uuid)</span>
+<span class="s2">              AND ((CAST(:worker AS text) IS NULL AND locked_by IS NULL) OR locked_by=:worker)</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;e&quot;</span><span class="p">:</span> <span class="n">error</span><span class="p">[:</span><span class="mi">500</span><span class="p">],</span> <span class="s2">&quot;r&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;error_kind&quot;</span><span class="p">:</span> <span class="n">error_kind</span><span class="p">}),</span> <span class="s2">&quot;j&quot;</span><span class="p">:</span> <span class="n">job_id</span><span class="p">,</span>
+               <span class="s2">&quot;worker&quot;</span><span class="p">:</span> <span class="n">worker_id</span><span class="p">})</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># 指数退避：下次执行时间 = now + backoff_base^attempts 秒</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">            UPDATE jobs SET status=&#39;queued&#39;, locked_by=NULL, locked_at=NULL,</span>
+<span class="s2">                            run_after=now() + make_interval(secs =&gt; :backoff), error=:e</span>
+<span class="s2">            WHERE job_id=CAST(:j AS uuid)</span>
+<span class="s2">              AND ((CAST(:worker AS text) IS NULL AND locked_by IS NULL) OR locked_by=:worker)</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;backoff&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">backoff_base</span> <span class="o">**</span> <span class="n">info</span><span class="o">.</span><span class="n">attempts</span><span class="p">),</span> <span class="s2">&quot;e&quot;</span><span class="p">:</span> <span class="n">error</span><span class="p">[:</span><span class="mi">500</span><span class="p">],</span>
+               <span class="s2">&quot;j&quot;</span><span class="p">:</span> <span class="n">job_id</span><span class="p">,</span> <span class="s2">&quot;worker&quot;</span><span class="p">:</span> <span class="n">worker_id</span><span class="p">})</span>
+    <span class="k">return</span> <span class="kc">True</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">fail_job</span></code> 同样带 owner-fencing：<code class="docutils literal notranslate"><span class="pre">locked_by=:worker</span></code> 条件（当 <code class="docutils literal notranslate"><span class="pre">worker_id=None</span></code> 时退化为&quot;无持有者&quot;的宽松匹配）。死信分支会写入 <code class="docutils literal notranslate"><span class="pre">result={&quot;error_kind&quot;:</span> <span class="pre">...}</span></code>——<code class="docutils literal notranslate"><span class="pre">config_error</span></code>（配错、不可重试的 <code class="docutils literal notranslate"><span class="pre">ExtractionConfigurationError</span></code>）与 <code class="docutils literal notranslate"><span class="pre">processing_error</span></code>（可重试的一般处理错误）区分，便于死信队列按原因分流。失败处理位于 <code class="docutils literal notranslate"><span class="pre">_handle_job_failure</span></code>，它先调用 <code class="docutils literal notranslate"><span class="pre">fail_job</span></code>，仅当返回 <code class="docutils literal notranslate"><span class="pre">True</span></code>（我方仍持有 lease）时才继续写生命周期事件。</p>
+<p><strong>退避策略</strong>：</p>
+<ul class="simple">
+<li><p>第 1 次失败：4 秒后重试</p></li>
+<li><p>第 2 次失败：16 秒后重试</p></li>
+<li><p>第 3 次失败（超限）：死信</p></li>
+</ul>
+</section>
+</section>
+<section id="id6">
+<h2>僵尸回收<a class="headerlink" href="#id6" title="链接到此标题。"></a></h2>
+<p>当 worker 崩溃时，正在 running 的 job 会变成僵尸。<code class="docutils literal notranslate"><span class="pre">reap_zombies</span></code> 按下述两分支处理——关键在<strong>按 attempts 是否超限分流</strong>：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">reap_zombies</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">visibility_secs</span><span class="o">=</span><span class="mi">300</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;visibility timeout 双分支:</span>
+<span class="sd">    1) attempts &gt;= max_attempts → 死信(failed)</span>
+<span class="sd">    2) attempts &lt;  max_attempts → 重置回 queued 重新排队&quot;&quot;&quot;</span>
+    <span class="c1"># 分支 1:已耗尽重试次数 → 死信</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        UPDATE jobs SET status=&#39;failed&#39;, completed_at=now(), locked_by=NULL, locked_at=NULL,</span>
+<span class="s2">                        error=&#39;visibility timeout exhausted max_attempts&#39;,</span>
+<span class="s2">                        result=&#39;{&quot;error_kind&quot;:&quot;visibility_timeout&quot;}&#39;::jsonb</span>
+<span class="s2">        WHERE status=&#39;running&#39; AND attempts &gt;= max_attempts</span>
+<span class="s2">          AND locked_at &lt; now() - make_interval(secs =&gt; :v)</span>
+<span class="s2">          AND pg_try_advisory_xact_lock(hashtext(&#39;job:&#39;||job_id::text))</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;v&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">visibility_secs</span><span class="p">)})</span>
+    <span class="c1"># 分支 2:未超限 → 重置回 queued</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        UPDATE jobs SET status=&#39;queued&#39;, locked_by=NULL, locked_at=NULL</span>
+<span class="s2">        WHERE status=&#39;running&#39; AND attempts &lt; max_attempts</span>
+<span class="s2">          AND locked_at &lt; now() - make_interval(secs =&gt; :v)</span>
+<span class="s2">          AND pg_try_advisory_xact_lock(hashtext(&#39;job:&#39;||job_id::text))</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;v&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">visibility_secs</span><span class="p">)})</span>
+    <span class="k">return</span> <span class="n">r</span><span class="o">.</span><span class="n">rowcount</span> <span class="ow">or</span> <span class="mi">0</span>
+</pre></div>
+</div>
+<p>默认 visibility timeout 来自 <code class="docutils literal notranslate"><span class="pre">cfg.worker.visibility_timeout_secs</span></code>（默认 300 秒）。reaper 的触发间隔来自 <code class="docutils literal notranslate"><span class="pre">cfg.worker.reaper_interval_secs</span></code>（默认 60 秒）。超过 <code class="docutils literal notranslate"><span class="pre">visibility_timeout_secs</span></code> 未完成的任务<strong>按 attempts 是否超限分流</strong>：未超限的重置回队列重跑，超限的判为死信（<code class="docutils literal notranslate"><span class="pre">error_kind=&quot;visibility_timeout&quot;</span></code>）。</p>
+<blockquote>
+<div><p>两个分支都用 <code class="docutils literal notranslate"><span class="pre">pg_try_advisory_xact_lock(hashtext('job:'||job_id::text))</span></code> 做<strong>事务内 advisory 锁</strong>——它与 worker 侧 <code class="docutils literal notranslate"><span class="pre">_JobExecutionLock</span></code> 的 <code class="docutils literal notranslate"><span class="pre">pg_advisory_lock</span></code> 互斥：真正还在执行的 job（持有执行锁）不会被 reaper 误判回收，只有锁空闲（worker 已崩溃/放弃）的僵尸才被重置。<code class="docutils literal notranslate"><span class="pre">try_</span></code> 版本在锁被占时不阻塞，直接跳过该行。</p>
+</div></blockquote>
+</section>
+<section id="id7">
+<h2>Worker 主循环<a class="headerlink" href="#id7" title="链接到此标题。"></a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">run_worker</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">max_iterations</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="n">cfg</span> <span class="o">=</span> <span class="n">load_config</span><span class="p">()</span>
+    <span class="n">worker_id</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;worker-</span><span class="si">{</span><span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">()</span><span class="o">.</span><span class="n">hex</span><span class="p">[:</span><span class="mi">12</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="n">poll</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">worker</span><span class="o">.</span><span class="n">poll_interval_secs</span>
+    <span class="n">vis</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">worker</span><span class="o">.</span><span class="n">visibility_timeout_secs</span>
+    <span class="k">while</span> <span class="n">max_iterations</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">it</span> <span class="o">&lt;</span> <span class="n">max_iterations</span><span class="p">:</span>
+        <span class="n">cfg</span> <span class="o">=</span> <span class="n">load_config</span><span class="p">()</span>  <span class="c1"># 按 YAML mtime 自动刷新</span>
+        <span class="n">poll</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">worker</span><span class="o">.</span><span class="n">poll_interval_secs</span>
+        <span class="n">vis</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">worker</span><span class="o">.</span><span class="n">visibility_timeout_secs</span>
+        <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+            <span class="n">job</span> <span class="o">=</span> <span class="n">claim_next_job</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">worker_id</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">job</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">now</span> <span class="o">-</span> <span class="n">last_reap</span> <span class="o">&gt;</span> <span class="n">cfg</span><span class="o">.</span><span class="n">worker</span><span class="o">.</span><span class="n">reaper_interval_secs</span><span class="p">:</span>
+                <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+                    <span class="n">reap_zombies</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">vis</span><span class="p">)</span>              <span class="c1"># 用 vis 而非硬编码</span>
+                    <span class="n">_maybe_schedule_dreaming</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>  <span class="c1"># 复用同一 session</span>
+                <span class="n">last_reap</span> <span class="o">=</span> <span class="n">now</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">poll</span><span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="n">heartbeat_interval</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="mf">60.0</span><span class="p">,</span> <span class="n">vis</span> <span class="o">/</span> <span class="mf">3.0</span><span class="p">))</span>
+        <span class="k">with</span> <span class="n">_JobExecutionLock</span><span class="p">(</span><span class="n">job</span><span class="p">[</span><span class="s2">&quot;job_id&quot;</span><span class="p">]):</span>
+            <span class="k">with</span> <span class="n">_JobHeartbeat</span><span class="p">(</span><span class="n">job</span><span class="p">[</span><span class="s2">&quot;job_id&quot;</span><span class="p">],</span> <span class="n">worker_id</span><span class="p">,</span> <span class="n">heartbeat_interval</span><span class="p">):</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="n">_dispatch</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+                <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+                    <span class="n">complete_job</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">job</span><span class="p">[</span><span class="s2">&quot;job_id&quot;</span><span class="p">],</span> <span class="n">worker_id</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+</pre></div>
+</div>
+<section id="dispatch-8-job">
+<h3><code class="docutils literal notranslate"><span class="pre">_dispatch</span></code>：8 种 job 类型<a class="headerlink" href="#dispatch-8-job" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">runner.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">_dispatch</span></code> 是 worker 的分派核心，按 <code class="docutils literal notranslate"><span class="pre">job_type</span></code> 路由到对应处理器。共 8 种：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>job_type</p></th>
+<th class="head"><p>处理函数</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">extract</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">extract_event(event_id)</span></code></p></td>
+<td><p>同步抽取三元组 + 实体 + 索引</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">segment</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">segment_scope(scope)</span></code></p></td>
+<td><p>对 scope 内长文本 event 做分段切片</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">methylation</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">methylation_run(scope,</span> <span class="pre">older_than_days=...)</span></code></p></td>
+<td><p>软剪枝长期不召回的 events；<code class="docutils literal notranslate"><span class="pre">older_than_days</span></code> 从 payload 取（默认 30）</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">consolidate</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">consolidation_run(scope)</span></code></p></td>
+<td><p>完整语义身份相同的 legacy duplicates 去重</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">enrich</span></code></p></td>
+<td><p>内联三段短事务</p></td>
+<td><p>扫无 embedding 实体 → 会话外批量 <code class="docutils literal notranslate"><span class="pre">embed_texts</span></code> → 写回短事务</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">synthesize</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">synthesize_scope(scope,</span> <span class="pre">topics=...)</span></code></p></td>
+<td><p>跨 facts 合成摘要/结论；<code class="docutils literal notranslate"><span class="pre">topics</span></code> 从 payload 透传</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dream</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dream_run(scope,</span> <span class="pre">**payload)</span></code></p></td>
+<td><p>离线巩固：relation_detect + action_plan 两阶段（见下文调度器）</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">higher_order</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">generate_higher_order(entity_id,</span> <span class="pre">new_fact_id=...)</span></code></p></td>
+<td><p>高阶归纳：基于证据摘要生成抽象概念节点；无 scope 参数</p></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_dispatch</span><span class="p">(</span><span class="n">job</span><span class="p">):</span>
+    <span class="n">jt</span> <span class="o">=</span> <span class="n">job</span><span class="p">[</span><span class="s2">&quot;job_type&quot;</span><span class="p">]</span>
+    <span class="n">scope</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;scope&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">jt</span> <span class="o">==</span> <span class="s2">&quot;extract&quot;</span> <span class="ow">and</span> <span class="n">job</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;event_id&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">extract_event</span><span class="p">(</span><span class="n">job</span><span class="p">[</span><span class="s2">&quot;event_id&quot;</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">jt</span> <span class="o">==</span> <span class="s2">&quot;segment&quot;</span> <span class="ow">and</span> <span class="n">scope</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">segment_scope</span><span class="p">(</span><span class="n">scope</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">jt</span> <span class="o">==</span> <span class="s2">&quot;methylation&quot;</span> <span class="ow">and</span> <span class="n">scope</span><span class="p">:</span>
+        <span class="n">older</span> <span class="o">=</span> <span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;payload&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;older_than_days&quot;</span><span class="p">,</span> <span class="mi">30</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">methylation_run</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">older_than_days</span><span class="o">=</span><span class="n">older</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">jt</span> <span class="o">==</span> <span class="s2">&quot;consolidate&quot;</span> <span class="ow">and</span> <span class="n">scope</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">consolidation_run</span><span class="p">(</span><span class="n">scope</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">jt</span> <span class="o">==</span> <span class="s2">&quot;enrich&quot;</span> <span class="ow">and</span> <span class="n">scope</span><span class="p">:</span>
+        <span class="o">...</span>  <span class="c1"># 内联三段短事务</span>
+    <span class="k">if</span> <span class="n">jt</span> <span class="o">==</span> <span class="s2">&quot;synthesize&quot;</span> <span class="ow">and</span> <span class="n">scope</span><span class="p">:</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;payload&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="k">return</span> <span class="n">synthesize_scope</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">topics</span><span class="o">=</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;topics&quot;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">jt</span> <span class="o">==</span> <span class="s2">&quot;dream&quot;</span> <span class="ow">and</span> <span class="n">scope</span><span class="p">:</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;payload&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="k">return</span> <span class="n">dream_run</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="o">**</span><span class="n">payload</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">jt</span> <span class="o">==</span> <span class="s2">&quot;higher_order&quot;</span> <span class="ow">and</span> <span class="n">scope</span><span class="p">:</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;payload&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="k">return</span> <span class="n">generate_higher_order</span><span class="p">(</span>
+            <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entity_id&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
+            <span class="n">new_fact_id</span><span class="o">=</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;new_fact_id&quot;</span><span class="p">))</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;unsupported job_type: </span><span class="si">{</span><span class="n">jt</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="id8">
+<h2>生命周期事件通知<a class="headerlink" href="#id8" title="链接到此标题。"></a></h2>
+<p>每次 job 状态变化都触发 lifecycle event，同时通过 <code class="docutils literal notranslate"><span class="pre">pg_notify</span></code> 推送给等待者：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">emit_lifecycle</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">kind</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">event_id</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">job_id</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">...</span><span class="p">):</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;...&quot;&quot;&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+    <span class="c1"># NOTIFY 让 ?wait= 的 listener 能立刻收到</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;SELECT pg_notify(&#39;cortex_lc&#39;, :msg)&quot;</span><span class="p">),</span>
+                 <span class="p">{</span><span class="s2">&quot;msg&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">kind</span><span class="si">}</span><span class="s2">|</span><span class="si">{</span><span class="n">event_id</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">})</span>
+</pre></div>
+</div>
+<section id="wait">
+<h3>?wait= 同步等待<a class="headerlink" href="#wait" title="链接到此标题。"></a></h3>
+<p>API 支持 <code class="docutils literal notranslate"><span class="pre">?wait=indexed</span></code> 参数，阻塞直到该 event 的抽取完成。<code class="docutils literal notranslate"><span class="pre">wait_for_stage</span></code> 用独立连接 LISTEN/NOTIFY，cortex 已从 psycopg2 迁移到 psycopg3——后者提供原生的 <code class="docutils literal notranslate"><span class="pre">conn.notifies(timeout=1.0)</span></code> 生成器，替代了 psycopg2 时代的手动 <code class="docutils literal notranslate"><span class="pre">select.select</span></code> + <code class="docutils literal notranslate"><span class="pre">conn.poll()</span></code> + <code class="docutils literal notranslate"><span class="pre">notifies.pop()</span></code> 轮询：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">psycopg</span>  <span class="c1"># psycopg3(不再是 psycopg2)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">wait_for_stage</span><span class="p">(</span><span class="n">event_id</span><span class="p">,</span> <span class="n">target_stage</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">30.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;LISTEN + 轮询,等待目标 stage。用独立连接绕过 SQLAlchemy 池。&quot;&quot;&quot;</span>
+    <span class="c1"># 先查已有(可能已处理完)</span>
+    <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">c</span><span class="p">:</span>
+        <span class="n">done</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">c</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT kind FROM lifecycle_events WHERE event_id=CAST(:e AS uuid) ORDER BY ts&quot;</span><span class="p">),</span>
+            <span class="p">{</span><span class="s2">&quot;e&quot;</span><span class="p">:</span> <span class="n">event_id</span><span class="p">})</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()]</span>
+        <span class="k">if</span> <span class="n">_stage_reached</span><span class="p">(</span><span class="n">done</span><span class="p">,</span> <span class="n">target_stage</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;reached&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="o">...</span><span class="p">}</span>
+
+    <span class="c1"># LISTEN 独立连接(autocommit,绕过 SQLAlchemy 池)</span>
+    <span class="c1"># URL 需从 SQLAlchemy 格式(postgresql+psycopg://)剥成裸串(postgresql://),</span>
+    <span class="c1"># psycopg3 直连接受裸 libpq 连接串。</span>
+    <span class="n">raw_url</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">database</span><span class="o">.</span><span class="n">url</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;+psycopg&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">psycopg</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">raw_url</span><span class="p">,</span> <span class="n">autocommit</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;LISTEN cortex_lc&quot;</span><span class="p">)</span>
+        <span class="n">remaining</span> <span class="o">=</span> <span class="n">timeout</span> <span class="o">-</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span><span class="p">)</span>
+        <span class="k">while</span> <span class="n">remaining</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># psycopg3 的 notifies() 是 generator,自带 timeout 参数</span>
+            <span class="k">for</span> <span class="n">notify</span> <span class="ow">in</span> <span class="n">conn</span><span class="o">.</span><span class="n">notifies</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">notify</span><span class="o">.</span><span class="n">payload</span> <span class="ow">and</span> <span class="s2">&quot;|&quot;</span> <span class="ow">in</span> <span class="n">notify</span><span class="o">.</span><span class="n">payload</span><span class="p">:</span>
+                    <span class="n">kind</span><span class="p">,</span> <span class="n">eid</span> <span class="o">=</span> <span class="n">notify</span><span class="o">.</span><span class="n">payload</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;|&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">eid</span> <span class="o">==</span> <span class="n">event_id</span> <span class="ow">and</span> <span class="n">_stage_reached</span><span class="p">([</span><span class="n">kind</span><span class="p">],</span> <span class="n">target_stage</span><span class="p">):</span>
+                        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;reached&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="o">...</span><span class="p">}</span>
+                <span class="k">break</span>  <span class="c1"># notifies timeout=1.0 到时也会退出 for</span>
+            <span class="c1"># 超时后也查一次表(notify 可能丢失或积压)</span>
+            <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">c</span><span class="p">:</span>
+                <span class="o">...</span>
+            <span class="n">remaining</span> <span class="o">=</span> <span class="n">timeout</span> <span class="o">-</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;reached&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;note&quot;</span><span class="p">:</span> <span class="s2">&quot;timeout, downgraded to async&quot;</span><span class="p">}</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>psycopg3 的优势：<code class="docutils literal notranslate"><span class="pre">notifies(timeout=1.0)</span></code> 是阻塞式 generator，超时自动返回，不需要手动管理文件描述符的 select/poll。配合 <code class="docutils literal notranslate"><span class="pre">autocommit=True</span></code> 绕过 SQLAlchemy 连接池（LISTEN 需要长持连接，不适合池化复用）。</p>
+<p><strong>stage 顺序</strong>：</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>captured(0) → extracted(1) → indexed(2) → consolidated(3)
+</pre></div>
+</div>
+</section>
+</section>
+<section id="dreaming">
+<h2>Dreaming 调度器与心跳<a class="headerlink" href="#dreaming" title="链接到此标题。"></a></h2>
+<p>Dreaming（离线巩固）是耗时最长的 job 类型——它跑两阶段 LLM 管线（relation_detect + action_plan），单次执行常远超 reap_zombies 的 <code class="docutils literal notranslate"><span class="pre">visibility_timeout</span></code>（300s）。为此 worker 内建两个机制：轻量调度器和心跳续约。</p>
+<section id="maybe-schedule-dreaming-in-worker">
+<h3><code class="docutils literal notranslate"><span class="pre">_maybe_schedule_dreaming</span></code>：in-worker 轻量调度器<a class="headerlink" href="#maybe-schedule-dreaming-in-worker" title="链接到此标题。"></a></h3>
+<p>worker 主循环每轮调用一次，检查每个 scope 上一次完成的 dreaming 运行是否已超过 <code class="docutils literal notranslate"><span class="pre">schedule_interval_hours</span></code>，若是则入队一个 <code class="docutils literal notranslate"><span class="pre">dream</span></code> job。</p>
+<p><strong>去重守卫</strong>：入队前先查 <code class="docutils literal notranslate"><span class="pre">jobs</span></code> 表，确认该 scope 不存在 <code class="docutils literal notranslate"><span class="pre">status</span> <span class="pre">IN</span> <span class="pre">('queued','running')</span></code> 的 dream job，避免重复插入。</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_maybe_schedule_dreaming</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">cfg</span><span class="p">,</span> <span class="n">last_check</span><span class="p">,</span> <span class="n">now</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;每个 scope 按 schedule_interval_hours 周期性触发 dream job。</span>
+<span class="sd">    查 dreaming_runs 表(不是 jobs 表)获取上次完成时间——dreaming 有独立运行记录表。&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">cfg</span><span class="o">.</span><span class="n">dreaming</span><span class="o">.</span><span class="n">enabled</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">last_check</span>
+    <span class="n">interval</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">dreaming</span><span class="o">.</span><span class="n">schedule_interval_hours</span> <span class="o">*</span> <span class="mi">3600</span>
+    <span class="k">if</span> <span class="n">now</span> <span class="o">-</span> <span class="n">last_check</span> <span class="o">&lt;</span> <span class="n">interval</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">last_check</span>
+    <span class="n">scopes</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span>
+        <span class="s2">&quot;SELECT DISTINCT scope FROM facts WHERE recorded_to IS NULL&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">sc</span><span class="p">,)</span> <span class="ow">in</span> <span class="n">scopes</span><span class="p">:</span>
+        <span class="n">last</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT completed_at FROM dreaming_runs WHERE scope=:s AND status=&#39;completed&#39; &quot;</span>
+            <span class="s2">&quot;ORDER BY started_at DESC LIMIT 1&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">sc</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+        <span class="n">should_enqueue</span> <span class="o">=</span> <span class="p">(</span><span class="ow">not</span> <span class="n">last</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">last</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="ow">or</span> <span class="p">(</span><span class="n">now</span> <span class="o">-</span> <span class="n">last</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">timestamp</span><span class="p">()</span> <span class="o">&gt;</span> <span class="n">interval</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">should_enqueue</span><span class="p">:</span>
+            <span class="c1"># 去重守卫:已有 queued/running 的 dream job 则跳过</span>
+            <span class="n">already</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span>
+                <span class="s2">&quot;SELECT 1 FROM jobs WHERE job_type=&#39;dream&#39; AND scope=:s &quot;</span>
+                <span class="s2">&quot;AND status IN (&#39;queued&#39;,&#39;running&#39;) LIMIT 1&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">sc</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">already</span><span class="p">:</span>
+                <span class="c1"># 内联 INSERT(此时已在 session 内,enqueue_job 会另开 session)</span>
+                <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;INSERT INTO jobs (job_type, scope, priority, payload)</span>
+<span class="s2">                    VALUES (&#39;dream&#39;, :s, -1, &#39;{&quot;min_age_hours&quot;: 0}&#39;::jsonb)&quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">sc</span><span class="p">})</span>
+    <span class="k">return</span> <span class="n">now</span>
+</pre></div>
+</div>
+<blockquote>
+<div><p>查 <code class="docutils literal notranslate"><span class="pre">dreaming_runs</span></code> 而非 <code class="docutils literal notranslate"><span class="pre">jobs</span></code>——dreaming 有独立的运行记录表（含 <code class="docutils literal notranslate"><span class="pre">started_at</span></code>/<code class="docutils literal notranslate"><span class="pre">completed_at</span></code>/<code class="docutils literal notranslate"><span class="pre">status</span></code>），比从 <code class="docutils literal notranslate"><span class="pre">jobs</span></code> 表推断更准确。入队用内联 <code class="docutils literal notranslate"><span class="pre">INSERT</span> <span class="pre">INTO</span> <span class="pre">jobs</span></code> 而非 <code class="docutils literal notranslate"><span class="pre">enqueue_job()</span></code>，因为此处已在 <code class="docutils literal notranslate"><span class="pre">session_scope</span></code> 内，<code class="docutils literal notranslate"><span class="pre">enqueue_job</span></code> 内部会另开 session 导致嵌套。</p>
+</div></blockquote>
+</section>
+<section id="jobheartbeat">
+<h3><code class="docutils literal notranslate"><span class="pre">_JobHeartbeat</span></code>：心跳续约线程<a class="headerlink" href="#jobheartbeat" title="链接到此标题。"></a></h3>
+<p>所有 job 共用的 <code class="docutils literal notranslate"><span class="pre">_JobHeartbeat</span></code>（带 <code class="docutils literal notranslate"><span class="pre">worker_id</span></code> owner-fencing），在 <code class="docutils literal notranslate"><span class="pre">run_worker</span></code> 的 job 循环外层包裹每个 job，不是 dream 专用、也不在 <code class="docutils literal notranslate"><span class="pre">_dispatch</span></code> 内部。后台线程每 <code class="docutils literal notranslate"><span class="pre">interval</span></code> 秒刷新该 job 的 <code class="docutils literal notranslate"><span class="pre">locked_at</span> <span class="pre">=</span> <span class="pre">now()</span></code>，使 <code class="docutils literal notranslate"><span class="pre">reap_zombies</span></code>（visibility_timeout）不会把正在跑的长任务误判为僵尸而重新入队。</p>
+<p>心跳间隔是动态的，基于 <code class="docutils literal notranslate"><span class="pre">cfg.worker.visibility_timeout_secs</span></code>(<code class="docutils literal notranslate"><span class="pre">vis</span></code>) 计算：<code class="docutils literal notranslate"><span class="pre">max(1.0,</span> <span class="pre">min(60.0,</span> <span class="pre">vis/3.0))</span></code>——不是固定 60s。默认 <code class="docutils literal notranslate"><span class="pre">vis=300</span></code> 时，心跳间隔为 <code class="docutils literal notranslate"><span class="pre">min(60.0,</span> <span class="pre">100.0)</span> <span class="pre">=</span> <span class="pre">60.0</span></code>s；若 <code class="docutils literal notranslate"><span class="pre">vis</span></code> 调小，心跳会自动加快以保持&quot;三次心跳超时才回收&quot;的安全余量。</p>
+<p>心跳通过 <code class="docutils literal notranslate"><span class="pre">&#64;contextmanager</span></code> 包装整个 <code class="docutils literal notranslate"><span class="pre">_dispatch</span></code> + <code class="docutils literal notranslate"><span class="pre">complete_job</span></code>——进入时起线程，退出时停线程；续约时走 <code class="docutils literal notranslate"><span class="pre">heartbeat_job(conn,</span> <span class="pre">job_id,</span> <span class="pre">worker_id)</span></code>，lease 丢失（owner 不再是自己）则自动停止续租：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">contextmanager</span>
+
+<span class="nd">@contextmanager</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_JobHeartbeat</span><span class="p">(</span><span class="n">job_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">worker_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">interval</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">60.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;所有 job 共用 owner-fenced heartbeat；lease 丢失后停止续租。&quot;&quot;&quot;</span>
+    <span class="n">stop</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_beat</span><span class="p">():</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="n">stop</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">interval</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">c</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">heartbeat_job</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">job_id</span><span class="p">,</span> <span class="n">worker_id</span><span class="p">):</span>
+                        <span class="n">stop</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="k">pass</span>  <span class="c1"># 心跳失败不阻断主任务</span>
+
+    <span class="n">t</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">_beat</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">t</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">stop</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="nb">min</span><span class="p">(</span><span class="n">interval</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">))</span>
+
+<span class="c1"># 在 run_worker 的 job 循环中（_dispatch 外层）：</span>
+<span class="n">heartbeat_interval</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="mf">60.0</span><span class="p">,</span> <span class="n">vis</span> <span class="o">/</span> <span class="mf">3.0</span><span class="p">))</span>
+<span class="k">with</span> <span class="n">_JobExecutionLock</span><span class="p">(</span><span class="n">job</span><span class="p">[</span><span class="s2">&quot;job_id&quot;</span><span class="p">]):</span>
+    <span class="k">with</span> <span class="n">_JobHeartbeat</span><span class="p">(</span><span class="n">job</span><span class="p">[</span><span class="s2">&quot;job_id&quot;</span><span class="p">],</span> <span class="n">worker_id</span><span class="p">,</span> <span class="n">heartbeat_interval</span><span class="p">):</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">_dispatch</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+        <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">complete_job</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">job</span><span class="p">[</span><span class="s2">&quot;job_id&quot;</span><span class="p">],</span> <span class="n">worker_id</span><span class="p">,</span> <span class="n">result</span><span class="p">):</span>
+                <span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;lost lease before completing&quot;</span><span class="p">)</span>
+                <span class="k">continue</span>
+            <span class="n">emit_lifecycle</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+</pre></div>
+</div>
+<blockquote>
+<div><p><code class="docutils literal notranslate"><span class="pre">_dispatch</span></code> 内部不再有 <code class="docutils literal notranslate"><span class="pre">_DreamHeartbeat</span></code>——心跳在 <code class="docutils literal notranslate"><span class="pre">run_worker</span></code> 外层统一包裹所有 job 类型，dream 与其他 job 一视同仁。<code class="docutils literal notranslate"><span class="pre">&#64;contextmanager</span></code> 比手写 <code class="docutils literal notranslate"><span class="pre">__enter__</span></code>/<code class="docutils literal notranslate"><span class="pre">__exit__</span></code> class 更简洁；心跳内部自行 <code class="docutils literal notranslate"><span class="pre">session_scope()</span></code>，不需要调用方传入 <code class="docutils literal notranslate"><span class="pre">conn_factory</span></code>。</p>
+</div></blockquote>
+<blockquote>
+<div><p>设计要点：心跳走 <code class="docutils literal notranslate"><span class="pre">heartbeat_job</span></code> 带 owner-fencing（只有持有 lease 的 worker_id 能续租），续不上或被抢占就自动停止；任务真正结束仍由 <code class="docutils literal notranslate"><span class="pre">complete_job</span></code> / <code class="docutils literal notranslate"><span class="pre">fail_job</span></code> 处理。心跳线程是 daemon，worker 进程崩溃时不会卡住退出。</p>
+</div></blockquote>
+</section>
+</section>
+<section id="id9">
+<h2>启动 Worker<a class="headerlink" href="#id9" title="链接到此标题。"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># 启动 worker 循环</span>
+uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>cortex.interfaces.cli<span class="w"> </span>worker
+
+<span class="c1"># 启动后端（另一个终端）</span>
+uv<span class="w"> </span>run<span class="w"> </span>uvicorn<span class="w"> </span>cortex.interfaces.api.app:app<span class="w"> </span>--port<span class="w"> </span><span class="m">8002</span>
+</pre></div>
+</div>
+</section>
+<section id="id10">
+<h2>关键设计决策<a class="headerlink" href="#id10" title="链接到此标题。"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>决策</p></th>
+<th class="head"><p>方案</p></th>
+<th class="head"><p>理由</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>队列实现</p></td>
+<td><p>Postgres SKIP LOCKED</p></td>
+<td><p>无 Redis 依赖，减少运维复杂度</p></td>
+</tr>
+<tr class="row-odd"><td><p>退避策略</p></td>
+<td><p>指数退避 (4^n s)</p></td>
+<td><p>避免瞬时失败风暴</p></td>
+</tr>
+<tr class="row-even"><td><p>超限处理</p></td>
+<td><p>死信 (failed)</p></td>
+<td><p>不自动丢弃，可人工介入</p></td>
+</tr>
+<tr class="row-odd"><td><p>僵尸回收</p></td>
+<td><p>5 分钟 visibility timeout</p></td>
+<td><p>防止 worker 崩溃后任务永久丢失</p></td>
+</tr>
+<tr class="row-even"><td><p>通知机制</p></td>
+<td><p>pg_notify</p></td>
+<td><p>零额外组件，Postgres 原生支持</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="19-mcp-server.html" class="btn btn-neutral float-left" title="第19章 MCP Server" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="21-maintenance.html" class="btn btn-neutral float-right" title="第21章 Maintenance 系统" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

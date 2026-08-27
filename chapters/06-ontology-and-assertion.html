@@ -1,0 +1,1267 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第6章 谓词本体与断言语义 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第7章 Episodes 与诊断 Case" href="07-episodes-and-case.html" />
+    <link rel="prev" title="第5章 实体链接详解" href="05-entity-linking.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第6章 谓词本体与断言语义</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id2">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#ontology">Ontology 模块</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">四大类谓词详解</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id4">1. 结构/配置关系（8 个，静态拓扑）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5">2. 因果/级联关系（5 个，故障传播）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id6">3. 诊断推理关系（22 个，排查过程）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id7">4. 状态关系（1 个，单值互斥）</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id8">断言语义</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#polarity">Polarity（极性）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#assertion-status">Assertion Status（断言状态）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id9">自动规则</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id10">图准入规则</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#cardinality">Cardinality（谓词基数）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#idempotent">结构边收敛（idempotent 写入）</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id11">边的身份</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id12">并发串行化</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id13">证据/置信度合并</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#recorded">更强确认 → recorded 版本更新</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id14">与多值/状态谓词的差异</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#db-backed-predicate-definitions">DB-backed 本体: predicate_definitions 表</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#seed-predicate-definitions">seed_predicate_definitions()</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#higher-order">higher_order 类别与高阶归纳</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id15">真相源分工</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id16">在抽取管线中的应用</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第6章 谓词本体与断言语义</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/06-ontology-and-assertion.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="id1">
+<h1>第6章 谓词本体与断言语义<a class="headerlink" href="#id1" title="链接到此标题。"></a></h1>
+<section id="id2">
+<h2>概述<a class="headerlink" href="#id2" title="链接到此标题。"></a></h2>
+<p>cortex 的谓词体系是整个知识图谱的<strong>语言基础</strong>。所有抽取三元组必须使用预定义的谓词，确保图谱关系的一致性和可遍历性。</p>
+<p>谓词体系经过 <code class="docutils literal notranslate"><span class="pre">0008_predicate_cleanup</span></code> 迁移清理，从早期 40+ 个谓词收敛为 <strong>36 个核心谓词</strong>，分为<strong>四大类</strong>（结构 / 因果 / 诊断 / 状态），消除了互逆冗余（如 <code class="docutils literal notranslate"><span class="pre">part_of</span></code> ↔ <code class="docutils literal notranslate"><span class="pre">has_component</span></code>、<code class="docutils literal notranslate"><span class="pre">symptom_of</span></code> ↔ <code class="docutils literal notranslate"><span class="pre">has_symptom</span></code> 不再并存，统一方向为父→子 / 结果→原因）。</p>
+<pre  class="mermaid">
+        graph TB
+    subgraph &quot;谓词四大类（36 个）&quot;
+        S[结构/配置关系&lt;br/&gt;8 个，静态拓扑]
+        C[因果/级联关系&lt;br/&gt;5 个，故障传播]
+        D[诊断推理关系&lt;br/&gt;22 个，排查过程]
+        ST[状态关系&lt;br/&gt;1 个，单值超替]
+    end
+    
+    subgraph 断言语义
+        P[Polarity: positive/negative]
+        A[Assertion Status&lt;br/&gt;observed/hypothesized&lt;br/&gt;confirmed/ruled_out/rejected]
+    end
+    
+    subgraph 图准入
+        G[graph_eligible]
+    end
+    
+    S --&gt; G
+    C --&gt; G
+    D --&gt; G
+    ST --&gt; G
+    P --&gt; G
+    A --&gt; G
+    </pre></section>
+<section id="ontology">
+<h2>Ontology 模块<a class="headerlink" href="#ontology" title="链接到此标题。"></a></h2>
+<p>所有谓词在 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">PREDICATE_DICTIONARY</span></code> 中集中定义，是单一真相源。分类集合（<code class="docutils literal notranslate"><span class="pre">STRUCTURAL_PREDICATES</span></code> 等）从词典动态派生，通过模块加载时的 assert 强校验保证一致性。</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">PREDICATE_DICTIONARY</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;has_component&quot;</span><span class="p">:</span> <span class="n">PredicateDef</span><span class="p">(</span><span class="s2">&quot;structural&quot;</span><span class="p">,</span> <span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="s2">&quot;...&quot;</span><span class="p">),</span>
+    <span class="s2">&quot;caused_by&quot;</span><span class="p">:</span>     <span class="n">PredicateDef</span><span class="p">(</span><span class="s2">&quot;causal&quot;</span><span class="p">,</span>     <span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="s2">&quot;...&quot;</span><span class="p">),</span>
+    <span class="s2">&quot;investigates&quot;</span><span class="p">:</span>  <span class="n">PredicateDef</span><span class="p">(</span><span class="s2">&quot;diagnostic&quot;</span><span class="p">,</span> <span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="s2">&quot;...&quot;</span><span class="p">),</span>
+    <span class="s2">&quot;has_status&quot;</span><span class="p">:</span>    <span class="n">PredicateDef</span><span class="p">(</span><span class="s2">&quot;state&quot;</span><span class="p">,</span>      <span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="s2">&quot;...&quot;</span><span class="p">),</span>
+    <span class="c1"># ... 共 36 个</span>
+<span class="p">}</span>
+
+<span class="c1"># 分类集合从词典派生（不再独立硬编码）</span>
+<span class="n">STRUCTURAL_PREDICATES</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">PREDICATE_DICTIONARY</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                                    <span class="k">if</span> <span class="n">d</span><span class="o">.</span><span class="n">category</span> <span class="o">==</span> <span class="s2">&quot;structural&quot;</span><span class="p">)</span>  <span class="c1"># 8 个</span>
+<span class="n">CAUSAL_PREDICATES</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">PREDICATE_DICTIONARY</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                                 <span class="k">if</span> <span class="n">d</span><span class="o">.</span><span class="n">category</span> <span class="o">==</span> <span class="s2">&quot;causal&quot;</span><span class="p">)</span>       <span class="c1"># 5 个</span>
+<span class="n">DIAGNOSTIC_PREDICATES</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">PREDICATE_DICTIONARY</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                                     <span class="k">if</span> <span class="n">d</span><span class="o">.</span><span class="n">category</span> <span class="o">==</span> <span class="s2">&quot;diagnostic&quot;</span><span class="p">)</span> <span class="c1"># 22 个</span>
+<span class="n">STATE_PREDICATES</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">PREDICATE_DICTIONARY</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                                <span class="k">if</span> <span class="n">d</span><span class="o">.</span><span class="n">category</span> <span class="o">==</span> <span class="s2">&quot;state&quot;</span><span class="p">)</span>         <span class="c1"># 1 个</span>
+
+<span class="c1"># 排除类谓词（自动不入因果图）</span>
+<span class="n">OPPOSING_PREDICATES</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">({</span><span class="s2">&quot;ruled_out&quot;</span><span class="p">})</span>
+<span class="n">RELATIONAL_EXCLUSION_PREDICATES</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">({</span><span class="s2">&quot;no_correlation&quot;</span><span class="p">,</span> <span class="s2">&quot;contradicts&quot;</span><span class="p">})</span>
+<span class="n">GRAPH_EXCLUDED_PREDICATES</span> <span class="o">=</span> <span class="n">OPPOSING_PREDICATES</span> <span class="o">|</span> <span class="n">RELATIONAL_EXCLUSION_PREDICATES</span>
+
+<span class="c1"># 基数：state 类一律 single，其余 multi</span>
+<span class="n">PREDICATE_CARDINALITY</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">predicate</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;single&quot;</span> <span class="k">if</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="n">STATE_PREDICATES</span> <span class="k">else</span> <span class="s2">&quot;multi&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="n">DIAGNOSIS_PREDICATE_NAMES</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<blockquote>
+<div><p><strong>谓词清理变更（0008 迁移）</strong>：</p>
+<ul class="simple">
+<li><p>移除互逆冗余：<code class="docutils literal notranslate"><span class="pre">part_of</span></code> → 统一用 <code class="docutils literal notranslate"><span class="pre">has_component</span></code>（方向：父→子）；<code class="docutils literal notranslate"><span class="pre">symptom_of</span></code> → 统一用 <code class="docutils literal notranslate"><span class="pre">has_symptom</span></code>（方向：故障→征兆）；<code class="docutils literal notranslate"><span class="pre">investigated_by</span></code> → 统一用 <code class="docutils literal notranslate"><span class="pre">investigates</span></code>（方向：假设→排查对象）；<code class="docutils literal notranslate"><span class="pre">led_to</span></code> → 统一用 <code class="docutils literal notranslate"><span class="pre">caused_by</span></code>（方向：结果→原因）</p></li>
+<li><p>移除语义重叠：<code class="docutils literal notranslate"><span class="pre">contributes_to</span></code> 并入 <code class="docutils literal notranslate"><span class="pre">affects</span></code>；<code class="docutils literal notranslate"><span class="pre">deal_stage</span></code> 移除（用 state 表达即可）</p></li>
+<li><p>方向统一原则：subject 是<strong>整体/上层/结果</strong>，object 是<strong>部分/下层/原因</strong>。遍历从故障出发向下游找原因、向上游找子系统</p></li>
+</ul>
+</div></blockquote>
+</section>
+<section id="id3">
+<h2>四大类谓词详解<a class="headerlink" href="#id3" title="链接到此标题。"></a></h2>
+<section id="id4">
+<h3>1. 结构/配置关系（8 个，静态拓扑）<a class="headerlink" href="#id4" title="链接到此标题。"></a></h3>
+<p>描述设备的结构层级、传感器布局和控制链路。<strong>方向统一</strong>：父→子、整体→部分。</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>谓词</p></th>
+<th class="head"><p>含义</p></th>
+<th class="head"><p>subject → object</p></th>
+<th class="head"><p>示例</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">has_component</span></code></p></td>
+<td><p>A包含B（整体→部分）</p></td>
+<td><p>equipment/subsystem → component/subsystem</p></td>
+<td><p>气体输送系统 → MFC-1</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">installed_on</span></code></p></td>
+<td><p>A安装在B上</p></td>
+<td><p>sensor/component → component/chamber</p></td>
+<td><p>T-101 → 腔体壁</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">located_in</span></code></p></td>
+<td><p>A位于B内</p></td>
+<td><p>component/subsystem → chamber/equipment</p></td>
+<td><p>匹配网络 → 射频系统腔体</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">monitored_by</span></code></p></td>
+<td><p>A被B监测</p></td>
+<td><p>param/fault/component → sensor</p></td>
+<td><p>腔体压力 → P-02</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">controlled_by</span></code></p></td>
+<td><p>A被B控制</p></td>
+<td><p>component/param → <strong>controller</strong></p></td>
+<td><p>加热器H-1 → 温度PID</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">regulates</span></code></p></td>
+<td><p>A调节B</p></td>
+<td><p>controller → param</p></td>
+<td><p>温度PID → 基底温度</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">configured_as</span></code></p></td>
+<td><p>A（步骤/配方）配置为B</p></td>
+<td><p>process_step/recipe → param</p></td>
+<td><p>主工艺步骤 → 射频功率1500W</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">depends_on</span></code></p></td>
+<td><p>A依赖B</p></td>
+<td><p>step/param/subsystem → step/param/subsystem</p></td>
+<td><p>主工艺步骤 → 预真空步骤</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition-controlled-by-object-controller admonition">
+<p class="admonition-title">controlled_by 的 object 必须是 controller</p>
+<p>部件/参数&quot;属于&quot;哪个系统 → 用 <code class="docutils literal notranslate"><span class="pre">has_component</span></code> / <code class="docutils literal notranslate"><span class="pre">installed_on</span></code>
+部件/参数&quot;被谁控制&quot; → 用 <code class="docutils literal notranslate"><span class="pre">controlled_by</span></code>，且 object 必须是 <code class="docutils literal notranslate"><span class="pre">controller</span></code> 类型
+<strong>禁止</strong> <code class="docutils literal notranslate"><span class="pre">controlled_by</span></code> 指向 equipment（整机）——整机不直接控制单个传感器，控制经由局部 controller 实现</p>
+</div>
+<pre  class="mermaid">
+        graph LR
+    SYS[温控系统] --&gt;|has_component| PID[温度PID&lt;br/&gt;controller]
+    SYS --&gt;|has_component| HEATER[加热器H-1&lt;br/&gt;component]
+    PID --&gt;|regulates| TEMP[基底温度&lt;br/&gt;process_param]
+    TEMP --&gt;|monitored_by| T101[T-101&lt;br/&gt;sensor]
+    T101 --&gt;|installed_on| WALL[腔体壁&lt;br/&gt;component]
+    HEATER --&gt;|controlled_by| PID
+    </pre></section>
+<section id="id5">
+<h3>2. 因果/级联关系（5 个，故障传播）<a class="headerlink" href="#id5" title="链接到此标题。"></a></h3>
+<p>描述故障如何产生、传播和表现。<strong>方向统一</strong>：结果→原因、故障→征兆。</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>谓词</p></th>
+<th class="head"><p>含义</p></th>
+<th class="head"><p>subject → object</p></th>
+<th class="head"><p>示例</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">caused_by</span></code></p></td>
+<td><p>A的故障由B引起（核心因果谓词）</p></td>
+<td><p>fault → component/fault/phenomenon</p></td>
+<td><p>腔体压力异常 → 密封圈老化</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cascades_to</span></code></p></td>
+<td><p>A故障级联传播到B（跨子系统）</p></td>
+<td><p>fault → fault</p></td>
+<td><p>压力异常 → 等离子不稳定</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">has_symptom</span></code></p></td>
+<td><p>A故障表现为B征兆</p></td>
+<td><p>fault → symptom/fault</p></td>
+<td><p>MFC响应延迟 → 流量阶梯式偏差</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">affects</span></code></p></td>
+<td><p>A影响了B（宽泛因果）</p></td>
+<td><p>fault/param → param/fault</p></td>
+<td><p>温度漂移 → 刻蚀速率</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">triggers</span></code></p></td>
+<td><p>A触发了B（互锁/告警/自动动作）</p></td>
+<td><p>fault/condition → event/action</p></td>
+<td><p>压力超限 → 互锁停机</p></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<div><p><strong>设计决策</strong>：所有因果关系统一用 <code class="docutils literal notranslate"><span class="pre">caused_by</span></code> 作为主谓词（subject 为结果、object 为原因），不再区分 <code class="docutils literal notranslate"><span class="pre">led_to</span></code> / <code class="docutils literal notranslate"><span class="pre">causes</span></code> / <code class="docutils literal notranslate"><span class="pre">results_in</span></code> 等方向变体。这大幅简化了图遍历逻辑——找根因一律沿 <code class="docutils literal notranslate"><span class="pre">caused_by</span></code> 出边向下走，找影响一律沿入边向上走。</p>
+</div></blockquote>
+</section>
+<section id="id6">
+<h3>3. 诊断推理关系（22 个，排查过程）<a class="headerlink" href="#id6" title="链接到此标题。"></a></h3>
+<p>描述工程师/agent 的排查过程和推理链，是诊断知识图谱中最丰富的一类。</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>谓词</p></th>
+<th class="head"><p>含义</p></th>
+<th class="head"><p>示例</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">investigates</span></code></p></td>
+<td><p>A（假设）排查了B（子系统/传感器/部件）</p></td>
+<td><p>怀疑真空泄漏 → 真空系统</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">checked</span></code></p></td>
+<td><p>A（排查动作）检查了B</p></td>
+<td><p>对比MFC设定值 → MFC-1实测流量</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">found</span></code></p></td>
+<td><p>A（排查动作）发现了B（发现/异常）</p></td>
+<td><p>拆检密封圈 → 密封圈磨损痕迹</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">normal</span></code></p></td>
+<td><p>A排查时正常（排除项）</p></td>
+<td><p>检查射频系统 → 射频系统(正常)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ruled_out</span></code></p></td>
+<td><p>A（假设）被排除了</p></td>
+<td><p>假设射频故障 → 射频系统</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">no_correlation</span></code></p></td>
+<td><p>A与B无相关性（排除项）</p></td>
+<td><p>水温波动 → 刻蚀速率漂移</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">contradicts</span></code></p></td>
+<td><p>A（证据）反驳了B（假设）</p></td>
+<td><p>MFC-1校准合格 → 假设MFC校准漂移</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">supports</span></code></p></td>
+<td><p>A（证据）支持B（假设/结论）</p></td>
+<td><p>压力历史数据 → 密封圈老化假设</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">confirmed_by</span></code></p></td>
+<td><p>A（结论）被B（证据/案例）确认</p></td>
+<td><p>MFC-1是根因 → 参考案例-007</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">refines_to</span></code></p></td>
+<td><p>A（宽泛假设）细化为B（更具体的假设）</p></td>
+<td><p>气体系统问题 → MFC-1校准漂移</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alternative_to</span></code></p></td>
+<td><p>A和B是互斥的替代假设</p></td>
+<td><p>MFC校准漂移 vs 密封圈老化</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">detected_by</span></code></p></td>
+<td><p>A（征兆）被B（传感器）检测到</p></td>
+<td><p>压力波动 → P-02</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">observed_by</span></code></p></td>
+<td><p>A（现象/故障）被B（人）发现</p></td>
+<td><p>刻蚀不均 → 工程师A</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">references</span></code></p></td>
+<td><p>A引用了历史案例B</p></td>
+<td><p>当前排查 → 案例-007</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">repaired_by</span></code></p></td>
+<td><p>A（故障）被B（措施）修复</p></td>
+<td><p>密封失效 → 更换O-ring</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">preceded_by</span></code></p></td>
+<td><p>A发生在B之后（时序）</p></td>
+<td><p>压力异常 → 更换气体瓶之后</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">drifts_from</span></code></p></td>
+<td><p>A（状态/参数）偏离B（基准/正常状态）</p></td>
+<td><p>腔壁温度 → 设定值偏差3度</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">deviates_from</span></code></p></td>
+<td><p>A（量测结果）偏离B（规格/基准）</p></td>
+<td><p>CD均匀性 → 规格±2nm</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">measured_as</span></code></p></td>
+<td><p>A（工艺/批次）的量测结果是B</p></td>
+<td><p>批次A123 → CD均匀性偏差3%</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">correlates_with</span></code></p></td>
+<td><p>A与B有相关性</p></td>
+<td><p>MFC-1流量波动 → 刻蚀速率漂移</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">suggests</span></code></p></td>
+<td><p>A（信号/数据模式）暗示B（假设/故障）</p></td>
+<td><p>T-101周期性振荡 → PID参数失调</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">feedback_to</span></code></p></td>
+<td><p>A（量测结果）反馈到B（工艺步骤/参数）</p></td>
+<td><p>CD偏差 → 主刻蚀步骤(需调补偿)</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="id7">
+<h3>4. 状态关系（1 个，单值互斥）<a class="headerlink" href="#id7" title="链接到此标题。"></a></h3>
+<p>描述设备/腔室的运行状态，<strong>single 基数</strong>——新值到达自动超替旧值（recorded_to=now()）。</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>谓词</p></th>
+<th class="head"><p>含义</p></th>
+<th class="head"><p>subject → object</p></th>
+<th class="head"><p>示例</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">has_status</span></code></p></td>
+<td><p>A的运行状态是B（单值互斥）</p></td>
+<td><p>equipment/chamber/subsystem → status_value</p></td>
+<td><p>主腔体 → 正常运行 / 故障停机 / 维护中</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="id8">
+<h2>断言语义<a class="headerlink" href="#id8" title="链接到此标题。"></a></h2>
+<p>每个 Fact 有两个语义轴：</p>
+<section id="polarity">
+<h3>Polarity（极性）<a class="headerlink" href="#polarity" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>值</p></th>
+<th class="head"><p>含义</p></th>
+<th class="head"><p>示例</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">positive</span></code></p></td>
+<td><p>肯定断言</p></td>
+<td><p>“腔体压力异常 caused_by 密封圈老化”</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">negative</span></code></p></td>
+<td><p>否定/排除</p></td>
+<td><p>“检查射频系统 normal 射频系统”</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="assertion-status">
+<h3>Assertion Status（断言状态）<a class="headerlink" href="#assertion-status" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>值</p></th>
+<th class="head"><p>含义</p></th>
+<th class="head"><p>适用场景</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">observed</span></code></p></td>
+<td><p>观察到的，确认无误</p></td>
+<td><p>结构/配置/传感器关系</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">hypothesized</span></code></p></td>
+<td><p>假设/推断，未确认</p></td>
+<td><p>因果谓词默认</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">confirmed</span></code></p></td>
+<td><p>有证据确认</p></td>
+<td><p>因果谓词 + 证据支撑</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ruled_out</span></code></p></td>
+<td><p>被排除</p></td>
+<td><p>对立谓词自动</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">rejected</span></code></p></td>
+<td><p>被驳回</p></td>
+<td><p>明确否定</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="id9">
+<h3>自动规则<a class="headerlink" href="#id9" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">assertion_semantics</span></code> 函数在抽取管线中自动应用规则：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">assertion_semantics</span><span class="p">(</span><span class="n">predicate</span><span class="p">,</span> <span class="n">fact</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">trusted</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">source_text</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">polarity</span> <span class="o">=</span> <span class="s2">&quot;negative&quot;</span> <span class="k">if</span> <span class="n">fact</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;negation&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="n">fact</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;polarity&quot;</span><span class="p">,</span> <span class="s2">&quot;positive&quot;</span><span class="p">)</span>
+    <span class="n">requested</span> <span class="o">=</span> <span class="n">fact</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;assertion_status&quot;</span><span class="p">)</span>
+    <span class="c1"># 规则1：对立谓词 → 自动 negative + ruled_out</span>
+    <span class="k">if</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="n">OPPOSING_PREDICATES</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;negative&quot;</span><span class="p">,</span> <span class="s2">&quot;ruled_out&quot;</span>
+
+    <span class="c1"># 规则2：关系排除谓词（无相关性/反驳）→ 正常注入，但 GRAPH_EXCLUDED 不入图</span>
+    <span class="k">if</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="n">RELATIONAL_EXCLUSION_PREDICATES</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;positive&quot;</span><span class="p">,</span> <span class="n">requested</span> <span class="ow">or</span> <span class="s2">&quot;observed&quot;</span>
+
+    <span class="c1"># 规则3：因果谓词</span>
+    <span class="k">if</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="n">CAUSAL_PREDICATES</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">polarity</span> <span class="o">==</span> <span class="s2">&quot;negative&quot;</span> <span class="ow">or</span> <span class="n">requested</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;ruled_out&quot;</span><span class="p">,</span> <span class="s2">&quot;rejected&quot;</span><span class="p">}:</span>
+            <span class="k">return</span> <span class="n">polarity</span><span class="p">,</span> <span class="s2">&quot;ruled_out&quot;</span>
+        <span class="c1"># 有证据且可信 → confirmed</span>
+        <span class="n">evidence</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">fact</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;evidence_span&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="n">grounded</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">source_text</span> <span class="ow">and</span> <span class="n">evidence</span> <span class="ow">and</span> <span class="n">evidence</span> <span class="ow">in</span> <span class="n">source_text</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">requested</span> <span class="o">==</span> <span class="s2">&quot;confirmed&quot;</span> <span class="ow">and</span> <span class="n">evidence</span> <span class="ow">and</span> <span class="p">(</span><span class="n">trusted</span> <span class="ow">or</span> <span class="n">grounded</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">polarity</span><span class="p">,</span> <span class="s2">&quot;confirmed&quot;</span>
+        <span class="k">return</span> <span class="n">polarity</span><span class="p">,</span> <span class="s2">&quot;hypothesized&quot;</span>  <span class="c1"># 默认假设</span>
+
+    <span class="c1"># 规则4：非因果谓词 → 保留 LLM 指定值</span>
+    <span class="k">return</span> <span class="n">polarity</span><span class="p">,</span> <span class="n">requested</span> <span class="ow">or</span> <span class="s2">&quot;observed&quot;</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="id10">
+<h2>图准入规则<a class="headerlink" href="#id10" title="链接到此标题。"></a></h2>
+<p>不是所有 facts 都进知识图谱遍历。<code class="docutils literal notranslate"><span class="pre">graph_eligible()</span></code> 函数定义准入条件：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">graph_eligible</span><span class="p">(</span><span class="n">predicate</span><span class="p">,</span> <span class="n">polarity</span><span class="p">,</span> <span class="n">assertion_status</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;是否可入图遍历&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">polarity</span> <span class="o">!=</span> <span class="s2">&quot;positive&quot;</span> <span class="ow">or</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="n">GRAPH_EXCLUDED_PREDICATES</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="n">CAUSAL_PREDICATES</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">assertion_status</span> <span class="o">==</span> <span class="s2">&quot;confirmed&quot;</span>  <span class="c1"># 因果必须 confirmed</span>
+    <span class="k">return</span> <span class="n">assertion_status</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;observed&quot;</span><span class="p">,</span> <span class="s2">&quot;confirmed&quot;</span><span class="p">}</span>
+</pre></div>
+</div>
+<pre  class="mermaid">
+        flowchart TD
+    F[Fact] --&gt; P{polarity?}
+    P --&gt;|negative| X[不进图]
+    P --&gt;|positive| E{predicate in&lt;br/&gt;excluded?}
+    E --&gt;|ruled_out/no_correlation/contradicts| X
+    E --&gt;|否| C{predicate in&lt;br/&gt;causal?}
+    C --&gt;|是| S{assertion_status?}
+    S --&gt;|confirmed| IN[进图 ✅]
+    S --&gt;|hypothesized| X
+    C --&gt;|否| O{assertion_status?}
+    O --&gt;|observed/confirmed| IN
+    O --&gt;|hypothesized/ruled_out| X
+    </pre></section>
+<section id="cardinality">
+<h2>Cardinality（谓词基数）<a class="headerlink" href="#cardinality" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">PREDICATE_CARDINALITY</span></code> 只区分<strong>状态类谓词</strong>（单值，新值超替旧值）与<strong>其他谓词</strong>（多值，多值共存）：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">PREDICATE_CARDINALITY</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">predicate</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;single&quot;</span> <span class="k">if</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="n">STATE_PREDICATES</span> <span class="k">else</span> <span class="s2">&quot;multi&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="n">DIAGNOSIS_PREDICATE_NAMES</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>需要注意：<strong>基数（cardinality）与结构边收敛是两个不同维度</strong>。基数描述&quot;同一 subject+谓词 下可同时存在多少条有效事实&quot;，而结构边收敛描述的是图中<strong>拓扑边的身份如何确定</strong>。多值共存 ≠ 结构谓词产生多条重复拓扑边——见下一节。</p>
+</section>
+<section id="idempotent">
+<h2>结构边收敛（idempotent 写入）<a class="headerlink" href="#idempotent" title="链接到此标题。"></a></h2>
+<p>结构谓词（8 个 structural）描述的是设备的<strong>静态拓扑</strong>，同一条边本质上是&quot;同一客观事实&quot;，不应随 case/事件重复出现而堆积成多条等价边。因此结构边采用<strong>按身份收敛</strong>的写路径，而非普通的多值追加。</p>
+<section id="id11">
+<h3>边的身份<a class="headerlink" href="#id11" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">fact_store.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">lock_and_find_structural_fact()</span></code> 把结构边的身份定义为：</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">identity</span> <span class="o">=</span> <span class="n">scope</span> <span class="o">+</span> <span class="n">subject_id</span> <span class="o">+</span> <span class="n">predicate</span> <span class="o">+</span> <span class="n">object_type</span> <span class="o">+</span> <span class="n">object_identity</span> <span class="o">+</span> <span class="n">polarity</span>
+</pre></div>
+</div>
+<p>identity 中<strong>不包含</strong> <code class="docutils literal notranslate"><span class="pre">case_id</span></code>、<code class="docutils literal notranslate"><span class="pre">operating_regime</span></code>、<code class="docutils literal notranslate"><span class="pre">valid_from</span></code>/<code class="docutils literal notranslate"><span class="pre">valid_to</span></code>。也就是说，无论来自哪个 case、哪个运行工况、哪个时间区间，只要 <code class="docutils literal notranslate"><span class="pre">scope+subject+predicate+object+polarity</span></code> 相同，都视为<strong>同一条结构边</strong>。</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">lock_and_find_structural_fact</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">subject_id</span><span class="p">,</span> <span class="n">predicate</span><span class="p">,</span>
+                                  <span class="n">object_type</span><span class="p">,</span> <span class="n">object_entity_id</span><span class="p">,</span> <span class="n">object_value</span><span class="p">,</span>
+                                  <span class="n">polarity</span><span class="o">=</span><span class="s2">&quot;positive&quot;</span><span class="p">,</span> <span class="n">exclude_fact_id</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">predicate</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">STRUCTURAL_PREDICATES</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>  <span class="c1"># 非结构谓词不走收敛路径</span>
+    <span class="n">object_identity</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">object_entity_id</span><span class="p">)</span> <span class="k">if</span> <span class="n">object_entity_id</span> <span class="k">else</span> \
+        <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">object_value</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">identity</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span>
+        <span class="p">[</span><span class="s2">&quot;structural&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">subject_id</span><span class="p">,</span> <span class="n">predicate</span><span class="p">,</span> <span class="n">object_type</span><span class="p">,</span> <span class="n">object_identity</span><span class="p">,</span> <span class="n">polarity</span><span class="p">],</span>
+        <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+        <span class="n">text</span><span class="p">(</span><span class="s2">&quot;SELECT pg_advisory_xact_lock(hashtextextended(:identity,0))&quot;</span><span class="p">),</span>
+        <span class="p">{</span><span class="s2">&quot;identity&quot;</span><span class="p">:</span> <span class="n">identity</span><span class="p">})</span>
+    <span class="c1"># ... 在 recorded_to IS NULL（当前有效）中查找同身份边</span>
+</pre></div>
+</div>
+</section>
+<section id="id12">
+<h3>并发串行化<a class="headerlink" href="#id12" title="链接到此标题。"></a></h3>
+<p>写入前先取 <code class="docutils literal notranslate"><span class="pre">pg_advisory_xact_lock(hashtextextended(:identity,0))</span></code>，把对同一条结构边的并发写入串行化——同一事务内多个来源同时写入同一结构边时，只有一个能真正插入，其余走合并路径。这与实体创建（<code class="docutils literal notranslate"><span class="pre">resolve_write</span></code>）的身份锁是同一套思想。</p>
+</section>
+<section id="id13">
+<h3>证据/置信度合并<a class="headerlink" href="#id13" title="链接到此标题。"></a></h3>
+<p>写路径 <code class="docutils literal notranslate"><span class="pre">_insert_fact</span></code> 在命中既有结构边时<strong>不新增重复行</strong>，而是合并：</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">supports</span></code>（支撑证据）：并集合并 <code class="docutils literal notranslate"><span class="pre">combined_supports</span> <span class="pre">=</span> <span class="pre">existing</span> <span class="pre">∪</span> <span class="pre">incoming</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">confidence</span></code>（置信度）：取 <code class="docutils literal notranslate"><span class="pre">max</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">assertion_case_links</span></code>：复制到合并后的记录</p></li>
+</ul>
+</section>
+<section id="recorded">
+<h3>更强确认 → recorded 版本更新<a class="headerlink" href="#recorded" title="链接到此标题。"></a></h3>
+<p>当新来源的确认强度更高时（<code class="docutils literal notranslate"><span class="pre">assertion_status</span></code> 或 <code class="docutils literal notranslate"><span class="pre">knowledge_tier</span></code> 更强，按 <code class="docutils literal notranslate"><span class="pre">_ASSERTION_STATUS_RANK</span></code> / <code class="docutils literal notranslate"><span class="pre">_KNOWLEDGE_TIER_RANK</span></code> 比较），把旧记录 <code class="docutils literal notranslate"><span class="pre">recorded_to=now()</span></code> 关闭，插入一条带更强确认的新 recorded 版本（同一 valid 区间、合并后的 supports/confidence）。若新来源并不更强，则保留既有更强状态，仅补入新增 supports。</p>
+</section>
+<section id="id14">
+<h3>与多值/状态谓词的差异<a class="headerlink" href="#id14" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>谓词类别</p></th>
+<th class="head"><p>边身份</p></th>
+<th class="head"><p>写入行为</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>structural</strong>（8 个）</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">scope+subject+predicate+object+polarity</span></code>，<strong>忽略</strong> case/regime/valid 区间</p></td>
+<td><p>同身份收敛：合并 evidence，更强确认才出新 recorded 版本</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>state</strong>（1 个）</p></td>
+<td><p>单值，新值超替旧值</p></td>
+<td><p>valid 区间超替</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>diagnostic / causal</strong></p></td>
+<td><p>保留 case_id / event/regime 感知的身份</p></td>
+<td><p>多值共存，保留多值历史</p></td>
+</tr>
+</tbody>
+</table>
+<p>换句话说，<strong>多值共存适用于诊断/因果类谓词</strong>（不同 case、不同事件时间点本就该并存各自的历史），而<strong>结构边收敛</strong>保证静态拓扑不因 case 重复而退化出等价冗余边。高频 <code class="docutils literal notranslate"><span class="pre">ingest</span></code> 同一台机台的结构时，收敛路径天然具备幂等性——重复写入同一结构边不会产生重复拓扑边。</p>
+</section>
+</section>
+<section id="db-backed-predicate-definitions">
+<h2>DB-backed 本体: predicate_definitions 表<a class="headerlink" href="#db-backed-predicate-definitions" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ontology.py</span></code>（<code class="docutils literal notranslate"><span class="pre">src/cortex/infra/ontology.py</span></code>）<strong>仍然是所有一阶谓词的单一真相源</strong>。在此基础上，cortex 增加了一张 DB 配套表 <code class="docutils literal notranslate"><span class="pre">predicate_definitions</span></code>，承载 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 本身不携带的 <code class="docutils literal notranslate"><span class="pre">prop_order</span></code>（一阶/高阶）和 <code class="docutils literal notranslate"><span class="pre">category</span></code>（类别）元数据，并使本体可查询、可扩展到高阶谓词。</p>
+<p>表结构定义在 <code class="docutils literal notranslate"><span class="pre">schema.sql</span></code>：</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="c1">-- 谓词本体表(从 ontology.py 硬编码迁移到 DB 可配,支持 order 标记)</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">cortex</span><span class="p">.</span><span class="n">predicate_definitions</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">predicate</span><span class="w">       </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span>
+<span class="w">    </span><span class="n">category</span><span class="w">        </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">category</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;structural&#39;</span><span class="p">,</span><span class="s1">&#39;causal&#39;</span><span class="p">,</span><span class="s1">&#39;diagnostic&#39;</span><span class="p">,</span><span class="s1">&#39;state&#39;</span><span class="p">,</span><span class="s1">&#39;higher_order&#39;</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">prop_order</span><span class="w">      </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">prop_order</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">)),</span><span class="w">  </span><span class="c1">-- 1=一阶, 2=高阶</span>
+<span class="w">    </span><span class="n">description</span><span class="w">     </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="k">cardinality</span><span class="w">     </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;multi&#39;</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="k">cardinality</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;single&#39;</span><span class="p">,</span><span class="s1">&#39;multi&#39;</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">example</span><span class="w">         </span><span class="nb">TEXT</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+<p>关键字段：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>字段</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">predicate</span></code></p></td>
+<td><p>主键，谓词名</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">category</span></code></p></td>
+<td><p>类别，<code class="docutils literal notranslate"><span class="pre">CHECK</span> <span class="pre">IN</span> <span class="pre">('structural','causal','diagnostic','state','higher_order')</span></code>。前四类与 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 的四组谓词一一对应</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">prop_order</span></code></p></td>
+<td><p>阶数，<code class="docutils literal notranslate"><span class="pre">CHECK</span> <span class="pre">IN</span> <span class="pre">(1,2)</span></code>。<code class="docutils literal notranslate"><span class="pre">1</span></code>=一阶谓词，<code class="docutils literal notranslate"><span class="pre">2</span></code>=高阶谓词</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">description</span></code></p></td>
+<td><p>谓词的自然语言描述</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">cardinality</span></code></p></td>
+<td><p>基数 <code class="docutils literal notranslate"><span class="pre">'single'</span></code>/<code class="docutils literal notranslate"><span class="pre">'multi'</span></code>，与 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">PREDICATE_CARDINALITY</span></code> 对齐</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">example</span></code></p></td>
+<td><p>示例三元组</p></td>
+</tr>
+</tbody>
+</table>
+<section id="seed-predicate-definitions">
+<h3>seed_predicate_definitions()<a class="headerlink" href="#seed-predicate-definitions" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">maintenance.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">seed_predicate_definitions()</span></code> 把 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 的一阶谓词按类别 upsert 进 <code class="docutils literal notranslate"><span class="pre">predicate_definitions</span></code>，统一标记为 <code class="docutils literal notranslate"><span class="pre">prop_order=1</span></code>。该函数幂等：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">seed_predicate_definitions</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;把 ontology.PREDICATE_DICTIONARY 预置到 predicate_definitions 表(一阶,order=1)。幂等。返回 upsert 数。&quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">session_scope</span><span class="p">()</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">pred</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">PREDICATE_DICTIONARY</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">card</span> <span class="o">=</span> <span class="n">PREDICATE_CARDINALITY</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="s2">&quot;multi&quot;</span><span class="p">)</span>
+            <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                INSERT INTO predicate_definitions (predicate, category, prop_order, cardinality, description, example)</span>
+<span class="s2">                VALUES (:p, :c, 1, :card, :desc, :ex)</span>
+<span class="s2">                ON CONFLICT (predicate) DO UPDATE</span>
+<span class="s2">                SET category=:c, cardinality=:card, description=:desc, example=:ex</span>
+<span class="s2">            &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;p&quot;</span><span class="p">:</span> <span class="n">pred</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">:</span> <span class="n">d</span><span class="o">.</span><span class="n">category</span><span class="p">,</span> <span class="s2">&quot;card&quot;</span><span class="p">:</span> <span class="n">card</span><span class="p">,</span> <span class="s2">&quot;desc&quot;</span><span class="p">:</span> <span class="n">d</span><span class="o">.</span><span class="n">meaning</span><span class="p">,</span> <span class="s2">&quot;ex&quot;</span><span class="p">:</span> <span class="n">d</span><span class="o">.</span><span class="n">example</span><span class="p">})</span>
+</pre></div>
+</div>
+<p>实现直接遍历 <code class="docutils literal notranslate"><span class="pre">PREDICATE_DICTIONARY.items()</span></code> 取每个 <code class="docutils literal notranslate"><span class="pre">PredicateDef</span></code> 的 <code class="docutils literal notranslate"><span class="pre">category</span></code>，连同 <code class="docutils literal notranslate"><span class="pre">meaning</span></code>/<code class="docutils literal notranslate"><span class="pre">example</span></code> 一起写入 6 列，<code class="docutils literal notranslate"><span class="pre">ON</span> <span class="pre">CONFLICT</span> <span class="pre">(predicate)</span> <span class="pre">DO</span> <span class="pre">UPDATE</span></code> 保证幂等。</p>
+</section>
+<section id="higher-order">
+<h3>higher_order 类别与高阶归纳<a class="headerlink" href="#higher-order" title="链接到此标题。"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">category='higher_order'</span></code> 是 DB 表新引入的类别，<strong>在 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 中没有对应谓词集</strong>。这类谓词必须同时满足 <code class="docutils literal notranslate"><span class="pre">prop_order=2</span></code>，由第 13 章的 <strong>Higher-Order 归纳</strong> 特征消费：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># higher_order.py</span>
+<span class="n">ho_predicates</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    SELECT predicate, description, example</span>
+<span class="s2">    FROM predicate_definitions WHERE prop_order=2</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="n">ho_predicates</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;synthesized&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;skipped&quot;</span><span class="p">:</span> <span class="s2">&quot;no order=2 predicates defined&quot;</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>换句话说：一阶谓词的真相仍在 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code>，而高阶谓词（<code class="docutils literal notranslate"><span class="pre">prop_order=2</span></code>、<code class="docutils literal notranslate"><span class="pre">category='higher_order'</span></code>）只存在于 DB 表中，需要运维人员/管理员通过该表显式注册后才能驱动高阶归纳。</p>
+</section>
+<section id="id15">
+<h3>真相源分工<a class="headerlink" href="#id15" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>内容</p></th>
+<th class="head"><p>真相源</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>一阶谓词集合（structural / causal / diagnostic / state）</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ontology.py</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>一阶谓词的 cardinality</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">PREDICATE_CARDINALITY</span></code>（被 <code class="docutils literal notranslate"><span class="pre">seed_predicate_definitions()</span></code> 同步进 DB）</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">category</span></code>、<code class="docutils literal notranslate"><span class="pre">prop_order</span></code> 元数据</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">predicate_definitions</span></code> 表（<code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 不携带）</p></td>
+</tr>
+<tr class="row-odd"><td><p>高阶谓词（<code class="docutils literal notranslate"><span class="pre">category='higher_order'</span></code>、<code class="docutils literal notranslate"><span class="pre">prop_order=2</span></code>）</p></td>
+<td><p>仅 <code class="docutils literal notranslate"><span class="pre">predicate_definitions</span></code> 表</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="id16">
+<h2>在抽取管线中的应用<a class="headerlink" href="#id16" title="链接到此标题。"></a></h2>
+<p>抽取管线在写入 facts 前，通过 <code class="docutils literal notranslate"><span class="pre">coerce_value</span></code> 将 LLM 输出的谓词约束到预定义词表（如果 scope 有 predicate 词表），并通过 <code class="docutils literal notranslate"><span class="pre">assertion_semantics</span></code> 自动设置 polarity 和 assertion_status；结构谓词再经 <code class="docutils literal notranslate"><span class="pre">lock_and_find_structural_fact</span></code> 走结构边收敛写路径：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># 1. 谓词词表约束</span>
+<span class="n">predicate</span> <span class="o">=</span> <span class="n">coerce_value</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;predicate&quot;</span><span class="p">,</span> <span class="n">raw_predicate</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">predicate</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">skip</span>  <span class="c1"># 闭集未命中 → 跳过该 fact</span>
+
+<span class="c1"># 2. 断言语义自动推断</span>
+<span class="n">polarity</span><span class="p">,</span> <span class="n">assertion_status</span> <span class="o">=</span> <span class="n">assertion_semantics</span><span class="p">(</span><span class="n">predicate</span><span class="p">,</span> <span class="n">fact</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+
+<span class="c1"># 3. 结构边收敛（structural 谓词幂等写入）</span>
+<span class="k">if</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="n">STRUCTURAL_PREDICATES</span><span class="p">:</span>
+    <span class="n">existing</span> <span class="o">=</span> <span class="n">lock_and_find_structural_fact</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">scope</span><span class="p">,</span> <span class="n">subject_id</span><span class="o">=...</span><span class="p">,</span> 
+                                             <span class="n">predicate</span><span class="o">=</span><span class="n">predicate</span><span class="p">,</span> <span class="n">object_type</span><span class="o">=...</span><span class="p">,</span>
+                                             <span class="n">object_entity_id</span><span class="o">=...</span><span class="p">,</span> <span class="n">object_value</span><span class="o">=...</span><span class="p">)</span>
+    <span class="c1"># existing 命中 → 合并 evidence / 更强确认出新 recorded；未命中 → 新插入</span>
+
+<span class="c1"># 4. 图准入检查</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="n">graph_eligible</span><span class="p">(</span><span class="n">predicate</span><span class="p">,</span> <span class="n">polarity</span><span class="p">,</span> <span class="n">assertion_status</span><span class="p">):</span>
+    <span class="c1"># 该 fact 只存不进图（检索仍可命中 BM25）</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="05-entity-linking.html" class="btn btn-neutral float-left" title="第5章 实体链接详解" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="07-episodes-and-case.html" class="btn btn-neutral float-right" title="第7章 Episodes 与诊断 Case" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

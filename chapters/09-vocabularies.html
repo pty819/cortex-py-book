@@ -1,0 +1,1014 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第9章 Vocabularies 系统 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第10章 信号总线 — 记忆自演化的基础设施" href="10-signal-bus.html" />
+    <link rel="prev" title="第8章 Beliefs 与 Understanding" href="08-beliefs-and-understanding.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="00-overview.html">第0章 项目概览</a></li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第9章 Vocabularies 系统</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">概述</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">表结构</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id3">Vocabularies</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vocabulary-values">Vocabulary Values</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id4">两种模式</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#closed">Closed（闭集）</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#open">Open（开集）</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#cardinality">Cardinality（基数）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id5">谓词 Cardinality 表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#coerce">Coerce 函数</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id6">预置诊断词表</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#api">API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#mcp">MCP 工具</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#synonyms">Synonyms（同义词扩展）</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id7">与 Vocabularies 的区别</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id8">表结构</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id9">归一化与重叠检测</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id10">检索中的同义词扩展</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#api-mcp">API 与 MCP</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id11">典型用法</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id12">最佳实践</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第9章 Vocabularies 系统</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/09-vocabularies.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="vocabularies">
+<h1>第9章 Vocabularies 系统<a class="headerlink" href="#vocabularies" title="链接到此标题。"></a></h1>
+<section id="id1">
+<h2>概述<a class="headerlink" href="#id1" title="链接到此标题。"></a></h2>
+<p>Vocabularies（词表系统）提供<strong>受控词汇</strong>约束，确保抽取的三元组使用标准化的谓词和值。分为 closed（闭集）和 open（开集）两种模式。</p>
+<pre  class="mermaid">
+        graph TB
+    subgraph Vocab 类型
+        C[Closed 闭集&lt;br/&gt;必须命中词表]
+        O[Open 开集&lt;br/&gt;未命中保留原值]
+    end
+    
+    subgraph Cardinality
+        S[Single 单值&lt;br/&gt;新值超替旧值]
+        M[Multi 多值&lt;br/&gt;多值共存]
+    end
+    
+    subgraph 应用
+        P[Predicate 谓词约束&lt;br/&gt;诊断关系标准化]
+        V[Value 值约束&lt;br/&gt;状态/阶段标准化]
+    end
+    </pre></section>
+<section id="id2">
+<h2>表结构<a class="headerlink" href="#id2" title="链接到此标题。"></a></h2>
+<section id="id3">
+<h3>Vocabularies<a class="headerlink" href="#id3" title="链接到此标题。"></a></h3>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">vocabularies</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">vocab_id</span><span class="w">    </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">       </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">name</span><span class="w">        </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">kind</span><span class="w">        </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">kind</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;closed&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;open&#39;</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">description</span><span class="w"> </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="k">cardinality</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;multi&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">-- &#39;single&#39; | &#39;multi&#39;</span>
+<span class="w">    </span><span class="n">created_at</span><span class="w">  </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="k">UNIQUE</span><span class="w"> </span><span class="p">(</span><span class="k">scope</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">)</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+</section>
+<section id="vocabulary-values">
+<h3>Vocabulary Values<a class="headerlink" href="#vocabulary-values" title="链接到此标题。"></a></h3>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">vocabulary_values</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">value_id</span><span class="w">        </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">vocab_id</span><span class="w">        </span><span class="n">UUID</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">vocabularies</span><span class="p">(</span><span class="n">vocab_id</span><span class="p">)</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span><span class="p">,</span>
+<span class="w">    </span><span class="n">canonical_value</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">aliases</span><span class="w">         </span><span class="nb">TEXT</span><span class="p">[]</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="n">sort_order</span><span class="w">      </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="k">cardinality</span><span class="w">     </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;multi&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">-- per-value override</span>
+<span class="w">    </span><span class="n">created_at</span><span class="w">      </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="k">UNIQUE</span><span class="w"> </span><span class="p">(</span><span class="n">vocab_id</span><span class="p">,</span><span class="w"> </span><span class="n">canonical_value</span><span class="p">)</span>
+<span class="p">);</span>
+
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_vocab_values_aliases</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">vocabulary_values</span><span class="w"> </span><span class="k">USING</span><span class="w"> </span><span class="n">gin</span><span class="w"> </span><span class="p">(</span><span class="n">aliases</span><span class="p">);</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="id4">
+<h2>两种模式<a class="headerlink" href="#id4" title="链接到此标题。"></a></h2>
+<section id="closed">
+<h3>Closed（闭集）<a class="headerlink" href="#closed" title="链接到此标题。"></a></h3>
+<p><strong>规则</strong>：抽取的值必须命中词表。未命中 → 返回 <code class="docutils literal notranslate"><span class="pre">null</span></code>（值被拒绝）。</p>
+<p><strong>适用</strong>：谓词（predicate）——所有诊断关系必须从预定义列表中选。</p>
+</section>
+<section id="open">
+<h3>Open（开集）<a class="headerlink" href="#open" title="链接到此标题。"></a></h3>
+<p><strong>规则</strong>：抽取的值尽量匹配词表。未命中 → 保留原值（不拒绝）。</p>
+<p><strong>适用</strong>：值标签、设备名称等——不能限制太死，但鼓励标准化。</p>
+</section>
+</section>
+<section id="cardinality">
+<h2>Cardinality（基数）<a class="headerlink" href="#cardinality" title="链接到此标题。"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>基数</p></th>
+<th class="head"><p>行为</p></th>
+<th class="head"><p>适用</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">single</span></code></p></td>
+<td><p>新值超替旧值（最后写入的 wins）</p></td>
+<td><p>状态字段（“设备状态：运行中”）</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">multi</span></code></p></td>
+<td><p>多值共存</p></td>
+<td><p>多标签、多属性</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="id5">
+<h2>谓词 Cardinality 表<a class="headerlink" href="#id5" title="链接到此标题。"></a></h2>
+<p>诊断谓词的 cardinality 在 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 中统一定义：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># 唯一 single 的来源是 STATE_PREDICATES(当前仅 has_status);</span>
+<span class="c1"># 其余全部 multi。cardinality 不是手写字典,而是由类别推导。</span>
+<span class="n">STATE_PREDICATES</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span>
+    <span class="n">p</span> <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">PREDICATE_DICTIONARY</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">d</span><span class="o">.</span><span class="n">category</span> <span class="o">==</span> <span class="s2">&quot;state&quot;</span>
+<span class="p">)</span>
+
+<span class="n">PREDICATE_CARDINALITY</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">predicate</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;single&quot;</span> <span class="k">if</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="n">STATE_PREDICATES</span> <span class="k">else</span> <span class="s2">&quot;multi&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">predicate</span> <span class="ow">in</span> <span class="n">DIAGNOSIS_PREDICATE_NAMES</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<blockquote>
+<div><p><strong>DB 镜像</strong>：cardinality 现在也同时存在于 <code class="docutils literal notranslate"><span class="pre">predicate_definitions</span></code> 表中（与 <code class="docutils literal notranslate"><span class="pre">category</span></code>、<code class="docutils literal notranslate"><span class="pre">prop_order</span></code> 并列）。<code class="docutils literal notranslate"><span class="pre">maintenance.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">seed_predicate_definitions()</span></code> 在 upsert 一阶谓词时会把 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">PREDICATE_CARDINALITY</span></code> 同步写入该表的 <code class="docutils literal notranslate"><span class="pre">cardinality</span></code> 列。运行时 cardinality 仍以 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 为单一真相源，<code class="docutils literal notranslate"><span class="pre">predicate_definitions</span></code> 提供可查询/可审计的镜像并承载高阶谓词元数据。详见第 6 章「DB-backed 本体: predicate_definitions 表」。</p>
+</div></blockquote>
+</section>
+<section id="coerce">
+<h2>Coerce 函数<a class="headerlink" href="#coerce" title="链接到此标题。"></a></h2>
+<p>抽取管线的 <code class="docutils literal notranslate"><span class="pre">coerce_value</span></code> 函数将 LLM 输出的原始值约束到词表：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">coerce_value</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">vocab_name</span><span class="p">,</span> <span class="n">raw</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;closed：未命中→null；open：未命中→保留；命中别名→canonical&quot;&quot;&quot;</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        SELECT vocab_id, kind FROM vocabularies </span>
+<span class="s2">        WHERE scope=:s AND name=:n</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span> <span class="s2">&quot;n&quot;</span><span class="p">:</span> <span class="n">vocab_name</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">row</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">raw</span>  <span class="c1"># 无词表 → 原样</span>
+    
+    <span class="n">hit</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        SELECT vv.canonical_value FROM vocabulary_values vv </span>
+<span class="s2">        WHERE vv.vocab_id=:v</span>
+<span class="s2">        AND (vv.canonical_value=:r OR :r = ANY(vv.aliases)) LIMIT 1</span>
+<span class="s2">    &quot;&quot;&quot;</span><span class="p">),</span> <span class="p">{</span><span class="s2">&quot;v&quot;</span><span class="p">:</span> <span class="n">row</span><span class="o">.</span><span class="n">vocab_id</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">:</span> <span class="n">raw</span><span class="p">})</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+    
+    <span class="k">if</span> <span class="n">hit</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">hit</span><span class="o">.</span><span class="n">canonical_value</span>  <span class="c1"># 命中 → 标准化</span>
+    
+    <span class="k">return</span> <span class="n">raw</span> <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;open&quot;</span> <span class="k">else</span> <span class="kc">None</span>  <span class="c1"># 未命中</span>
+</pre></div>
+</div>
+</section>
+<section id="id6">
+<h2>预置诊断词表<a class="headerlink" href="#id6" title="链接到此标题。"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">maintenance.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">seed_diagnosis_vocab</span></code> 为新 scope 预置诊断谓词词表。<strong>无需手工执行</strong>：第一个 event 写入新 scope 时，<code class="docutils literal notranslate"><span class="pre">infra/core.py</span></code> 的 <code class="docutils literal notranslate"><span class="pre">_auto_provision_scope</span></code> 会自动完成层级注册 + closed <code class="docutils literal notranslate"><span class="pre">predicate</span></code> 词表预填（见第 3 章）；<code class="docutils literal notranslate"><span class="pre">seed_diagnosis_vocab(scope)</span></code> 作为编程入口供脚本/迁移场景手动补种：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">cortex.memory.maintenance</span><span class="w"> </span><span class="kn">import</span> <span class="n">seed_diagnosis_vocab</span>
+<span class="n">seed_diagnosis_vocab</span><span class="p">(</span><span class="s2">&quot;equip:XXX-v1&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>预置后，该 scope 的抽取管线会自动约束谓词为 36 个预定义值（8 结构 + 5 因果 + 22 诊断 + 1 状态）。</p>
+<blockquote>
+<div><p><strong>配套函数</strong>：<code class="docutils literal notranslate"><span class="pre">maintenance.py</span></code> 还提供 <code class="docutils literal notranslate"><span class="pre">seed_predicate_definitions()</span></code>，把 <code class="docutils literal notranslate"><span class="pre">ontology.py</span></code> 的一阶谓词 upsert 到 <code class="docutils literal notranslate"><span class="pre">predicate_definitions</span></code> 表（统一标记 <code class="docutils literal notranslate"><span class="pre">prop_order=1</span></code> 并写入 <code class="docutils literal notranslate"><span class="pre">category</span></code>、<code class="docutils literal notranslate"><span class="pre">cardinality</span></code>）。两者互补：<code class="docutils literal notranslate"><span class="pre">seed_diagnosis_vocab</span></code> 预置抽取期的 closed 词表约束，<code class="docutils literal notranslate"><span class="pre">seed_predicate_definitions</span></code> 则填充可查询的本体元数据。详见第 6 章。</p>
+</div></blockquote>
+</section>
+<section id="api">
+<h2>API<a class="headerlink" href="#api" title="链接到此标题。"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>端点</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/vocabularies</span></code></p></td>
+<td><p>创建词表（body: <code class="docutils literal notranslate"><span class="pre">scope</span></code>、<code class="docutils literal notranslate"><span class="pre">name</span></code>、<code class="docutils literal notranslate"><span class="pre">kind</span></code>、<code class="docutils literal notranslate"><span class="pre">values[]</span></code>）</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/vocabularies?scope=</span></code></p></td>
+<td><p>列出某 scope 下所有词表（含 values）</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/vocabularies/{name}?scope=</span></code></p></td>
+<td><p>取单个词表详情</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">PUT</span> <span class="pre">/v1/vocabularies/{name}</span></code></p></td>
+<td><p>替换词表内容（body: <code class="docutils literal notranslate"><span class="pre">scope</span></code>、可选 <code class="docutils literal notranslate"><span class="pre">kind</span></code>、<code class="docutils literal notranslate"><span class="pre">values[]</span></code>，整体覆盖 values）</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DELETE</span> <span class="pre">/v1/vocabularies/{name}?scope=</span></code></p></td>
+<td><p>删除词表</p></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># 创建词表（closed，多值）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>/v1/vocabularies<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">    &quot;scope&quot;: &quot;equip:XXX-v1&quot;,</span>
+<span class="s1">    &quot;name&quot;: &quot;failure_mode&quot;,</span>
+<span class="s1">    &quot;kind&quot;: &quot;closed&quot;,</span>
+<span class="s1">    &quot;values&quot;: [</span>
+<span class="s1">      {&quot;canonical&quot;: &quot;密封失效&quot;, &quot;aliases&quot;: [&quot;密封圈老化&quot;, &quot;密封损坏&quot;]},</span>
+<span class="s1">      {&quot;canonical&quot;: &quot;MFC漂移&quot;, &quot;aliases&quot;: [&quot;MFC校准偏差&quot;, &quot;流量计漂移&quot;]}</span>
+<span class="s1">    ]</span>
+<span class="s1">  }&#39;</span>
+
+<span class="c1"># 列出词表</span>
+curl<span class="w"> </span><span class="s2">&quot;/v1/vocabularies?scope=equip:XXX-v1&quot;</span>
+
+<span class="c1"># 替换词表（整体覆盖 values）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span>/v1/vocabularies/failure_mode<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;scope&quot;:&quot;equip:XXX-v1&quot;,&quot;kind&quot;:&quot;closed&quot;,&quot;values&quot;:[{&quot;canonical&quot;:&quot;密封失效&quot;,&quot;aliases&quot;:[]}] }&#39;</span>
+
+<span class="c1"># 删除词表</span>
+curl<span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="s2">&quot;/v1/vocabularies/failure_mode?scope=equip:XXX-v1&quot;</span>
+</pre></div>
+</div>
+</section>
+<section id="mcp">
+<h2>MCP 工具<a class="headerlink" href="#mcp" title="链接到此标题。"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vocab_create<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;failure_mode&quot;</span>,<span class="w"> </span><span class="nv">kind</span><span class="o">=</span><span class="s2">&quot;closed&quot;</span>,<span class="w"> </span>
+<span class="w">             </span><span class="nv">values</span><span class="o">=[{</span>canonical:<span class="w"> </span><span class="s2">&quot;密封失效&quot;</span>,<span class="w"> </span>aliases:<span class="w"> </span><span class="o">[</span><span class="s2">&quot;密封圈老化&quot;</span><span class="o">]}]</span>,
+<span class="w">             </span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;equip:XXX-v1&quot;</span><span class="o">)</span>
+
+vocab_list<span class="o">(</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;equip:XXX-v1&quot;</span><span class="o">)</span>
+</pre></div>
+</div>
+</section>
+<section id="synonyms">
+<h2>Synonyms（同义词扩展）<a class="headerlink" href="#synonyms" title="链接到此标题。"></a></h2>
+<p>Vocabularies 解决的是&quot;值标准化&quot;（所有对同一概念的表述归一为 canonical form）。<strong>Synonyms</strong> 解决的是反向问题——当用户用任意别名查询时，都能命中同一条记忆。</p>
+<section id="id7">
+<h3>与 Vocabularies 的区别<a class="headerlink" href="#id7" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>维度</p></th>
+<th class="head"><p>Vocabularies（词表）</p></th>
+<th class="head"><p>Synonyms（同义词）</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>方向</p></td>
+<td><p>写入时归一化（多 → 一）</p></td>
+<td><p>读取时扩展（一 → 多）</p></td>
+</tr>
+<tr class="row-odd"><td><p>作用层</p></td>
+<td><p>抽取/写入路径</p></td>
+<td><p>检索/读取路径</p></td>
+</tr>
+<tr class="row-even"><td><p>粒度</p></td>
+<td><p>按词表分,每个词表一组值</p></td>
+<td><p>全局 term → aliases 映射</p></td>
+</tr>
+<tr class="row-odd"><td><p>状态</p></td>
+<td><p>只有 active/存在</p></td>
+<td><p>draft / active / retired</p></td>
+</tr>
+<tr class="row-even"><td><p>触发</p></td>
+<td><p>写入时 coerce 函数</p></td>
+<td><p>检索时 synonym 通道自动扩展</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="id8">
+<h3>表结构<a class="headerlink" href="#id8" title="链接到此标题。"></a></h3>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">synonyms</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">synonym_id</span><span class="w">  </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="k">scope</span><span class="w">       </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">term</span><span class="w">        </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">           </span><span class="c1">-- 主词（规范名）</span>
+<span class="w">    </span><span class="n">aliases</span><span class="w">     </span><span class="nb">TEXT</span><span class="p">[]</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">-- 别名数组</span>
+<span class="w">    </span><span class="n">status</span><span class="w">      </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;active&#39;</span>
+<span class="w">                </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;draft&#39;</span><span class="p">,</span><span class="s1">&#39;active&#39;</span><span class="p">,</span><span class="s1">&#39;retired&#39;</span><span class="p">)),</span>
+<span class="w">    </span><span class="n">locale</span><span class="w">      </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;und&#39;</span><span class="p">,</span><span class="w">   </span><span class="c1">-- 语言/区域限定</span>
+<span class="w">    </span><span class="k">domain</span><span class="w">      </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;general&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">-- 领域限定</span>
+<span class="w">    </span><span class="k">source</span><span class="w">      </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;manual&#39;</span><span class="p">,</span><span class="w">   </span><span class="c1">-- manual | imported | ...</span>
+<span class="w">    </span><span class="n">metadata</span><span class="w">    </span><span class="n">JSONB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="n">created_by</span><span class="w">  </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">reviewed_by</span><span class="w"> </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">created_at</span><span class="w">  </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">updated_at</span><span class="w">  </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="k">UNIQUE</span><span class="w"> </span><span class="p">(</span><span class="k">scope</span><span class="p">,</span><span class="w"> </span><span class="n">term</span><span class="p">)</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+</section>
+<section id="id9">
+<h3>归一化与重叠检测<a class="headerlink" href="#id9" title="链接到此标题。"></a></h3>
+<p>所有 term 和 alias 都经 <code class="docutils literal notranslate"><span class="pre">normalize_term()</span></code> 归一化（小写、去空白、全角转半角）。创建/更新时做<strong>重叠检测</strong>——如果新加入的 aliases 和已有同义词组的成员（term 或任一 alias）重叠，报错拒绝，防止同一个词出现在两个不同的同义词组里导致歧义。</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_assert_no_active_overlap</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">members</span><span class="p">,</span> <span class="n">exclude_id</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;检查 members 中任意一个是否已在其他同义词组里&quot;&quot;&quot;</span>
+    <span class="c1"># 对每个 member 做归一化,然后查 synonyms 表</span>
+    <span class="c1"># 有重叠则 raise ValueError</span>
+</pre></div>
+</div>
+</section>
+<section id="id10">
+<h3>检索中的同义词扩展<a class="headerlink" href="#id10" title="链接到此标题。"></a></h3>
+<p>第 14 章的 <strong>Synonym 通道</strong>（6 通道之一）在检索时自动扩展查询词：</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">expanded_terms</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">view</span><span class="p">,</span> <span class="n">query</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;返回 (expanded_terms_list, matched_groups)</span>
+<span class="sd">    expanded_terms = 所有命中同义词组的 term + aliases（去重排序，不含原 query 词）</span>
+<span class="sd">    matched_groups = 命中了哪些同义词组（含 matched_members，用于调试/解释）</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+</pre></div>
+</div>
+<p>匹配方式是 <code class="docutils literal notranslate"><span class="pre">_query_contains</span></code>——单向包含判定：同义词组的成员（term 或 alias）出现在 query 中才算命中，不是精确相等，也不是双向子串。CJK 成员用子串包含（<code class="docutils literal notranslate"><span class="pre">member</span> <span class="pre">in</span> <span class="pre">query</span></code>），ASCII 成员用词边界正则避免误伤子串。例如 query “压力波动加剧”包含成员“压力波动”，即可命中对应同义词组。</p>
+</section>
+<section id="api-mcp">
+<h3>API 与 MCP<a class="headerlink" href="#api-mcp" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>操作</p></th>
+<th class="head"><p>HTTP 端点</p></th>
+<th class="head"><p>MCP 工具</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>列出</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/synonyms</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">synonym_list</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>创建</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/synonyms</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">synonym_create</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>取单个</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/synonyms/{id}</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">synonym_get</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>更新</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">PUT</span> <span class="pre">/v1/synonyms/{id}</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">synonym_update</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>删除</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">DELETE</span> <span class="pre">/v1/synonyms/{id}</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">synonym_delete</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>批量导入</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/synonyms/import</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">synonym_import</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>导出</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/synonyms/export</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">synonym_export</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="id11">
+<h3>典型用法<a class="headerlink" href="#id11" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># 创建同义词组</span>
+<span class="n">synonym_create</span><span class="p">(</span>
+    <span class="n">scope</span><span class="o">=</span><span class="s2">&quot;equip:XXX-v1&quot;</span><span class="p">,</span>
+    <span class="n">term</span><span class="o">=</span><span class="s2">&quot;压力波动&quot;</span><span class="p">,</span>
+    <span class="n">aliases</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;压力不稳&quot;</span><span class="p">,</span> <span class="s2">&quot;压力振荡&quot;</span><span class="p">,</span> <span class="s2">&quot;压力跳动&quot;</span><span class="p">,</span> <span class="s2">&quot;pressure oscillation&quot;</span><span class="p">],</span>
+    <span class="n">status</span><span class="o">=</span><span class="s2">&quot;active&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># 检索时自动扩展:用户搜&quot;压力不稳&quot; → 扩展为 [&quot;压力不稳&quot;, &quot;压力波动&quot;, &quot;压力振荡&quot;, ...]</span>
+<span class="c1"># → 提高召回率</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="id12">
+<h2>最佳实践<a class="headerlink" href="#id12" title="链接到此标题。"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>场景</p></th>
+<th class="head"><p>推荐模式</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>谓词约束</p></td>
+<td><p>closed + multi</p></td>
+<td><p>限制所有诊断关系为预定义 36 个谓词</p></td>
+</tr>
+<tr class="row-odd"><td><p>故障类型</p></td>
+<td><p>closed + multi</p></td>
+<td><p>标准化故障分类</p></td>
+</tr>
+<tr class="row-even"><td><p>设备状态</p></td>
+<td><p>closed + single</p></td>
+<td><p>每个设备只有一个当前状态</p></td>
+</tr>
+<tr class="row-odd"><td><p>设备名称</p></td>
+<td><p>open + multi</p></td>
+<td><p>不能限制太死</p></td>
+</tr>
+<tr class="row-even"><td><p>阶段/步骤</p></td>
+<td><p>closed + single</p></td>
+<td><p>诊断阶段依次推进</p></td>
+</tr>
+<tr class="row-odd"><td><p>同义词扩展</p></td>
+<td><p>active + aliases 3-5 个</p></td>
+<td><p>每个同义词组别太多,避免扩展过宽引入噪声</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="08-beliefs-and-understanding.html" class="btn btn-neutral float-left" title="第8章 Beliefs 与 Understanding" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="10-signal-bus.html" class="btn btn-neutral float-right" title="第10章 信号总线 — 记忆自演化的基础设施" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,1019 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="zh-CN" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第0章 项目概览 &mdash; Cortex-PY 架构解析  文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script>
+(function() {
+    var orig = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (name === 'data-original-code' && typeof value === 'string') {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = value;
+            value = ta.value;
+        }
+        return orig.call(this, name, value);
+    };
+})();
+</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7d86a446"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/translations.js?v=540d3cec"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../genindex.html" />
+    <link rel="search" title="搜索" href="../search.html" />
+    <link rel="next" title="第1章 五层记忆模型" href="01-memory-model.html" />
+    <link rel="prev" title="Cortex-PY 架构解析" href="../index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Cortex-PY 架构解析
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="搜索文档" aria-label="搜索文档" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
+              <p class="caption" role="heading"><span class="caption-text">上篇：架构总览</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">第0章 项目概览</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id2">项目定位</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">系统架构</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id4">五层记忆模型</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id5">核心组件</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#infra-core-py">1. 写入路径 (infra/core.py)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#graph-extraction-pipeline-py">2. 抽取管线 (graph/extraction/pipeline.py)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#graph-retrieval-pipeline-py">3. 检索系统 (graph/retrieval/pipeline.py)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id6">4. 功能模块</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#i-o">并行 I/O 优化</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#feedback-dreaming-higher-order">记忆自演化（Feedback / Dreaming / Higher-Order）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#playbook-forward-reasoning">诊断推理（Playbook + Forward Reasoning）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id7">代码结构</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="01-memory-model.html">第1章 五层记忆模型</a></li>
+<li class="toctree-l1"><a class="reference internal" href="02-data-model.html">第2章 数据模型</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：写入路径——从原始事件到结构化知识</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="03-wal-and-events.html">第3章 WAL 与事件系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="04-extraction-pipeline.html">第4章 抽取管线</a></li>
+<li class="toctree-l1"><a class="reference internal" href="05-entity-linking.html">第5章 实体链接详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="06-ontology-and-assertion.html">第6章 谓词本体与断言语义</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07-episodes-and-case.html">第7章 Episodes 与诊断 Case</a></li>
+<li class="toctree-l1"><a class="reference internal" href="07b-diagnostics.html">第7b章 诊断推理：Playbook DAG 与正向推理</a></li>
+<li class="toctree-l1"><a class="reference internal" href="08-beliefs-and-understanding.html">第8章 Beliefs 与 Understanding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="09-vocabularies.html">第9章 Vocabularies 系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">中篇：记忆自演化——信号总线与三功能</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="10-signal-bus.html">第10章 信号总线 — 记忆自演化的基础设施</a></li>
+<li class="toctree-l1"><a class="reference internal" href="11-feedback.html">第11章 Feedback 回灌 — 用修正信号优化召回</a></li>
+<li class="toctree-l1"><a class="reference internal" href="12-dreaming.html">第12章 Dreaming 离线巩固 — 两阶段 LLM + 精确去重</a></li>
+<li class="toctree-l1"><a class="reference internal" href="13-higher-order.html">第13章 Higher-Order 高阶归纳 — 从一阶事实到抽象结论</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">下篇：读取路径——精准召回</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="14-retrieval-system.html">第14章 检索系统概述</a></li>
+<li class="toctree-l1"><a class="reference internal" href="15-retrieval-channels.html">第15章 检索通道详解</a></li>
+<li class="toctree-l1"><a class="reference internal" href="16-rrf-fusion.html">第16章 RRF 融合</a></li>
+<li class="toctree-l1"><a class="reference internal" href="17-temporal-system.html">第17章 时态系统</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">接口篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="18-api-reference.html">第18章 API 参考</a></li>
+<li class="toctree-l1"><a class="reference internal" href="19-mcp-server.html">第19章 MCP Server</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">运维篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="20-worker-system.html">第20章 Worker 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="21-maintenance.html">第21章 Maintenance 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="22-erasures.html">第22章 Erasures 系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="23-architecture-diagrams.html">第23章 架构视图（4+1 视图模型）</a></li>
+<li class="toctree-l1"><a class="reference internal" href="24-config-and-frontend.html">第24章 运行配置与前端运维</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">对比篇</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="25-competitive-analysis.html">第25章 竞品分析：Agent 记忆/知识图谱系统在复杂故障诊断场景的能力边界</a></li>
+<li class="toctree-l1"><a class="reference internal" href="26-tech-selection.html">第26章 后端选型论证：最小依赖约束下的 PG+扩展生态</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="移动版导航菜单" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Cortex-PY 架构解析</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="页面导航">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">第0章 项目概览</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/chapters/00-overview.md.txt" rel="nofollow"> 查看页面源码</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section class="tex2jax_ignore mathjax_ignore" id="id1">
+<h1>第0章 项目概览<a class="headerlink" href="#id1" title="链接到此标题。"></a></h1>
+<section id="id2">
+<h2>项目定位<a class="headerlink" href="#id2" title="链接到此标题。"></a></h2>
+<p><strong>Cortex-PY</strong> 是 CortexDB 记忆系统的 Python 复刻实现。它不是一个生产级系统，而是面向个人/小团队可用的 Agent 长期记忆层。</p>
+<div class="admonition- admonition">
+<p class="admonition-title">设计哲学</p>
+<ul class="simple">
+<li><p><strong>重点投入知识图谱质量</strong></p></li>
+<li><p>不做集群/企业安全/benchmark 复现</p></li>
+<li><p>五层记忆模型是核心</p></li>
+<li><p>双时态三元组是灵魂</p></li>
+</ul>
+</div>
+</section>
+<section id="id3">
+<h2>系统架构<a class="headerlink" href="#id3" title="链接到此标题。"></a></h2>
+<pre  class="mermaid">
+        graph TB
+    subgraph 写入路径
+        A[用户输入] --&gt; B[Experience API]
+        B --&gt; C[WAL Append]
+        C --&gt; D[Enqueue Job]
+    end
+    
+    subgraph 异步处理
+        D --&gt; E[Worker Loop]
+        E --&gt; F[Extraction Pipeline]
+        F --&gt; G[Entity Linking]
+        G --&gt; H[Fact/Belief 生成]
+    end
+    
+    subgraph 读取路径
+        I[Recall API] --&gt; J[6通道检索]
+        J --&gt; K[RRF 融合]
+        K --&gt; L[Rerank]
+        L --&gt; M[StratifiedPack]
+    end
+    
+    subgraph 存储
+        N[(PostgreSQL)]
+        O[pgvector]
+        P[pg_textsearch]
+        Q[pg_trgm]
+    end
+    
+    H --&gt; N
+    J --&gt; N
+    N --&gt; O
+    N --&gt; P
+    N --&gt; Q
+    </pre></section>
+<section id="id4">
+<h2>五层记忆模型<a class="headerlink" href="#id4" title="链接到此标题。"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>层</p></th>
+<th class="head"><p>存储</p></th>
+<th class="head"><p>职责</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Events</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">events</span></code> 表</p></td>
+<td><p>WAL，唯一真相源，不可变 append-only</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Episodes</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">episodes</span></code> 表</p></td>
+<td><p>有界事件序列，按时间分段</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Facts</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">facts</span></code> 表</p></td>
+<td><p>双时态三元组，知识图谱的边</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Beliefs</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beliefs</span></code> 表</p></td>
+<td><p>概率断言，带 supports 证据链</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Understanding</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">concepts</span></code> 表</p></td>
+<td><p>概念合成，从 beliefs 聚合</p></td>
+</tr>
+</tbody>
+</table>
+<pre  class="mermaid">
+        graph LR
+    E1[Event 1] --&gt; E2[Event 2]
+    E2 --&gt; E3[Event 3]
+    
+    E1 --&gt; EP1[Episode 1]
+    E2 --&gt; EP1
+    E3 --&gt; EP2[Episode 2]
+    
+    EP1 --&gt; F1[Fact: subject-predicate-object]
+    EP1 --&gt; F2[Fact: ...]
+    
+    F1 --&gt; B1[Belief: claim + confidence]
+    F2 --&gt; B1
+    
+    B1 --&gt; U1[Understanding: concept]
+    </pre></section>
+<section id="id5">
+<h2>核心组件<a class="headerlink" href="#id5" title="链接到此标题。"></a></h2>
+<section id="infra-core-py">
+<h3>1. 写入路径 (infra/core.py)<a class="headerlink" href="#infra-core-py" title="链接到此标题。"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># infra/core.py - 核心写入逻辑</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">append_event</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">modality</span><span class="p">,</span> <span class="n">content</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> 
+                 <span class="n">caller</span><span class="p">,</span> <span class="n">idempotency_key</span><span class="p">,</span> <span class="o">...</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;幂等写入：同 key+同 body → 返回既有; 同 key+异 body → 409&quot;&quot;&quot;</span>
+    <span class="c1"># 1. 幂等检查</span>
+    <span class="n">existing</span> <span class="o">=</span> <span class="n">check_idempotency</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">idempotency_key</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">existing</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">body_hash_match</span><span class="p">(</span><span class="n">existing</span><span class="p">,</span> <span class="n">content</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">existing</span>  <span class="c1"># 幂等返回</span>
+        <span class="k">raise</span> <span class="n">IdempotencyConflict</span>
+    
+    <span class="c1"># 2. 写入 WAL</span>
+    <span class="n">event_id</span> <span class="o">=</span> <span class="n">insert_event</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">modality</span><span class="p">,</span> <span class="n">content</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+    
+    <span class="c1"># 3. 入队抽取任务</span>
+    <span class="n">enqueue_job</span><span class="p">(</span><span class="s2">&quot;extract&quot;</span><span class="p">,</span> <span class="n">event_id</span><span class="p">)</span>
+    
+    <span class="c1"># 4. 发送生命周期事件</span>
+    <span class="n">emit_lifecycle</span><span class="p">(</span><span class="s2">&quot;captured&quot;</span><span class="p">,</span> <span class="n">event_id</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">event_id</span>
+</pre></div>
+</div>
+</section>
+<section id="graph-extraction-pipeline-py">
+<h3>2. 抽取管线 (graph/extraction/pipeline.py)<a class="headerlink" href="#graph-extraction-pipeline-py" title="链接到此标题。"></a></h3>
+<pre  class="mermaid">
+        flowchart TD
+    A[原始 Event] --&gt; B[LLM 抽取]
+    B --&gt; C{抽取结果}
+    C --&gt;|entities| D[实体链接 B over C]
+    C --&gt;|facts| E[Fact 生成]
+    
+    D --&gt; D1{向量召回}
+    D1 --&gt;|命中| D2[复用已有实体]
+    D1 --&gt;|未命中| D3[创建新实体]
+    D1 --&gt;|灰区| D4[LLM 判定]
+    
+    E --&gt; F[存入 facts 表]
+    D2 --&gt; G[更新实体 embedding]
+    D3 --&gt; G
+    
+    F --&gt; H[触发下游]
+    H --&gt; I[Belief 聚合]
+    H --&gt; J[Episode 分段]
+    H --&gt; K[Understanding 合成]
+    </pre></section>
+<section id="graph-retrieval-pipeline-py">
+<h3>3. 检索系统 (graph/retrieval/pipeline.py)<a class="headerlink" href="#graph-retrieval-pipeline-py" title="链接到此标题。"></a></h3>
+<p>6 通道混合检索：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>通道</p></th>
+<th class="head"><p>实现</p></th>
+<th class="head"><p>说明</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>向量</p></td>
+<td><p>pgvector <code class="docutils literal notranslate"><span class="pre">&lt;=&gt;</span></code></p></td>
+<td><p>实体 embedding 近邻 → 其 facts</p></td>
+</tr>
+<tr class="row-odd"><td><p>BM25</p></td>
+<td><p>fact_search_documents 投影表（pg_textsearch）</p></td>
+<td><p>facts 全文检索，内置 tsvector 仅作回退</p></td>
+</tr>
+<tr class="row-even"><td><p>图遍历</p></td>
+<td><p>递归 CTE</p></td>
+<td><p>种子实体 BFS（默认 2 跳，<code class="docutils literal notranslate"><span class="pre">retrieval.graph_max_hops</span></code> 可配）</p></td>
+</tr>
+<tr class="row-odd"><td><p>Entity Name</p></td>
+<td><p>pg_trgm</p></td>
+<td><p>模糊实体名匹配</p></td>
+</tr>
+<tr class="row-even"><td><p>Synonym</p></td>
+<td><p>synonyms 表</p></td>
+<td><p>同义词扩展</p></td>
+</tr>
+<tr class="row-odd"><td><p>Temporal-decay</p></td>
+<td><p>valid_from 近因窗</p></td>
+<td><p>按 <code class="docutils literal notranslate"><span class="pre">valid_from</span> <span class="pre">DESC</span></code> 时间新近度排序（不依赖 access_count）</p></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<div><p><strong>Salience 软降权不是第 7 个通道</strong>，而是<strong>融合后的信号总线加权</strong>（signal bus：retrieval_count + salience + retrieval_usefulness，四信号独立开关）。它在 RRF 融合之后、rerank 之前注入，让负反馈多的事实按 salience 软降权、高频事实按 usage 饱和加分，避免噪声召回。详见第 10 章与第 14 章。</p>
+</div></blockquote>
+</section>
+<section id="id6">
+<h3>4. 功能模块<a class="headerlink" href="#id6" title="链接到此标题。"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>模块</p></th>
+<th class="head"><p>文件</p></th>
+<th class="head"><p>职责</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Ontology</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">infra/ontology.py</span></code></p></td>
+<td><p>谓词本体（结构/因果/诊断/状态四大类，共 36 个谓词）、图准入规则、<code class="docutils literal notranslate"><span class="pre">graph_eligible()</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Prompt 体系</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">infra/prompts.py</span></code></p></td>
+<td><p>半导体级诊断 prompts，21 种实体类型，36 个谓词</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Understanding</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">memory/understanding.py</span></code></p></td>
+<td><p>概念合成层，related 图遍历</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Maintenance</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">memory/maintenance.py</span></code></p></td>
+<td><p>methylation（软剪枝）+ consolidation（去重）+ 词表预置 + <code class="docutils literal notranslate"><span class="pre">seed_predicate_definitions</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Erasures</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">memory/erasures.py</span></code></p></td>
+<td><p>GDPR 4 阶段引用计数真删</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Ingest</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">memory/ingest.py</span></code></p></td>
+<td><p>bulk 写入 + 5 导入器</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Episodes/Case</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">memory/episodes.py</span></code></p></td>
+<td><p>诊断 Case 全生命周期管理</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Temporal</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">memory/temporal.py</span></code></p></td>
+<td><p>NL 时间短语解析</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Schemas</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">interfaces/api/schemas.py</span></code></p></td>
+<td><p>Pydantic API 契约</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Feedback</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">memory/feedback.py</span></code></p></td>
+<td><p>反馈信号采集（salience/正负反馈/retrieval_usefulness），写入 <code class="docutils literal notranslate"><span class="pre">feedback_signals</span></code> 表</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Dreaming</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">memory/dreaming.py</span></code></p></td>
+<td><p>离线巩固（Dreaming），周期性归纳 <code class="docutils literal notranslate"><span class="pre">dreaming_runs</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Higher-Order</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">memory/higher_order.py</span></code></p></td>
+<td><p>高阶事实合成，从一阶 facts 产出抽象结论（<code class="docutils literal notranslate"><span class="pre">is_higher_order=true</span></code>）</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Terminology</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">memory/terminology.py</span></code></p></td>
+<td><p>Vocabularies 词表 + Synonyms 同义词管理</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Diagnostics</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">diagnostics/engine.py</span></code> + <code class="docutils literal notranslate"><span class="pre">diagnostics/forward_reasoning.py</span></code></p></td>
+<td><p>诊断 Playbook DAG 引擎 + 症状正向推理（versioned playbooks, forward reasoning runs）</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Sensor Resolve</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">interfaces/api/routes/sensor_resolve.py</span></code></p></td>
+<td><p>自然语言 → 向量检索 → BFS 出边 → 关联传感器解析</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Concurrency</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">infra/concurrency.py</span></code></p></td>
+<td><p>ThreadPoolExecutor 并行 I/O 工具:<code class="docutils literal notranslate"><span class="pre">parallel_map</span></code>(保序、异常→None)、<code class="docutils literal notranslate"><span class="pre">parallel_call</span></code>(异构函数并行)、<code class="docutils literal notranslate"><span class="pre">get_executor</span></code>(惰性单例)</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="i-o">
+<h2>并行 I/O 优化<a class="headerlink" href="#i-o" title="链接到此标题。"></a></h2>
+<p>cortex-py 的 LLM/embed/rerank 调用都是 HTTP I/O。Python 的 GIL 在网络 <code class="docutils literal notranslate"><span class="pre">recv()</span></code> 处释放，因此用 <code class="docutils literal notranslate"><span class="pre">ThreadPoolExecutor</span></code> 能实现真正的并行。<code class="docutils literal notranslate"><span class="pre">infra/concurrency.py</span></code> 提供 <code class="docutils literal notranslate"><span class="pre">parallel_map</span></code>（保序、异常返回 None 不阻断）和 <code class="docutils literal notranslate"><span class="pre">parallel_call</span></code>（异构函数并行）两个工具，已应用于 6 处串行 I/O 等待点：</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>位置</p></th>
+<th class="head"><p>并行内容</p></th>
+<th class="head"><p>效果</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>检索 Phase 0</p></td>
+<td><p>query embed + N×HyDE LLM + multihop LLM（第一波）；N×HyDE 文本 embed（第二波）</p></td>
+<td><p>从串行 <code class="docutils literal notranslate"><span class="pre">Σ</span></code> 降到并行 <code class="docutils literal notranslate"><span class="pre">max</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>抽取 Step 3c</p></td>
+<td><p>灰区 entity link 的 N 路 LLM 裁决</p></td>
+<td><p>N 个灰区实体并发判定</p></td>
+</tr>
+<tr class="row-even"><td><p>抽取 Step 3b</p></td>
+<td><p>entity embedding 批量化</p></td>
+<td><p>N 逐条 → 1 batch</p></td>
+</tr>
+<tr class="row-odd"><td><p>Dreaming Phase B/C</p></td>
+<td><p>跨 cluster 的 relation_detect + action_plan</p></td>
+<td><p>N cluster 并发</p></td>
+</tr>
+<tr class="row-even"><td><p>Understanding 合成</p></td>
+<td><p>跨 topic 的 synthesis LLM</p></td>
+<td><p>N topic 并发</p></td>
+</tr>
+<tr class="row-odd"><td><p>Worker enrich</p></td>
+<td><p>缺 embedding 实体的批量补算</p></td>
+<td><p>batch embed 会话外</p></td>
+</tr>
+</tbody>
+</table>
+<p>所有并行 LLM 调用都在 <code class="docutils literal notranslate"><span class="pre">session_scope()</span></code> 外执行——持着 DB 连接等 HTTP 响应会浪费连接（QueuePool 下可能 pool_timeout）。模式统一为：session 内只做短事务读写，HTTP I/O 在 session 外并行。</p>
+</section>
+<section id="feedback-dreaming-higher-order">
+<h2>记忆自演化（Feedback / Dreaming / Higher-Order）<a class="headerlink" href="#feedback-dreaming-higher-order" title="链接到此标题。"></a></h2>
+<p>Cortex-PY 在五层记忆模型之上新增了<strong>自演化能力</strong>，使记忆层不再是一次性写入的静态图，而是会随使用被持续&quot;回炉&quot;的活系统。三条演化链路共享一条<strong>信号总线</strong>（核心信号：<code class="docutils literal notranslate"><span class="pre">retrieval_count</span></code>、<code class="docutils literal notranslate"><span class="pre">salience</span></code>、<code class="docutils literal notranslate"><span class="pre">retrieval_usefulness</span></code>，各自有独立开关）：</p>
+<ul class="simple">
+<li><p><strong>Feedback（反馈）</strong>：用户召回结果时的隐式/显式反馈（点击、采纳、正/负投票）被写入 <code class="docutils literal notranslate"><span class="pre">feedback_signals</span></code> 表，并实时调整相关 fact 的 <code class="docutils literal notranslate"><span class="pre">salience</span></code> 与 <code class="docutils literal notranslate"><span class="pre">retrieval_usefulness</span></code>。正向反馈提升召回优先级，负向反馈触发软降权（salience 软衰减，而非立即删除）。</p></li>
+<li><p><strong>Dreaming（做梦/离线巩固）</strong>：系统在低负载时段运行 <code class="docutils literal notranslate"><span class="pre">dreaming_runs</span></code>，对一段时间内的 facts 做去重、合并、冲突消解与抽象，把零散三元组凝聚成更紧凑的知识结构。这是与在线抽取解耦的&quot;睡眠巩固&quot;。</p></li>
+<li><p><strong>Higher-Order（高阶合成）</strong>：在抽取触发或定时任务驱动下，对同一实体的多条一阶 facts 调用 LLM 合成<strong>高阶事实</strong>（<code class="docutils literal notranslate"><span class="pre">is_higher_order=true</span></code>，带 <code class="docutils literal notranslate"><span class="pre">evidence_fact_ids</span></code> 指向支撑它的一阶事实），相当于在 Facts 层内开了一个&quot;抽象子层&quot;。</p></li>
+</ul>
+<p>三条链路统一读写信号总线字段：Feedback 负责采集信号（写 salience/retrieval_usefulness）、Dreaming 负责巩固、Higher-Order 负责提升抽象层级。检索融合后的四信号加权（Salience/Usage/Usefulness/Exploration 各自可开关）让记忆系统可以通过 salience 软降权抑制噪声、用 usage 饱和加分放大高频记忆、用 exploration 槽位保证新记忆曝光。详细设计与配置见<a class="reference internal" href="10-signal-bus.html"><span class="doc std std-doc">第10章 信号总线</span></a>、<a class="reference internal" href="11-feedback.html"><span class="doc std std-doc">第11章 Feedback 信号</span></a>、<a class="reference internal" href="12-dreaming.html"><span class="doc std std-doc">第12章 Dreaming 离线巩固</span></a>与<a class="reference internal" href="13-higher-order.html"><span class="doc std std-doc">第13章 Higher-Order 高阶事实</span></a>。</p>
+</section>
+<section id="playbook-forward-reasoning">
+<h2>诊断推理（Playbook + Forward Reasoning）<a class="headerlink" href="#playbook-forward-reasoning" title="链接到此标题。"></a></h2>
+<p>Cortex-PY 的 <code class="docutils literal notranslate"><span class="pre">diagnostics</span></code> 模块是独立于知识图谱的<strong>诊断规程引擎</strong>——facts 图描述&quot;世界是什么样&quot;，diagnostics 描述&quot;排查该怎么走&quot;。两者解耦：playbook 是人为审定的诊断流程图，不会被 LLM 抽取自动修改；forward reasoning 是确定性的 DAG 遍历，不产生幻觉。</p>
+<p><strong>核心设计</strong>：</p>
+<ul class="simple">
+<li><p><strong>Versioned Playbook DAG</strong>：每个 playbook 是一个有向无环图，节点类型包括 <code class="docutils literal notranslate"><span class="pre">symptom</span></code> / <code class="docutils literal notranslate"><span class="pre">condition</span></code> / <code class="docutils literal notranslate"><span class="pre">test</span></code> / <code class="docutils literal notranslate"><span class="pre">action</span></code> / <code class="docutils literal notranslate"><span class="pre">recommendation</span></code> / <code class="docutils literal notranslate"><span class="pre">terminal</span></code>。每个 playbook 可有多版本（<code class="docutils literal notranslate"><span class="pre">draft</span></code> → <code class="docutils literal notranslate"><span class="pre">active</span></code> → <code class="docutils literal notranslate"><span class="pre">retired</span></code>），新版本不可变追加，历史版本与推理 run 永久保留。</p></li>
+<li><p><strong>Forward Reasoning（正向推理）</strong>：输入症状集合 + 观测数据 + 上下文，从 entry node 出发沿边遍历。每条边有 <code class="docutils literal notranslate"><span class="pre">outcome</span></code>（<code class="docutils literal notranslate"><span class="pre">matched</span></code> / <code class="docutils literal notranslate"><span class="pre">not_matched</span></code> / <code class="docutils literal notranslate"><span class="pre">unknown</span></code> / <code class="docutils literal notranslate"><span class="pre">always</span></code> / <code class="docutils literal notranslate"><span class="pre">default</span></code>）和条件表达式，节点条件支持 <code class="docutils literal notranslate"><span class="pre">all_symptoms</span></code> / <code class="docutils literal notranslate"><span class="pre">any_symptoms</span></code> / <code class="docutils literal notranslate"><span class="pre">none_symptoms</span></code> / <code class="docutils literal notranslate"><span class="pre">observations</span></code> / <code class="docutils literal notranslate"><span class="pre">context</span></code> 五种模式。输出 <code class="docutils literal notranslate"><span class="pre">next_actions</span></code>（下一步检查/动作）、<code class="docutils literal notranslate"><span class="pre">recommendations</span></code>（推荐结论）和完整 <code class="docutils literal notranslate"><span class="pre">trace</span></code>。</p></li>
+<li><p><strong>传感器解析（Sensor Resolve）</strong>：独立的自然语言 → 传感器查询通道。LLM 解析查询项 → 向量检索匹配实体 → 沿结构谓词 BFS 5 跳收集 sensor 类型节点 → 返回传感器名称列表。用于&quot;把’压力异常’翻译成具体要看哪几个传感器&quot;。</p></li>
+</ul>
+<blockquote>
+<div><p>诊断模块与 facts 图在数据上不相交（<code class="docutils literal notranslate"><span class="pre">diagnostic_*</span></code> 5 张表独立于 <code class="docutils literal notranslate"><span class="pre">facts</span></code>/<code class="docutils literal notranslate"><span class="pre">entities</span></code>），但在语义上协同：playbook 的 <code class="docutils literal notranslate"><span class="pre">recommendation.targets</span></code> 可以指向 facts 图中的实体（如&quot;检查 MFC-1 校准&quot;），forward reasoning 不会修改图谱。</p>
+</div></blockquote>
+</section>
+<section id="id7">
+<h2>代码结构<a class="headerlink" href="#id7" title="链接到此标题。"></a></h2>
+<blockquote>
+<div><p>5 子包分层（<code class="docutils literal notranslate"><span class="pre">infra</span></code> → <code class="docutils literal notranslate"><span class="pre">memory</span></code> → <code class="docutils literal notranslate"><span class="pre">graph</span></code> → <code class="docutils literal notranslate"><span class="pre">diagnostics</span></code> → <code class="docutils literal notranslate"><span class="pre">interfaces</span></code>，依赖单向无环）。完整架构说明见<a class="reference internal" href="23-architecture-diagrams.html"><span class="doc std std-doc">第23章 架构视图</span></a>。</p>
+</div></blockquote>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>src/cortex/
+├── migrations/             # Alembic 迁移（8 个版本，34 张表）
+│   └── versions/
+│       ├── 0001_current_schema.py    # 基础 schema（SQL 文件驱动，34 张表）
+│       ├── 0002_graph_editing_audit.py
+│       ├── 0003_pg_textsearch_bm25.py
+│       ├── 0004_bm25_projection_dirty_tracking.py
+│       ├── 0005_bm25_dirty_columns.py
+│       ├── 0006_entity_identity_unique.py
+│       ├── 0007_remove_access_control.py
+│       └── 0008_predicate_cleanup.py  # 谓词清理：消除互逆冗余
+├── infra/                  # 基础设施（10 模块）
+│   ├── config.py           # YAML 配置 + 维度强校验 + 热更新白名单
+│   ├── db.py               # engine / session / schema 初始化（psycopg3 + QueuePool 连接池）
+│   ├── core.py             # WAL append(幂等) + 队列 + lifecycle + ?wait=
+│   ├── services.py         # embedding / rerank / LLM + think 剥离 + 流式
+│   ├── concurrency.py      # parallel_map / parallel_call(ThreadPoolExecutor 并行 I/O)
+│   ├── prompts.py          # 半导体级诊断 prompts（21 种实体, 36 个谓词）
+│   ├── ontology.py         # 谓词本体（结构/因果/诊断/状态四大类，PREDICATE_DICTIONARY）
+│   ├── chunking.py         # 长文档分块
+│   ├── token_budget.py     # token 预算估算
+│   └── think_stream.py     # think 标签边界状态机
+├── memory/                 # 记忆写入与生命周期(14 模块)
+│   ├── ingest.py           # 批量 + 5 导入器
+│   ├── episodes.py         # Episodes + 诊断 Case 管理
+│   ├── erasures.py         # GDPR 引用计数真删（4 阶段）
+│   ├── temporal.py         # NL 时间短语解析
+│   ├── terminology.py      # Vocabularies 词表 + Synonyms 同义词
+│   ├── export_data.py      # 导出 JSONL
+│   ├── maintenance.py      # methylation / consolidation / seed 词表 / seed_predicate_definitions
+│   ├── understanding.py    # 概念合成层
+│   ├── evidence.py         # 外部证据目录(URI/hash/query/version/quality)
+│   ├── evolution.py        # Dreaming/Higher-Order 人工审批门(evolution_candidates)
+│   ├── feedback.py         # Feedback 回灌(双轨软降权+硬归档)
+│   ├── dreaming.py         # Dreaming proposal 生成(不直接改 verified graph)
+│   ├── higher_order.py     # Higher-Order candidate 生成
+│   └── graph_mutations.py  # 实体/事实的 CRUD 突变（graph editing + audit）
+├── graph/                  # 知识图谱
+│   ├── extraction/         # 抽取管线 + 实体链接 B over C(三阶段并行)
+│   └── retrieval/          # 6 通道 + RRF + rerank + StratifiedPack
+├── diagnostics/            # 诊断推理（2 模块，独立于 facts 图）
+│   ├── engine.py           # Playbook DAG 验证与遍历（纯函数，无 DB）
+│   └── forward_reasoning.py # Playbook 版本管理 + 症状正向推理 + run 持久化
+└── interfaces/             # 对外入口
+    ├── api/                # FastAPI 全端点(90+, app.py + 10 个路由文件)+ Pydantic schemas
+    │   └── routes/
+    │       ├── admin.py            # 运维指标 + maintenance
+    │       ├── cases.py            # 诊断 Case 生命周期
+    │       ├── diagnostics.py      # Playbook CRUD + forward reasoning
+    │       ├── erasures.py         # GDPR 擦除
+    │       ├── graph.py            # 实体/事实/边/时间线 CRUD
+    │       ├── operations.py       # 记忆 store/search/forget/ingest/export
+    │       ├── sensor_resolve.py   # 自然语言 → 关联传感器解析
+    │       ├── temporal.py         # 时间短语管理
+    │       ├── terminology.py      # 词表 + 同义词
+    │       └── understanding.py    # Beliefs + Understanding
+    ├── mcp_server.py       # MCP server(53 工具, stdio + streamable-http 双传输)
+    ├── cli.py              # CLI 入口
+    ├── smoke.py            # 端到端冒烟
+    └── worker/             # Postgres-as-queue worker 循环
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
+        <a href="../index.html" class="btn btn-neutral float-left" title="Cortex-PY 架构解析" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="01-memory-model.html" class="btn btn-neutral float-right" title="第1章 五层记忆模型" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; 版权所有 2026, Technical Deep Dive。</p>
+  </div>
+
+  利用 <a href="https://www.sphinx-doc.org/">Sphinx</a> 构建，使用的 
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">主题</a>
+    由 <a href="https://readthedocs.org">Read the Docs</a> 开发.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
